@@ -1,0 +1,12 @@
+laspy[lazrs]
+numpy
+scipy
+shapely
+rasterio
+pyproj
+geopandas
+buildingregulariser
+pmtiles
+mapbox-vector-tile
+matplotlib
+remotezip

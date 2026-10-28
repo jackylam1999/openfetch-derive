@@ -1,0 +1,89 @@
+# LiDAR roof gap fill for a whole ELVIS order: one free runner job per LiDAR tile, then a join job (copy of
+# tools/derive/github/derive-roofs.yml; tools/derive/github/sync.sh copies it and tools/derive into the public openfetch-derive repo:
+# public, so runner minutes are free and unlimited; it holds no secrets and must never get any).
+# Start it by hand (Actions > derive-roofs > Run workflow) with the order's zip link while the link is live (about 2 days).
+# A box whose gates FAIL fails its job and is left out of the joined layer. No secrets needed.
+# Results: artifact NAME-joined (NAME-combined.geojson.gz + NAME-summary.md) and one artifact per box (report, check.png,
+# the outlines plus the raw trace and community shapes, for comparing the tracing alone against OSM/Microsoft).
+name: derive-roofs
+on:
+  workflow_dispatch:
+    inputs:
+      name: {description: 'Short name for the order, e.g. north-shore', required: true}
+      zip_url: {description: 'ELVIS zip link (https://elvis-downloads.s3.amazonaws.com/DATA_....zip)', required: true}
+      only: {description: 'Optional pilot box in MGA56 metres: xmin ymin xmax ymax (blank = every tile)', required: false, default: ''}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      boxes: ${{ steps.plan.outputs.boxes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install laspy remotezip shapely
+      - id: plan
+        run: echo "boxes=$(python3 openfetch/tools/derive/actions.py plan "$URL" plan.json $ONLY)" >> "$GITHUB_OUTPUT"
+        env:
+          URL: ${{ inputs.zip_url }}
+          ONLY: ${{ inputs.only != '' && format('--only {0}', inputs.only) || '' }}
+      - uses: actions/upload-artifact@v4
+        with: {name: plan, path: plan.json}
+  box:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        box: ${{ fromJSON(needs.plan.outputs.boxes) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12', cache: pip, cache-dependency-path: openfetch/tools/derive/requirements.txt}
+      - run: pip install -r openfetch/tools/derive/requirements.txt
+      - uses: actions/download-artifact@v4
+        with: {name: plan}
+      - run: /usr/bin/time -v python3 openfetch/tools/derive/actions.py box "$NAME" "$URL" plan.json "$BOX" out 2> >(tee time.log >&2)
+        env:
+          NAME: ${{ inputs.name }}
+          URL: ${{ inputs.zip_url }}
+          BOX: ${{ matrix.box }}
+      - if: always()
+        run: grep -E "Maximum resident|Elapsed" time.log || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: box-${{ matrix.box }}
+          path: |
+            out/${{ matrix.box }}/report.md
+            out/${{ matrix.box }}/check.png
+            out/${{ matrix.box }}/combined.geojson
+            out/${{ matrix.box }}/traced.geojson
+            out/${{ matrix.box }}/community.geojson
+          if-no-files-found: warn
+  join:
+    needs: [plan, box]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install remotezip laspy
+      - uses: actions/download-artifact@v4
+        with: {name: plan}
+      - uses: actions/download-artifact@v4
+        with: {pattern: box-*, path: boxes}
+      - run: |
+          for d in boxes/box-*; do mv "$d" "boxes/${d#boxes/box-}"; done
+          python3 openfetch/tools/derive/actions.py join "$NAME" plan.json boxes joined
+          gzip -9 "joined/$NAME-combined.geojson"
+          cat "joined/$NAME-summary.md" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          NAME: ${{ inputs.name }}
+      - uses: actions/upload-artifact@v4
+        with: {name: '${{ inputs.name }}-joined', path: joined/}
