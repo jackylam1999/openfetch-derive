@@ -15,8 +15,8 @@ import roofs
 # same reading as roofs.py: GDA94 tiles (2013/2019 Spatial Services) moved to GDA2020, and on thin LiDAR our own roof test
 # for overlap points plus a grid as coarse as the point spacing (Bowral 2014: most shapes found no roof on the 0.5 m grid)
 P=roofs.to_gda2020(roofs.read_points(files,B))
-cell=0.5; d=roofs.roof_density(P)
-if d<roofs.DENSE_ROOF:
+cell=0.5; d=roofs.roof_density(P); thin=d<roofs.DENSE_ROOF
+if thin:
     roofs.own_buildings(P); d=roofs.roof_density(P)
     cell=float(np.clip(round(roofs.CELL_K/math.sqrt(max(d,0.1))*4)/4,0.5,1.0))
     print(f"thin LiDAR: roof density {d:.1f} pts/m2, grid {cell} m")
@@ -93,9 +93,11 @@ for i,g in enumerate(G):
         dx,dy=D[i]; g2=translate(g,dx,dy); fit=s0
     shared=False
     if fit<0.3:   # under 30 % of it is LiDAR roof: a tree, pool, car or a demolished building
-        # unless it lies on roof where it is drawn and the roof goes on past it: a shop or terrace sharing walls with its
-        # neighbours (no shift can be judged, but the height can; Bowral 2014 town centre lost 239 such shapes)
-        # it takes its neighbours' shift (the imagery error), or none
+        # On thin LiDAR, unless it lies on roof where it is drawn and the roof goes on past it: a shop or terrace sharing
+        # walls (no shift can be judged, but the height can; Bowral 2014 town centre lost 239 such shapes). It takes its
+        # neighbours' shift (the imagery error), or none. Not on dense LiDAR: there these are mostly Microsoft shapes
+        # drawn smaller than their roof (Greenwich 2020: 1,330), and the traced roof that replaces them is better.
+        if not thin: continue
         nd=(np.median(D[near],axis=0) if near.sum()>=3 else (0.0,0.0))
         cand=[(t,translate(g,*t)) for t in (tuple(nd),(0.0,0.0)) if scorer(translate(g,*t)).inside()>=0.8]
         if not cand: continue
