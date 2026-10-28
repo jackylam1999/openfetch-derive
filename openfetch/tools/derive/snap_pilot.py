@@ -7,26 +7,22 @@ from shapely.geometry import shape, mapping
 from shapely.affinity import translate
 from shapely import contains_xy
 src, out = sys.argv[1], sys.argv[2]; files = sys.argv[3:]
-xs=[];ys=[];zs=[];cs=[]
 import os
 B=tuple(float(v) for v in os.environ.get("BOX","552861 6882513 553545 6883186").split())
 B=(B[0]-W-2,B[1]-W-2,B[2]+W+2,B[3]+W+2)  # wider than the shift window plus the ring
-for f in files:
-    with laspy.open(f) as r:
-        for p in r.chunk_iterator(5_000_000):
-            c=np.asarray(p.classification); x=np.asarray(p.x); y=np.asarray(p.y)
-            k=((c==6)|(c==2))&(x>=B[0])&(x<=B[2])&(y>=B[1])&(y<=B[3])
-            xs.append(x[k]); ys.append(y[k]); zs.append(np.asarray(p.z)[k]); cs.append(c[k])
-x=np.concatenate(xs); y=np.concatenate(ys); z=np.concatenate(zs); c=np.concatenate(cs)
-# 2013/2019 Spatial Services tiles are GDA94 (EPSG 28356): move them to GDA2020 like roofs.py does
-with laspy.open(files[0]) as r:
-    try: ep=r.header.parse_crs().to_epsg()
-    except Exception: ep=None
-if ep and 28348<=ep<=28358:
-    from pyproj import Transformer
-    x,y=Transformer.from_crs(ep,ep-28348+7848,always_xy=True).transform(x,y)
-    k=(x>=B[0])&(x<=B[2])&(y>=B[1])&(y<=B[3]); x,y,z,c=x[k],y[k],z[k],c[k]  # the shift moves edge points out of the grid
-cell=0.5; x0=B[0]; y1=B[3]; nc=int((B[2]-B[0])/cell)+1; nr=int((B[3]-B[1])/cell)+1
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+import roofs
+# same reading as roofs.py: GDA94 tiles (2013/2019 Spatial Services) moved to GDA2020, and on thin LiDAR our own roof test
+# for overlap points plus a grid as coarse as the point spacing (Bowral 2014: most shapes found no roof on the 0.5 m grid)
+P=roofs.to_gda2020(roofs.read_points(files,B))
+cell=0.5; d=roofs.roof_density(P)
+if d<roofs.DENSE_ROOF:
+    roofs.own_buildings(P); d=roofs.roof_density(P)
+    cell=float(np.clip(round(roofs.CELL_K/math.sqrt(max(d,0.1))*4)/4,0.5,1.0))
+    print(f"thin LiDAR: roof density {d:.1f} pts/m2, grid {cell} m")
+k=np.isin(P["c"],(2,6))&(P["x"]>=B[0])&(P["x"]<=B[2])&(P["y"]>=B[1])&(P["y"]<=B[3])  # the shift moves edge points out of the grid
+x,y,z,c=P["x"][k],P["y"][k],P["z"][k],P["c"][k]
+x0=B[0]; y1=B[3]; nc=int((B[2]-B[0])/cell)+1; nr=int((B[3]-B[1])/cell)+1
 bm=np.zeros((nr,nc),bool); b=c==6
 bm[((y1-y[b])/cell).astype(int),((x[b]-x0)/cell).astype(int)]=True
 from scipy import ndimage
@@ -53,6 +49,9 @@ def scorer(g):
         ins=hits(I,dx,dy); ring=hits(R,dx,dy)
         if len(ins)==0: return -1
         return ins.mean() - (ring.mean() if len(ring) else 0)
+    def inside():
+        h=hits(I,0.0,0.0); return h.mean() if len(h) else 0.0
+    f.inside=inside
     def many(DX,DY):
         # mean building share inside minus in the ring, for every shift at once (cells outside the grid count as empty)
         def share(P):
@@ -92,14 +91,22 @@ for i,g in enumerate(G):
     g2=translate(g,dx,dy); fit=score(g2)
     if s0>fit+0.1:   # its own shift fits clearly better (e.g. a block not drawn from the same image)
         dx,dy=D[i]; g2=translate(g,dx,dy); fit=s0
+    shared=False
     if fit<0.3:   # under 30 % of it is LiDAR roof: a tree, pool, car or a demolished building
-        continue
+        # unless it lies on roof where it is drawn and the roof goes on past it: a shop or terrace sharing walls with its
+        # neighbours (no shift can be judged, but the height can; Bowral 2014 town centre lost 239 such shapes)
+        # it takes its neighbours' shift (the imagery error), or none
+        nd=(np.median(D[near],axis=0) if near.sum()>=3 else (0.0,0.0))
+        cand=[(t,translate(g,*t)) for t in (tuple(nd),(0.0,0.0)) if scorer(translate(g,*t)).inside()>=0.8]
+        if not cand: continue
+        (dx,dy),g2=cand[0]; fit=0.0; shared=True
     shifts.append(math.hypot(dx,dy))
     zb=inside(g2,bx,by,bz)
     ring=g2.buffer(4).difference(g2.buffer(1)); zg=inside(ring,gx,gy,gz)
     p={}
     if len(zb)>=10 and len(zg)>=5: p={'h_max':round(float(np.percentile(zb,98)-np.median(zg)),2),'h_mean':round(float(zb.mean()-np.median(zg)),2)}
     p['shift_m']=round(shifts[-1],2); p['fit']=round(fit,2)
+    if shared: p['shared_walls']=True
     res.append({'type':'Feature','geometry':mapping(g2),'properties':p})
 # duplicates: OSM and Microsoft often draw the same building, and shifting can push neighbours into each other.
 # Best-fitting first; drop one that is mostly covered by an accepted footprint, trim a partial overlap off the weaker one.
