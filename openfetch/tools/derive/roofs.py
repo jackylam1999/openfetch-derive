@@ -22,6 +22,14 @@ import rasterio.features
 from rasterio.transform import from_origin
 
 CLASS_GROUND, CLASS_BUILDING, CLASS_WATER = 2, 6, 9
+CLASS_UNCLASSIFIED, CLASS_VEG, CLASS_OVERLAP = 1, (3, 4, 5), 12
+# Thin LiDAR (28 Oct 2026). A grid cell must be about as wide as the spacing of the roof points, or the outline is mostly holes:
+# Bowral 2014 has 0.9-1.7 building points per m2 on roofs: the 0.5 m grid found 22 % of the OSM/Microsoft roof area, 0.75 m 61 %, 1.0 m 67 %.
+# Dense LiDAR (2019+ Spatial Services, 4+ pts/m2 on roofs) keeps the 0.5 m grid and its own classes, so its output is unchanged.
+DENSE_ROOF = 3.2            # building points per m2 of roof from which the survey's own classes are used as they are
+CELL_K = 1.3                # cell = CELL_K / sqrt(roof density), between 0.5 and 1.0 m
+MIN_HAG = 2.0               # m above ground for a roof point of our own
+MAX_PLANE_RMS = 0.1         # m, spread of a point's 10 neighbours about their plane (roofs ~0.03, tree crowns 0.3+)
 
 
 def cross(u, v):
@@ -29,11 +37,11 @@ def cross(u, v):
 
 
 def args(argv):
-    o = {"cell": 0.5, "min_area": 20.0, "bbox": None, "epsg": None, "files": [], "out": None, "shrink": 0.3, "mode": "rect"}
+    o = {"cell": 0.5, "min_area": 20.0, "bbox": None, "epsg": None, "files": [], "out": None, "shrink": 0.3, "mode": "rect", "cell_set": False}
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a == "--cell": o["cell"] = float(argv[i + 1]); i += 2
+        if a == "--cell": o["cell"] = float(argv[i + 1]); o["cell_set"] = True; i += 2
         elif a == "--min-area": o["min_area"] = float(argv[i + 1]); i += 2
         elif a == "--mode": o["mode"] = argv[i + 1]; i += 2
         elif a == "--shrink": o["shrink"] = float(argv[i + 1]); i += 2
@@ -48,7 +56,7 @@ def args(argv):
 
 def read_points(files, bbox):
     """All points of the given classes from every file, clipped to bbox. Returns dict of arrays."""
-    xs, ys, zs, cs = [], [], [], []
+    xs, ys, zs, cs, ns = [], [], [], [], []
     crs = None
     for f in files:
         with laspy.open(f) as rd:
@@ -57,15 +65,14 @@ def read_points(files, bbox):
                 except Exception: crs = None
             for pts in rd.chunk_iterator(5_000_000):
                 c = np.asarray(pts.classification)
-                keep = (c == CLASS_GROUND) | (c == CLASS_BUILDING) | (c == CLASS_WATER)
+                keep = np.isin(c, (CLASS_GROUND, CLASS_BUILDING, CLASS_WATER, CLASS_UNCLASSIFIED, CLASS_OVERLAP) + CLASS_VEG)
                 x = np.asarray(pts.x)[keep]; y = np.asarray(pts.y)[keep]
+                z = np.asarray(pts.z)[keep]; c = c[keep]; n = np.asarray(pts.number_of_returns)[keep]
                 if bbox:
                     m = (x >= bbox[0]) & (x <= bbox[2]) & (y >= bbox[1]) & (y <= bbox[3])
-                    x, y = x[m], y[m]; z = np.asarray(pts.z)[keep][m]; c = c[keep][m]
-                else:
-                    z = np.asarray(pts.z)[keep]; c = c[keep]
-                xs.append(x); ys.append(y); zs.append(z); cs.append(c)
-    P = {"x": np.concatenate(xs), "y": np.concatenate(ys), "z": np.concatenate(zs), "c": np.concatenate(cs)}
+                    x, y, z, c, n = x[m], y[m], z[m], c[m], n[m]
+                xs.append(x); ys.append(y); zs.append(z); cs.append(c); ns.append(n)
+    P = {"x": np.concatenate(xs), "y": np.concatenate(ys), "z": np.concatenate(zs), "c": np.concatenate(cs), "n": np.concatenate(ns)}
     P["crs"] = crs
     return P
 
@@ -81,6 +88,67 @@ def to_gda2020(P):
         P["crs"] = None
         print(f"shifted GDA94 MGA {epsg} -> GDA2020 {epsg - 28348 + 7848}", file=sys.stderr)
     return P
+
+
+def roof_density(P):
+    """Building points per m2 of roof: building points over the area of the 2 m cells holding 3 or more of them."""
+    b = P["c"] == CLASS_BUILDING
+    if b.sum() < 100:
+        return 0.0
+    k = np.unique(np.floor(P["x"][b] / 2).astype(np.int64) * 10_000_000 + np.floor(P["y"][b] / 2).astype(np.int64), return_counts=True)[1]
+    return float(k[k >= 3].sum() / (4.0 * max(1, (k >= 3).sum())))
+
+
+def own_buildings(P):
+    """Thin LiDAR: mark overlap (class 12) and unclassified points as building when they are roofs by our own test. A roof
+    point stands MIN_HAG m or more above the ground (2 m ground grid from the class 2 points), is the only return of its
+    pulse (leaves give several), lies on a plane with its 10 nearest roof-candidate or building neighbours (spread at most
+    MAX_PLANE_RMS m) and has fewer vegetation than building points among the survey's classified points within 1.5 m."""
+    from scipy.spatial import cKDTree
+    c = P["c"]; g = c == CLASS_GROUND
+    if g.sum() < 100:
+        return 0
+    x0, y0 = P["x"].min(), P["y"].min()
+    gi, gj = ((P["x"][g] - x0) // 2).astype(int), ((P["y"][g] - y0) // 2).astype(int)
+    nr, nc = int((P["x"].max() - x0) // 2) + 1, int((P["y"].max() - y0) // 2) + 1
+    dem = np.full((nr, nc), np.inf)
+    np.minimum.at(dem, (gi, gj), P["z"][g])
+    empty = ~np.isfinite(dem)
+    if empty.any():
+        _, (ii, jj) = ndimage.distance_transform_edt(empty, return_indices=True)
+        dem = dem[ii, jj]
+    hag = P["z"] - dem[((P["x"] - x0) // 2).astype(int).clip(0, nr - 1), ((P["y"] - y0) // 2).astype(int).clip(0, nc - 1)]
+    cand = np.isin(c, (CLASS_OVERLAP, CLASS_UNCLASSIFIED)) & (hag >= MIN_HAG) & (P["n"] == 1)
+    ci = np.nonzero(cand)[0]
+    if not len(ci):
+        return 0
+    pool = np.nonzero(cand | (c == CLASS_BUILDING))[0]
+    xyz = np.column_stack([P["x"][pool], P["y"][pool], P["z"][pool]])
+    d, nb = cKDTree(xyz).query(np.column_stack([P["x"][ci], P["y"][ci], P["z"][ci]]), k=10, distance_upper_bound=2.0)
+    full = np.isfinite(d).all(axis=1)
+    planar = np.zeros(len(ci), bool)
+    if full.any():
+        Q = xyz[nb[full]]
+        Q = Q - Q.mean(axis=1, keepdims=True)
+        ev = np.linalg.eigvalsh(np.einsum("nki,nkj->nij", Q, Q) / Q.shape[1])
+        planar[full] = np.sqrt(np.maximum(ev[:, 0], 0)) <= MAX_PLANE_RMS
+    lab = np.nonzero(np.isin(c, CLASS_VEG + (CLASS_BUILDING,)))[0]
+    tv = cKDTree(np.column_stack([P["x"][lab], P["y"][lab]]))
+    near = tv.query_ball_point(np.column_stack([P["x"][ci[planar]], P["y"][ci[planar]]]), r=1.5)
+    isveg = np.isin(c[lab], CLASS_VEG)
+    ok = np.array([isveg[k].sum() < (len(k) - isveg[k].sum()) or not k for k in near], bool) if len(near) else np.zeros(0, bool)
+    roof = ci[planar][ok]
+    c[roof] = CLASS_BUILDING
+    return len(roof)
+
+
+def ring_density(P, poly):
+    """Points of any class per m2 in the 1-4 m ring around a roof."""
+    from shapely import contains_xy
+    ring = poly.buffer(4).difference(poly.buffer(1))
+    a, b, c, d = ring.bounds
+    m = np.nonzero((P["x"] >= a) & (P["x"] <= c) & (P["y"] >= b) & (P["y"] <= d))[0]
+    return contains_xy(ring, P["x"][m], P["y"][m]).sum() / ring.area if ring.area else 0
 
 
 def building_mask(P, cell):
@@ -409,6 +477,13 @@ def main():
     P = read_points(o["files"], o["bbox"])
     P = to_gda2020(P)
     print(f"points kept: {len(P['x'])} (ground {(P['c']==CLASS_GROUND).sum()}, building {(P['c']==CLASS_BUILDING).sum()}), crs {P['crs']}", file=sys.stderr)
+    d = roof_density(P)
+    thin = d < DENSE_ROOF and not o["cell_set"]
+    if thin:
+        n = own_buildings(P)
+        d = roof_density(P)
+        o["cell"] = float(np.clip(round(CELL_K / math.sqrt(max(d, 0.1)) * 4) / 4, 0.5, 1.0))
+        print(f"thin LiDAR: {n} overlap/unclassified points made building by our own test, roof density {d:.1f} pts/m2, grid {o['cell']} m", file=sys.stderr)
     mask, transform, _ = building_mask(P, o["cell"])
     b = P["c"] == CLASS_BUILDING
     polys = polygons(mask, transform, o["cell"], o["min_area"], o["shrink"], (P["x"][b], P["y"][b]), o["mode"]) if mask is not None else []
@@ -416,13 +491,16 @@ def main():
     if o["mode"] == "br" and polys:
         polys = regularise_all(polys, epsg)
     rows = heights(P, polys, o["cell"])
+    pd = len(P["x"]) / max(1.0, (P["x"].max() - P["x"].min()) * (P["y"].max() - P["y"].min()))
     feats = []
     # boats, pontoons and jetties stand on water, which LiDAR rarely returns as ground: a roof whose 1-4 m ring holds
     # less than a quarter of the box's usual ground density is not on land (Tweed Heads 2023: real buildings >= 8/m2)
     gd = np.median([r["ground_density"] for r in rows]) if rows else 0
-    for r in rows:
+    for poly, r in zip(polys, rows):
         if r["ground_density"] < 0.25 * gd:
-            r["on_water"] = True
+            # thin LiDAR has few ground points beside walls in town centres: there a roof is on water only when its ring
+            # holds few points of any class too (Bowral 2014 lost whole shop blocks as boats)
+            r["on_water"] = bool(not thin or ring_density(P, poly) < 0.25 * pd)
     dropped = 0
     for poly, r in zip(polys, rows):
         if r.get("on_water"):
