@@ -5,7 +5,9 @@ Usage:
   python3 kerbphoto.py fetch NAME council x0 y0 out    (1 km box at E x0 N y0: photo at 0.1 m, council kerbs, cadastre lots)
   python3 kerbphoto.py train model.pt out NAME...      (train on the named boxes)
   python3 kerbphoto.py predict model.pt out NAME       (writes out/NAME_derived.geojson)
-  python3 kerbphoto.py pilot                           (the whole pilot: fetch, train, predict and score the held-out boxes)
+  python3 kerbphoto.py pilot out                       (the whole pilot: fetch, train, predict and score the held-out boxes)
+  python3 kerbphoto.py data out                        (fetch every training and held-out box)
+  python3 kerbphoto.py run out result.json             (one tuning round variant; settings in KERB_CFG, see kerbtune.py)
 
 Everything is in GDA2020 MGA56 (EPSG:7856). The photos sit SHIFT m off the cadastre and council lines, so each photo is moved
 by SHIFT before use. The model sees the photo (RGB) and the cadastre lot mask; label = within POS m of a council kerb, cells
@@ -28,11 +30,14 @@ LOTS = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_P
 HDR = {"User-Agent": "Mozilla/5.0 openfetch-derive"}
 CELL, MARGIN, SIZE = 0.1, 50, 1000
 SHIFT = tuple(float(v) for v in os.environ.get("KERB_SHIFT", "0.5,0.6").split(","))  # (east, north) m to move the photo
-POS, IGN, NEAR, MIN_LEN, THRESH = 0.3, 0.6, 60.0, 4.0, float(os.environ.get("KERB_THRESH", "0.5"))
-CHIP, BATCH = 192, 12
-STEPS = int(os.environ.get("KERB_STEPS", "3500"))
+NEAR, MIN_LEN, THRESHS = 60.0, 4.0, (0.3, 0.4, 0.5, 0.6)
+CFG = {"minutes": 120, "width": 16, "chip": 192, "batch": 12, "pos": 0.3, "boxes": 4, "lr": 2e-3, "pw": 4.0, "tta": 0,
+       "bridge": 0.0, **json.loads(os.environ.get("KERB_CFG") or "{}")}
+POS, IGN = CFG["pos"], CFG["pos"] + 0.3
+STEPS = int(os.environ.get("KERB_STEPS", "0"))  # 0 = train for CFG minutes
 TRAIN = [("pw1", "nb", 342000, 6268000), ("pw2", "nb", 341000, 6269000), ("pw3", "nb", 343000, 6276000),
-         ("pw4", "nb", 344000, 6277000)]
+         ("pw4", "nb", 344000, 6277000), ("pw5", "nb", 341000, 6272000), ("pw6", "nb", 342000, 6271000),
+         ("pw7", "nb", 344000, 6276000), ("pw8", "nb", 345000, 6277000)]
 HOLD = [("monavale", "nb", 342000, 6272000), ("newport", "nb", 343000, 6274000), ("parramatta", "parra", 315000, 6256000)]
 
 
@@ -111,8 +116,9 @@ def unet():
                              nn.Conv2d(o, o, 3, padding=1), nn.BatchNorm2d(o), nn.ReLU(inplace=True))
 
     class U(nn.Module):
-        def __init__(s, c=(16, 32, 64, 128)):
+        def __init__(s):
             super().__init__()
+            c = tuple(CFG["width"] * k for k in (1, 2, 4, 8))
             s.d = nn.ModuleList([blk(4, c[0])] + [blk(c[i], c[i + 1]) for i in range(3)])
             s.u = nn.ModuleList([nn.ConvTranspose2d(c[i + 1], c[i], 2, 2) for i in range(3)])
             s.b = nn.ModuleList([blk(2 * c[i], c[i]) for i in range(3)])
@@ -148,12 +154,16 @@ def train(a):
         pos_c = np.argwhere(y[::8, ::8] > 0) * 8; road_c = np.argwhere(road[::8, ::8] & (dk[::8, ::8] <= NEAR)) * 8
         data.append((np.asarray(rgb), lot, y, w, pos_c, road_c))
         print(f"{nm}: {len(pos_c)} kerb, {len(road_c)} street chip centres", file=sys.stderr)
-    net = unet(); opt = torch.optim.AdamW(net.parameters(), 2e-3, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=STEPS)
-    h = CHIP // 2; t0 = time.time()
-    for step in range(STEPS):
+    net = unet(); opt = torch.optim.AdamW(net.parameters(), CFG["lr"], weight_decay=1e-4)
+    h = CFG["chip"] // 2; t0 = time.time(); step = 0
+    while True:
+        done = step / STEPS if STEPS else (time.time() - t0) / (CFG["minutes"] * 60)
+        if done >= 1:
+            break
+        for g in opt.param_groups:
+            g["lr"] = CFG["lr"] * (min(1, done / 0.05) * 0.5 * (1 + np.cos(np.pi * done)))
         xs, ys, ws = [], [], []
-        for _ in range(BATCH):
+        for _ in range(CFG["batch"]):
             rgb, lot, y, w, pc, rc = data[rng.integers(len(data))]
             cs = pc if rng.random() < 0.6 else rc
             r, c = cs[rng.integers(len(cs))] + rng.integers(-40, 41, 2)
@@ -168,13 +178,14 @@ def train(a):
             xs.append(x.copy()); ys.append(yy.copy()); ws.append(ww.copy())
         X, Y, Wt = (torch.from_numpy(np.stack(v)) for v in (xs, ys, ws))
         lo = net(X)
-        bce = torch.nn.functional.binary_cross_entropy_with_logits(lo, Y, weight=Wt * (1 + 4 * Y), reduction="sum") / Wt.sum()
+        bce = torch.nn.functional.binary_cross_entropy_with_logits(lo, Y, weight=Wt * (1 + CFG["pw"] * Y), reduction="sum") / Wt.sum()
         p = torch.sigmoid(lo) * Wt
         dice = 1 - (2 * (p * Y).sum() + 1) / (p.sum() + (Y * Wt).sum() + 1)
         loss = bce + dice
-        opt.zero_grad(); loss.backward(); opt.step(); sched.step()
-        if step % 200 == 0 or step == STEPS - 1:
+        opt.zero_grad(); loss.backward(); opt.step()
+        if step % 200 == 0:
             print(f"step {step} loss {loss.item():.3f} ({time.time() - t0:.0f} s)", file=sys.stderr, flush=True)
+        step += 1
     torch.save(net.state_dict(), path)
 
 
@@ -190,7 +201,10 @@ def prob(net, rgb, lot):
                 if lot[r:r + t, c:c + t].all():
                     continue
                 x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), lot[r:r + t, c:c + t])[None])
-                P[r:r + t, c:c + t] += torch.sigmoid(net(x))[0, 0].numpy() * win; C[r:r + t, c:c + t] += win
+                p = torch.sigmoid(net(x))[0, 0]
+                if CFG["tta"]:
+                    p = (p + torch.sigmoid(net(x.flip(-1)))[0, 0].flip(-1) + torch.sigmoid(net(x.flip(-2)))[0, 0].flip(-2)) / 3
+                P[r:r + t, c:c + t] += p.numpy() * win; C[r:r + t, c:c + t] += win
     return P / np.maximum(C, 1e-6)
 
 
@@ -210,7 +224,41 @@ def vectorise(mask, tr):
     if not segs:
         return []
     m = linemerge(segs)
-    return [l.simplify(0.15) for l in getattr(m, "geoms", [m]) if l.length >= MIN_LEN]
+    ls = [l.simplify(0.15) for l in getattr(m, "geoms", [m]) if l.length >= 1.0]
+    if CFG["bridge"]:
+        ls = bridge(ls, CFG["bridge"])
+    return [l for l in ls if l.length >= MIN_LEN]
+
+
+def bridge(ls, gap):
+    """Join line ends up to gap m apart that carry on in the same direction (a kerb hidden under a car or a tree)."""
+    from shapely.geometry import LineString
+    from shapely.ops import linemerge
+    ends = []
+    for i, l in enumerate(ls):
+        c = np.asarray(l.coords)
+        for e, f in ((c[0], c[min(3, len(c) - 1)]), (c[-1], c[max(-4, -len(c))])):
+            d = e - f
+            ends.append((i, e, d / max(np.hypot(*d), 1e-6)))
+    if not ends:
+        return ls
+    P = np.array([e[1] for e in ends]); new, used = [], set()
+    for a, (i, e, d) in enumerate(ends):
+        if a in used:
+            continue
+        v = P - e; dist = np.hypot(v[:, 0], v[:, 1])
+        best = None
+        for b in np.argsort(dist)[1:6]:
+            j, e2, d2 = ends[b]
+            if dist[b] > gap or j == i or b in used:
+                continue
+            u = v[b] / max(dist[b], 1e-6)
+            if u @ d > 0.9 and -(u @ d2) > 0.9 and d @ d2 < -0.9:
+                best = b; break
+        if best is not None:
+            used |= {a, best}; new.append(LineString([e, P[best]]))
+    m = linemerge(ls + new)
+    return list(getattr(m, "geoms", [m]))
 
 
 def predict(a):
@@ -224,7 +272,7 @@ def predict(a):
     deep = ndimage.distance_transform_edt(lot > 0) * CELL > 0.5
     P[deep] = 0
     np.save(f"{out}/{nm}_prob.npy", (P * 255).astype(np.uint8))
-    vec(out, nm, P, tr, THRESH)
+    vec(out, nm, P, tr, 0.5)
 
 
 def vec(out, nm, P, tr, th):
@@ -245,24 +293,43 @@ def score(out, nm, th):
     return json.loads(r.stdout or "{}")
 
 
-def pilot(a):
+def data(a):
     out = a[0] if a else "kp"
     for nm, co, x, y in TRAIN + HOLD:
         if not os.path.exists(f"{out}/{nm}_meta.json"):
             fetch(nm, co, x, y, out)
-    if not os.path.exists(f"{out}/model.pt"):
-        train([f"{out}/model.pt", out] + [t[0] for t in TRAIN])
-    res = {}
+
+
+def run(a):
+    """run out result.json: train with CFG on the first CFG["boxes"] training boxes, score the held-out boxes at each threshold,
+    and pick the threshold with the best mean recall where every box keeps precision >= 0.7 (else the best mean of the two)."""
+    out, res_path = a[0], a[1]
+    data([out]); t0 = time.time()
+    train([f"{out}/model.pt", out] + [t[0] for t in TRAIN[:CFG["boxes"]]])
+    sc = {}
     for nm, *_ in HOLD:
         predict([f"{out}/model.pt", out, nm])
         m, tr, rgb, lot, _ = rasters(out, nm)
         P = np.load(f"{out}/{nm}_prob.npy").astype(np.float32) / 255
-        for th in (0.3, 0.4, 0.5, 0.6):
-            vec(out, nm, P, tr, th); res[f"{nm}@{th}"] = score(out, nm, th)
+        for th in THRESHS:
+            vec(out, nm, P, tr, th); sc.setdefault(th, {})[nm] = score(out, nm, th)
             os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
-        print(nm, json.dumps({k: v for k, v in res.items() if k.startswith(nm)}), file=sys.stderr, flush=True)
-    json.dump(res, open(f"{out}/scores.json", "w"), indent=1)
-    print("SCORES", json.dumps(res))
+    def key(th):
+        r = sc[th]; ok = all(v.get("precision", 0) >= 0.7 for v in r.values())
+        mr = np.mean([v.get("recall", 0) for v in r.values()]); mp = np.mean([v.get("precision", 0) for v in r.values()])
+        return (ok, mr if ok else (mr + mp) / 2)
+    th = max(sc, key=key)
+    r = sc[th]
+    res = {"cfg": CFG, "thresh": th, "mean_recall": round(float(np.mean([v.get("recall", 0) for v in r.values()])), 3),
+           "boxes": r, "all": sc, "minutes": round((time.time() - t0) / 60)}
+    json.dump(res, open(res_path, "w"), indent=1)
+    print("RESULT", json.dumps({"thresh": th, "mean_recall": res["mean_recall"],
+                                **{k: (v.get("recall"), v.get("precision"), v.get("offset_median_m")) for k, v in r.items()}}))
+
+
+def pilot(a):
+    out = a[0] if a else "kp"
+    run([out, f"{out}/scores.json"])
 
 
 if __name__ == "__main__":
@@ -270,4 +337,4 @@ if __name__ == "__main__":
     if c == "fetch":
         fetch(a[0], a[1], int(a[2]), int(a[3]), a[4])
     else:
-        {"train": train, "predict": predict, "pilot": pilot}[c](a)
+        {"train": train, "predict": predict, "pilot": pilot, "data": data, "run": run}[c](a)
