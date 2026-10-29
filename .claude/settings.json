@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [{"type": "command", "command": "f=/mnt/project-files/tools/guard.js; [ -f \"$f\" ] || exit 0; node \"$f\""}]
+      }
+    ]
+  }
+}
