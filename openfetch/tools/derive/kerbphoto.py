@@ -22,9 +22,9 @@ from scipy import ndimage
 IMG = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/export?bbox={},{},{},{}&bboxSR=7856"
        "&imageSR=7856&size=4000,4000&format=jpg&f=image")
 COUNCILS = {
-    "nb": ("https://maps.northernbeaches.nsw.gov.au/arcgis/rest/services/Assets/MapServer/12/query", (0.0, 0.0)),
+    "nb": ("https://maps.northernbeaches.nsw.gov.au/arcgis/rest/services/Assets/MapServer/12/query", (0.0, 0.0), "OBJECTID"),
     "parra": ("https://portal.data.nsw.gov.au/arcgis/rest/services/Hosted/Parramatta_Council_Data_1/FeatureServer/2/query",
-              (0.48, 1.42)),
+              (0.48, 1.42), "fid"),
 }
 LOTS = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query"
 HDR = {"User-Agent": "Mozilla/5.0 openfetch-derive"}
@@ -51,12 +51,12 @@ def get(url, tries=4):
             time.sleep(2 ** (i + 1))
 
 
-def query(url, box, sr=7856, fields="OBJECTID"):
+def query(url, box, sr=7856, fields="OBJECTID", oid="OBJECTID"):
     feats, off = [], 0
     while True:
         q = {"geometry": ",".join(map(str, box)), "geometryType": "esriGeometryEnvelope", "inSR": sr, "outSR": sr,
              "spatialRel": "esriSpatialRelIntersects", "outFields": fields, "returnGeometry": "true", "f": "geojson",
-             "resultOffset": off, "resultRecordCount": 1000, "orderByFields": "OBJECTID"}
+             "resultOffset": off, "resultRecordCount": 1000, "orderByFields": oid}
         d = json.loads(get(url + "?" + urllib.parse.urlencode(q)))
         got = [f for f in d.get("features", []) if f.get("geometry")]
         feats += got; off += len(d.get("features", []))
@@ -82,10 +82,10 @@ def fetch(name, council, x0, y0, out):
             rgb[rr, cc] = a[rr.start - r0:rr.stop - r0, :cc.stop - c0]
     rgb = ndimage.shift(rgb, (-SHIFT[1] / CELL, SHIFT[0] / CELL, 0), order=1, mode="nearest")
     np.save(f"{out}/{name}_rgb.npy", rgb)
-    url, (dx, dy) = COUNCILS[council]
+    url, (dx, dy), oid = COUNCILS[council]
     pad = 3
     kerbs = []
-    for f in query(url, (X0 - dx - pad, Y0 - dy - pad, X0 + W - dx + pad, Y0 + W - dy + pad)):
+    for f in query(url, (X0 - dx - pad, Y0 - dy - pad, X0 + W - dx + pad, Y0 + W - dy + pad), fields=oid, oid=oid):
         kerbs.append({"type": "Feature", "geometry": mapping(translate(shape(f["geometry"]), dx, dy)), "properties": {}})
     lots = query(LOTS, (X0, Y0, X0 + W, Y0 + W), fields="lotidstring")
     json.dump({"type": "FeatureCollection", "features": kerbs}, open(f"{out}/{name}_kerbs.geojson", "w"))

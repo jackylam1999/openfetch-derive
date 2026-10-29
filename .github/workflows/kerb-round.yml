@@ -6,6 +6,7 @@ on:
   workflow_call:
     inputs:
       round: {type: number, required: true}
+      prev: {type: number, required: true}
     outputs:
       verdict: {value: '${{ jobs.decide.outputs.verdict }}'}
 jobs:
@@ -18,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - if: inputs.round > 1
         uses: actions/download-artifact@v4
-        with: {name: 'kerb-state-${{ inputs.round - 1 }}', path: kerb-tune}
+        with: {name: 'kerb-state-${{ inputs.prev }}', path: kerb-tune}
       - id: plan
         run: echo "variants=$(python3 openfetch/tools/derive/kerbtune.py plan kerb-tune/state.json)" >> "$GITHUB_OUTPUT"
   variant:
@@ -57,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - if: inputs.round > 1
         uses: actions/download-artifact@v4
-        with: {name: 'kerb-state-${{ inputs.round - 1 }}', path: kerb-tune}
+        with: {name: 'kerb-state-${{ inputs.prev }}', path: kerb-tune}
       - uses: actions/download-artifact@v4
         with: {pattern: 'variant-${{ inputs.round }}-*', path: results}
       - id: rec

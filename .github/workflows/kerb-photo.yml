@@ -1,13 +1,10 @@
 # Kerb photo model pilot: trains a small U-Net on NSW 7 cm aerial photos (NSW Imagery, CC BY 4.0) against council kerbs and scores
 # the held-out boxes (Mona Vale, Newport, Parramatta) with compare_kerbs.py (copy of tools/derive/github/kerb-photo.yml; synced
 # into the public openfetch-derive repo by tools/derive/github/sync.sh: public, so runner minutes are free; no secrets, ever).
-# Runs on a push that changes kerbphoto.py or this file on a claude/* branch, or by hand (Actions > kerb-photo > Run workflow).
+# Runs by hand (Actions > kerb-photo > Run workflow); the tuning loop (kerb-tune.yml) runs the same pilot as its round 1.
 # Results: the SCORES line at the end of the log, and artifact kerb-photo (scores.json, pictures, lines, model).
 name: kerb-photo
 on:
-  push:
-    branches: ['claude/**']
-    paths: ['openfetch/tools/derive/kerbphoto.py', '.github/workflows/kerb-photo.yml']
   workflow_dispatch:
     inputs:
       steps: {description: 'Training steps', required: false, default: '3500'}

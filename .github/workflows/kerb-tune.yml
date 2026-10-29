@@ -27,39 +27,39 @@ jobs:
   r1:
     needs: data
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 1}
+    with: {round: 1, prev: 0}
   r2:
     needs: r1
     if: needs.r1.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 2}
+    with: {round: 2, prev: 1}
   r3:
     needs: r2
     if: needs.r2.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 3}
+    with: {round: 3, prev: 2}
   r4:
     needs: r3
     if: needs.r3.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 4}
+    with: {round: 4, prev: 3}
   r5:
     needs: r4
     if: needs.r4.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 5}
+    with: {round: 5, prev: 4}
   r6:
     needs: r5
     if: needs.r5.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 6}
+    with: {round: 6, prev: 5}
   r7:
     needs: r6
     if: needs.r6.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 7}
+    with: {round: 7, prev: 6}
   r8:
     needs: r7
     if: needs.r7.outputs.verdict == 'continue'
     uses: ./.github/workflows/kerb-round.yml
-    with: {round: 8}
+    with: {round: 8, prev: 7}
