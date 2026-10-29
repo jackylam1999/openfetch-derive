@@ -20,7 +20,8 @@ from shapely import contains_xy
 
 RISE_MIN, RISE_MAX, BEND, FLAT = 0.04, 0.40, 0.03, 0.08
 REACH, HALF, BIN, SPACING = 11.0, 2.5, 0.1, 1.0
-WIN, OUTLIER, GAP, MIN_LEN, ROAD_NEAR = 9, 0.35, 12.0, 4.0, 12.0
+WIN, OUTLIER, GAP, MIN_LEN, ROAD_NEAR, CENTRE = 9, 0.35, 6.0, 4.0, 12.0, True
+LONG, LONG_TOL, BRIDGE, BRIDGE_TOL, MINRUN = 41, 0.4, 40.0, 0.4, 8
 
 
 def ground_points(paths, x0, y0, x1, y1, cache=None):
@@ -101,39 +102,52 @@ def runmed(v, win):
     return out
 
 
-def kerbs_along(edge, road, tree, x, y, z):
+def kerbs_along(edge, road, tree, x, y, z, side=0):
+    """side 0: edge is a lot frontage, profiles run into the road reserve. side +1/-1: edge is a street centreline,
+    profiles run outwards on that side and are read mirrored, so the verge is always at the start of the profile."""
     n = int(edge.length / SPACING)
     t = (np.arange(n) + 0.5) * SPACING
     P = np.array([edge.interpolate(v).coords[0] for v in t])
     A = np.array([edge.interpolate(max(v - 1, 0)).coords[0] for v in t]); B = np.array([edge.interpolate(min(v + 1, edge.length)).coords[0] for v in t])
     U = B - A; U /= np.linalg.norm(U, axis=1)[:, None] + 1e-9
     N = np.c_[-U[:, 1], U[:, 0]]
-    flip = ~contains_xy(road, P[:, 0] + 0.5 * N[:, 0], P[:, 1] + 0.5 * N[:, 1])
-    N[flip] *= -1
+    if side:
+        N *= side
+    else:
+        flip = ~contains_xy(road, P[:, 0] + 0.5 * N[:, 0], P[:, 1] + 0.5 * N[:, 1])
+        N[flip] *= -1
     off = np.full(n, np.nan); st = np.full(n, np.nan); zr = np.full(n, np.nan)
     for i in range(n):
-        c = P[i] + N[i] * REACH / 2
-        idx = tree.query_ball_point(c, np.hypot(REACH / 2, HALF))
-        if len(idx) < 10:
-            continue
-        d = np.c_[x[idx], y[idx]] - P[i]
-        s, o = d @ U[i], d @ N[i]
-        k = (np.abs(s) <= HALF) & (o >= 0) & (o < REACH)
-        r = profile(o[k], z[idx][k])
-        if r:
-            off[i], st[i], zr[i] = r
+        for half in (HALF, 2 * HALF):
+            c = P[i] + N[i] * REACH / 2
+            idx = tree.query_ball_point(c, np.hypot(REACH / 2, half))
+            if len(idx) < 10:
+                break
+            d = np.c_[x[idx], y[idx]] - P[i]
+            s, o = d @ U[i], d @ N[i]
+            k = (np.abs(s) <= half) & (o >= 0) & (o < REACH)
+            r = profile(REACH - o[k] if side else o[k], z[idx][k])
+            if r:
+                off[i], st[i], zr[i] = (REACH - r[0] if side else r[0]), r[1], r[2]
+                break
     med = runmed(off, WIN)
     good = ~np.isnan(off) & (np.abs(off - med) <= OUTLIER)
+    off = np.where(good, off, np.nan)
+    far = runmed(off, LONG)
+    good &= np.abs(off - far) <= LONG_TOL
     off = np.where(good, off, np.nan)
     sm = runmed(off, 5)
     use = good & ~np.isnan(sm)
     lines, cur = [], []
     for i in np.nonzero(use)[0]:
-        if cur and t[i] - t[cur[-1]] > GAP:
-            lines.append(cur); cur = []
+        if cur:
+            gap = t[i] - t[cur[-1]]
+            if gap > BRIDGE or (gap > GAP and abs(sm[i] - sm[cur[-1]]) > BRIDGE_TOL):
+                lines.append(cur); cur = []
         cur.append(i)
     if cur:
         lines.append(cur)
+    lines = [l for l in lines if len(l) >= MINRUN]
     res = []
     for ids in lines:
         ids = np.array(ids)
@@ -155,18 +169,32 @@ def main():
     clip = sbox(bx0, by0, bx1, by1)
     polys = [shape(f["geometry"]) for f in json.load(open(lots))["features"]]
     road, edges = frontages(polys, clip.buffer(m - 1, join_style=2))
+    rl = []
     if roads:
         rl = [shape(f["geometry"]) for f in json.load(open(roads))["features"]]
         if rl:
             clip = clip.intersection(unary_union(rl).buffer(ROAD_NEAR))
+    found = [k for e in edges for k in kerbs_along(e, road, tree, x, y, z)]
+    if roads and rl and CENTRE:
+        near = unary_union([l for l, _, _ in found]).buffer(1.5) if found else None
+        for e in rl:
+            e = e.intersection(sbox(bx0, by0, bx1, by1).buffer(m - 1))
+            for g in getattr(e, "geoms", [e]):
+                if g.geom_type != "LineString" or g.length < MIN_LEN:
+                    continue
+                for sd in (1, -1):
+                    for l, st, zr in kerbs_along(g, road, tree, x, y, z, sd):
+                        l = l.difference(near) if near is not None else l
+                        for q in getattr(l, "geoms", [l]):
+                            if q.geom_type == "LineString" and q.length >= MIN_LEN:
+                                found.append((q, st, zr))
     feats = []
-    for e in edges:
-        for l, st, zr in kerbs_along(e, road, tree, x, y, z):
-            g = l.simplify(0.1).intersection(clip)
-            for gg in getattr(g, "geoms", [g]):
-                if gg.geom_type == "LineString" and gg.length >= MIN_LEN:
-                    feats.append({"type": "Feature", "geometry": mapping(gg), "properties": {
-                        "length": round(gg.length, 1), "step": round(st, 3), "z": round(zr, 2)}})
+    for l, st, zr in found:
+        g = l.simplify(0.1).intersection(clip)
+        for gg in getattr(g, "geoms", [g]):
+            if gg.geom_type == "LineString" and gg.length >= MIN_LEN:
+                feats.append({"type": "Feature", "geometry": mapping(gg), "properties": {
+                    "length": round(gg.length, 1), "step": round(st, 3), "z": round(zr, 2)}})
     inb = (x >= bx0) & (x < bx1) & (y >= by0) & (y < by1)
     dens = inb.sum() / ((bx1 - bx0) * (by1 - by0))
     json.dump({"type": "FeatureCollection", "name": "Kerbs (OpenFetch)", "ground_density": round(float(dens), 2),
