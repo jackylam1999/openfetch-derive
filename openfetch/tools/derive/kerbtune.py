@@ -6,8 +6,8 @@ Usage:
   python3 kerbtune.py record state.json log.md results/   (adds the round's results, prints "continue" or "stop: <reason>")
 
 Each round tries up to WIDTH variants side by side, each one change (a MOVE) on the best settings so far; round 1 also runs the
-settings unchanged. The best variant (mean share of council kerb length found within 1 m over the held-out boxes, with every
-box at >= 70% precise) becomes the new base. The loop stops when every held-out box reaches TARGET found with a median offset
+settings unchanged. The best variant (mean F1 over the held-out boxes: found and precise within 1 m of council kerbs, so extra
+lines cannot buy a better score) becomes the new base. The loop stops when every held-out box reaches TARGET found with a median offset
 <= 0.3 m, after MAX_ROUNDS rounds, when two rounds in a row gain under half a point (plateau), or when no move is left to try.
 """
 import sys, os, json, glob
@@ -51,6 +51,11 @@ def plan(a):
     print(json.dumps([{**v, "id": i, "cfg_json": json.dumps(v["cfg"])} for i, v in enumerate(out)]))
 
 
+def score(r):
+    return r.get("score") or float(sum(2 * v["recall"] * v["precision"] / max(v["recall"] + v["precision"], 1e-6)
+                                       for v in r["boxes"].values()) / max(len(r["boxes"]), 1))
+
+
 def met(r):
     return all(v.get("recall", 0) >= TARGET and (v.get("offset_median_m") or 9) <= 0.3 and v.get("precision", 0) >= 0.7
                for v in r["boxes"].values())
@@ -80,10 +85,11 @@ def record(a):
         if r["name"] != "starting settings":
             st["tried"].append([r["name"], key(base)])
         st["history"].append({"round": st["round"], "name": r["name"], "mean_recall": r["mean_recall"], "cfg": r["cfg"]})
-    top = max(res, key=lambda r: r["mean_recall"]) if res else None
-    old = st["best"]["mean_recall"] if st["best"] else 0
-    if top and (not st["best"] or top["mean_recall"] >= old + MIN_GAIN):
+    top = max(res, key=score) if res else None
+    old = score(st["best"]) if st["best"] else 0
+    if top and (not st["best"] or score(top) >= old + MIN_GAIN):
         st["best"] = {"round": st["round"], "name": top["name"], "cfg": top["cfg"], "mean_recall": top["mean_recall"],
+                      "score": round(score(top), 3),
                       "thresh": top["thresh"], "boxes": top["boxes"], "run": os.environ.get("GITHUB_RUN_ID"),
                       "artifact": top.get("artifact")}
         st["stale"] = 0

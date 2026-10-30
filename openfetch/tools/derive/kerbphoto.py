@@ -302,7 +302,7 @@ def data(a):
 
 def run(a):
     """run out result.json: train with CFG on the first CFG["boxes"] training boxes, score the held-out boxes at each threshold,
-    and pick the threshold with the best mean recall where every box keeps precision >= 0.7 (else the best mean of the two)."""
+    and pick the threshold with the best mean F1 (balance of found and precise, so drawing extra lines cannot buy a better score)."""
     out, res_path = a[0], a[1]
     data([out]); t0 = time.time()
     train([f"{out}/model.pt", out] + [t[0] for t in TRAIN[:CFG["boxes"]]])
@@ -314,13 +314,13 @@ def run(a):
         for th in THRESHS:
             vec(out, nm, P, tr, th); sc.setdefault(th, {})[nm] = score(out, nm, th)
             os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
-    def key(th):
-        r = sc[th]; ok = all(v.get("precision", 0) >= 0.7 for v in r.values())
-        mr = np.mean([v.get("recall", 0) for v in r.values()]); mp = np.mean([v.get("precision", 0) for v in r.values()])
-        return (ok, mr if ok else (mr + mp) / 2)
-    th = max(sc, key=key)
+    def f1(th):
+        return np.mean([2 * v.get("recall", 0) * v.get("precision", 0) / max(v.get("recall", 0) + v.get("precision", 0), 1e-6)
+                        for v in sc[th].values()])
+    th = max(sc, key=f1)
     r = sc[th]
     res = {"cfg": CFG, "thresh": th, "mean_recall": round(float(np.mean([v.get("recall", 0) for v in r.values()])), 3),
+           "score": round(float(f1(th)), 3),
            "boxes": r, "all": sc, "minutes": round((time.time() - t0) / 60)}
     json.dump(res, open(res_path, "w"), indent=1)
     print("RESULT", json.dumps({"thresh": th, "mean_recall": res["mean_recall"],

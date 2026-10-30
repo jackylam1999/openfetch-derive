@@ -1,60 +1,7 @@
 {
- "round": 1,
- "best": {
-  "round": 1,
-  "name": "more training areas",
-  "cfg": {
-   "minutes": 120,
-   "width": 16,
-   "chip": 192,
-   "batch": 12,
-   "pos": 0.3,
-   "boxes": 8,
-   "lr": 0.002,
-   "pw": 4.0,
-   "tta": 0,
-   "bridge": 0.0
-  },
-  "mean_recall": 0.572,
-  "thresh": 0.4,
-  "boxes": {
-   "monavale": {
-    "reference_km": 16.4,
-    "derived_km": 17.83,
-    "recall": 0.753,
-    "precision": 0.72,
-    "offset_median_m": 0.33,
-    "offset_p90_m": 0.77,
-    "tol_m": 1.0,
-    "recall_at_0.5m": 0.532,
-    "recall_at_2.0m": 0.878
-   },
-   "newport": {
-    "reference_km": 12.54,
-    "derived_km": 15.23,
-    "recall": 0.601,
-    "precision": 0.512,
-    "offset_median_m": 0.5,
-    "offset_p90_m": 0.88,
-    "tol_m": 1.0,
-    "recall_at_0.5m": 0.31,
-    "recall_at_2.0m": 0.8
-   },
-   "parramatta": {
-    "reference_km": 24.99,
-    "derived_km": 13.79,
-    "recall": 0.363,
-    "precision": 0.611,
-    "offset_median_m": 0.41,
-    "offset_p90_m": 0.82,
-    "tol_m": 1.0,
-    "recall_at_0.5m": 0.212,
-    "recall_at_2.0m": 0.473
-   }
-  },
-  "run": "40894435053",
-  "artifact": "variant-1-1"
- },
+ "round": 2,
+ "stale": 0,
+ "status": "running",
  "tried": [
   [
    "more training areas",
@@ -63,6 +10,22 @@
   [
    "train longer",
    "{\"batch\": 12, \"boxes\": 4, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "train longer",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "bridge short gaps",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "wider network",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "wider network",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 192, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
   ]
  ],
  "history": [
@@ -116,8 +79,95 @@
     "tta": 0,
     "bridge": 0.0
    }
+  },
+  {
+   "round": 2,
+   "name": "train longer",
+   "mean_recall": 0.572,
+   "cfg": {
+    "minutes": 192,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
+  },
+  {
+   "round": 2,
+   "name": "bridge short gaps",
+   "mean_recall": 0.606,
+   "cfg": {
+    "minutes": 120,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 4.0
+   }
+  },
+  {
+   "round": 2,
+   "name": "wider network",
+   "mean_recall": 0.432,
+   "cfg": {
+    "minutes": 120,
+    "width": 24,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
   }
  ],
- "stale": 0,
- "status": "running"
+ "best": {
+  "round": 2,
+  "name": "train longer",
+  "cfg": {
+   "minutes": 192,
+   "width": 16,
+   "chip": 192,
+   "batch": 12,
+   "pos": 0.3,
+   "boxes": 8,
+   "lr": 0.002,
+   "pw": 4.0,
+   "tta": 0,
+   "bridge": 0.0
+  },
+  "mean_recall": 0.572,
+  "thresh": 0.5,
+  "boxes": {
+   "monavale": {
+    "recall": 0.76,
+    "precision": 0.76,
+    "offset_median_m": 0.31
+   },
+   "newport": {
+    "recall": 0.57,
+    "precision": 0.56,
+    "offset_median_m": 0.5
+   },
+   "parramatta": {
+    "recall": 0.39,
+    "precision": 0.66,
+    "offset_median_m": 0.4
+   }
+  },
+  "run": "40894435053",
+  "artifact": "variant-2-2",
+  "score": 0.605
+ }
 }

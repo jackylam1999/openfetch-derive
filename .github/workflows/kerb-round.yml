@@ -71,5 +71,6 @@ jobs:
         with: {name: 'kerb-state-${{ inputs.round }}', path: kerb-tune}
       - run: |
           git config user.name "kerb-tune" && git config user.email "actions@users.noreply.github.com"
-          git fetch -q origin "$GITHUB_REF_NAME" && git checkout -q -B tune "origin/$GITHUB_REF_NAME"
-          git add kerb-tune && git commit -q -m "kerb-tune: round ${{ inputs.round }} (${{ steps.rec.outputs.verdict }})" && git push -q origin "tune:$GITHUB_REF_NAME" || echo "log push failed (state is in the kerb-state artifact)"
+          cp -r kerb-tune /tmp/kt && git stash -q -u || true
+          git fetch -q origin "$GITHUB_REF_NAME" && git checkout -q -f -B tune "origin/$GITHUB_REF_NAME"
+          mkdir -p kerb-tune && cp /tmp/kt/* kerb-tune/ && git add kerb-tune && git commit -q -m "kerb-tune: round ${{ inputs.round }} (${{ steps.rec.outputs.verdict }})" && git push -q origin "tune:$GITHUB_REF_NAME" || echo "log push failed (state is in the kerb-state artifact)"
