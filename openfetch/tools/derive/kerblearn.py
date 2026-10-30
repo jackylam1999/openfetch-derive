@@ -94,10 +94,11 @@ def data(a):
             Image.fromarray(np.load(raw)).save(jpg, quality=95)
         if co in FIT and not os.path.exists(f"{out}/{nm}_align.json"):
             align(out, nm)
-        if not os.path.exists(f"{out}/{nm}_water.geojson"):
+        rp = f"{out}/{nm}_roads.geojson"
+        if not os.path.exists(f"{out}/{nm}_water.geojson") or "functionhierarchy" not in open(rp).read(4000):
             m = json.load(open(f"{out}/{nm}_meta.json")); b = (m["x0"], m["y0"], m["x0"] + m["w"], m["y0"] + m["w"])
             for k, url in CONTEXT.items():
-                fs = kp.query(url, b)
+                fs = kp.query(url, b, fields="OBJECTID,functionhierarchy" if k == "roads" else "OBJECTID")
                 json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_{k}.geojson", "w"))
 
 
@@ -293,6 +294,28 @@ def causes(rgb, rc):
     return t
 
 
+SCALES = ("main roads", "collector roads", "local streets", "lanes and access")
+
+
+def scale(out, nm, on, tr):
+    """Road type of the nearest official road centreline for each kerb point (NSW functionhierarchy: 1-3 main, 4-5 collector,
+    6 local, 7 and up lanes, transitways and unnamed access)."""
+    from scipy.spatial import cKDTree
+    from shapely.geometry import shape
+    P, C = [], []
+    for f in json.load(open(f"{out}/{nm}_roads.geojson"))["features"]:
+        h = (f.get("properties") or {}).get("functionhierarchy")
+        if not f.get("geometry") or h is None:
+            continue
+        g = shape(f["geometry"]); k = 0 if h <= 3 else 1 if h <= 5 else 2 if h == 6 else 3
+        for t in np.arange(0, g.length + 1, 2.0):
+            p = g.interpolate(min(t, g.length)); P.append((p.x, p.y)); C.append(k)
+    if not P:
+        return np.full(len(on), -1)
+    xy = np.column_stack([tr.c + (on[:, 1] + 0.5) * CELL, tr.f - (on[:, 0] + 0.5) * CELL])
+    return np.asarray(C)[cKDTree(P).query(xy)[1]]
+
+
 def analyse(out, nm, lab, rgb, tr, n, keep=False):
     """Found share per probable cause, whole lines found, and (training boxes) the missed and extra points for the next round."""
     import rasterio.features as rf
@@ -307,6 +330,9 @@ def analyse(out, nm, lab, rgb, tr, n, keep=False):
     ty = causes(rgb, on)
     res = {"types": {TYPES[i]: [int((ty == i).sum()), round(float(hit[ty == i].mean()), 3) if (ty == i).any() else None]
                      for i in range(len(TYPES))}}
+    sc = scale(out, nm, on, tr)
+    res["scales"] = {SCALES[i]: [int((sc == i).sum()), round(float(hit[sc == i].mean()), 3) if (sc == i).any() else None]
+                     for i in range(len(SCALES))}
     fp = np.argwhere((D > 0) & core & (lab == 4))[::5]
     res["extra_m"] = round(len(fp) * 5 * CELL)
     if keep:

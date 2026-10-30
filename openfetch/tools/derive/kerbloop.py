@@ -23,6 +23,10 @@ FIRST = [("ImageNet start", START), ("ImageNet start + unbroken-line loss", {**S
 TUNE = {"minutes": 150, "lr": 3e-4, "mine": 0.4}
 HOLD = ("monavale", "newport", "parramatta")
 CHECK = ("nbcheck", "cbcheck", "wocheck")
+SCENE = {"nbcheck": "coastal suburb (Northern Beaches check)", "cbcheck": "flat grid suburb (Canterbury-Bankstown check)",
+         "wocheck": "hilly harbour-side (Woollahra check)", "monavale": "leafy coastal suburb (Mona Vale, held out)",
+         "newport": "hilly coastal, rolled kerbs (Newport, held out)", "parramatta": "city centre, council never seen (Parramatta)"}
+SCALES = ("main roads", "collector roads", "local streets", "lanes and access")
 
 
 def load(p):
@@ -31,11 +35,13 @@ def load(p):
     return {"round": 0, "best": None, "tried": [], "history": [], "stale": 0, "status": "running"}
 
 
-def moves(best):
+def moves(best, dead=()):
+    """Next changes to try, biggest training misses first. A focus that already failed to lift its own target (dead) is skipped."""
     c = {**best["cfg"], **TUNE}
     m = best.get("train_misses", {})
-    out = [(f"learn from misses ({t})", {**c, "focus": t}) for t in sorted(m, key=m.get, reverse=True) if m[t]]
-    out.insert(2, ("learn from extra lines", {**c, "focus": "extra lines"}))
+    out = [(f"learn from misses ({t})", {**c, "focus": t}) for t in sorted(m, key=m.get, reverse=True) if m[t] and t not in dead]
+    if "extra lines" not in dead:
+        out.insert(2, ("learn from extra lines", {**c, "focus": "extra lines"}))
     if not c.get("context"):
         out.insert(0, ("add road and water map context", {**c, "context": 1, "focus": out[0][1]["focus"] if out else ""}))
     if out and not c.get("skel"):
@@ -48,7 +54,7 @@ def plan(a):
     if not b:
         vs = FIRST
     else:
-        vs = [v for v in moves(b) if [v[0], b["round"]] not in st["tried"]][:WIDTH]
+        vs = [v for v in moves(b, st.get("dead", [])) if [v[0], b["round"]] not in st["tried"]][:WIDTH]
     print(json.dumps({"variants": [{"name": n, "id": i, "cfg_json": json.dumps(c)} for i, (n, c) in enumerate(vs)],
                       "best_run": str(b["run"]) if b else "", "best_artifact": b["artifact"] if b else ""}))
 
@@ -70,6 +76,44 @@ def causes(r):
         for t, (k, f) in r["boxes"].get(n, {}).get("types", {}).items():
             tot[t][0] += k; tot[t][1] += k * (f or 0)
     return {t: (k, f / k if k else None) for t, (k, f) in tot.items()}, sum(r["boxes"].get(n, {}).get("extra_m", 0) for n in CHECK + HOLD)
+
+
+def scales(r):
+    """Found share per road type over the check and held-out boxes."""
+    tot = {t: [0, 0.0] for t in SCALES}
+    for n in CHECK + HOLD:
+        for t, (k, f) in (r["boxes"].get(n, {}).get("scales") or {}).items():
+            tot[t][0] += k; tot[t][1] += k * (f or 0)
+    return {t: f / k if k else None for t, (k, f) in tot.items()}
+
+
+def hypothesis(r):
+    f = r["cfg"].get("focus", "")
+    if r["name"].startswith("add road"):
+        return "map context (roads, water) stops waterlines and lot edges being drawn as kerb and helps along main roads"
+    if f == "extra lines":
+        return "training on its own wrong lines cuts extra lines without losing found kerb"
+    if f:
+        return f"more chips on kerb missed {f} raises the found share {f}"
+    return "a fresh start from ImageNet"
+
+
+def takeaway(r, prev):
+    """Did the change do what it was meant to? Returns (text, cause the focus failed to lift or None)."""
+    f = r["cfg"].get("focus", "")
+    if not prev or not f:
+        return "", None
+    if f == "extra lines":
+        now, was = causes(r)[1], causes(prev)[1]
+        ok = now <= was * 0.95
+        return (f"extra lines {was / 1000:.1f} -> {now / 1000:.1f} km: " + ("worked" if ok else "did not work")), (None if ok else f)
+    if f not in TYPES or r["name"].startswith("add road"):
+        return "", None
+    now, was = causes(r)[0][f][1], causes(prev)[0][f][1]
+    if now is None or was is None:
+        return "", None
+    ok = now >= was + 0.01
+    return (f"found {f} {was:.0%} -> {now:.0%}: " + ("worked" if ok else "did not work, dropped from later rounds")), (None if ok else f)
 
 
 def learnt(r, prev):
@@ -113,7 +157,21 @@ def record(a):
         for r in res:
             f.write(row(st["round"], r))
         for r in res:
-            f.write(f"\n- {r['name']}: {learnt(r, prev)}")
+            tk, bad = takeaway(r, prev)
+            f.write(f"\n- {r['name']}. Idea: {hypothesis(r)}. Result: {learnt(r, prev)}" + (f" Take-away: {tk}." if tk else ""))
+            if bad and bad not in st.setdefault("dead", []):
+                st["dead"].append(bad)
+        top_ = max(res, key=lambda r: r["val_f1"]) if res else None
+        if top_:
+            b = top_["boxes"]
+            f.write(f"\n\nBy scenario (best of round, {top_['name']}): found / precise / median offset\n\n| box | scenario | result |\n"
+                    "|---|---|---|\n" + "".join(f"| {n} | {SCENE[n]} | " + (f"{b[n]['recall']:.0%} / {b[n]['precision']:.0%} / "
+                    f"{b[n].get('offset_median_m')} m" if b.get(n) else "-") + " |\n" for n in CHECK + HOLD))
+            sn, sp_ = scales(top_), scales(prev) if prev else {}
+            f.write("\nBy road type (all check and held-out boxes): " + "; ".join(
+                f"{t} {v:.0%}" + (f" (was {sp_[t]:.0%})" if sp_.get(t) is not None else "") for t, v in sn.items() if v is not None) + ".\n")
+            if st.get("dead"):
+                f.write(f"\nNo longer tried (did not help when tried): {', '.join(st['dead'])}.\n")
     for r in res:
         if prev:
             st["tried"].append([r["name"], prev["round"]])
@@ -143,7 +201,7 @@ def record(a):
         why = f"plateau ({PLATEAU} rounds without a check F1 gain of {MIN_GAIN})"
     elif not res:
         why = "no results this round (jobs failed)"
-    elif not [v for v in moves(st["best"]) if [v[0], st["best"]["round"]] not in st["tried"]]:
+    elif not [v for v in moves(st["best"], st.get("dead", [])) if [v[0], st["best"]["round"]] not in st["tried"]]:
         why = "every change tried"
     if why:
         st["status"] = "stopped: " + why
