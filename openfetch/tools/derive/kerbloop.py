@@ -31,7 +31,7 @@ def load(p):
 
 def queue(st):
     q = json.load(open(QUEUE)) if os.path.exists(QUEUE) else []
-    return [x for x in q if x["name"] not in st["done"]]
+    return [x for x in q if x["name"] not in st["done"] and not x.get("todo")]  # "todo": not ready to run yet
 
 
 def plan(a):
