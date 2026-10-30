@@ -71,7 +71,7 @@ jobs:
         with: {name: 'learn-${{ github.run_id }}-${{ inputs.slot }}-${{ matrix.v.id }}', path: res, if-no-files-found: warn}
   decide:
     needs: [plan, variant]
-    if: always() && needs.plan.result == 'success'
+    if: always() && !cancelled() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:

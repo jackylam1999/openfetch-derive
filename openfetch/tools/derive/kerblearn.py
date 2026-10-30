@@ -20,6 +20,10 @@ import sys, os, json, time
 import numpy as np
 from scipy import ndimage
 import kerbphoto as kp
+import kerbtidy
+
+_trace = kp.vectorise
+kp.vectorise = lambda mask, tr: [l for l in kerbtidy.tidy(_trace(mask, tr)) if l.length >= kp.MIN_LEN]
 
 kp.COUNCILS.update({
     "cb": ("https://services2.arcgis.com/Ax17MufLaTdpFneh/arcgis/rest/services/Kerb_Condition_1_5/FeatureServer/0/query",
@@ -32,6 +36,8 @@ TRAIN = kp.TRAIN + [("cb1", "cb", 318000, 6245000), ("cb2", "cb", 317000, 624600
 VAL = [("nbcheck", "nb", 342000, 6269000), ("cbcheck", "cb", 320000, 6246000), ("wocheck", "wo", 339000, 6250000)]
 HOLD = kp.HOLD
 FIT = {"cb", "wo"}
+SIX = "https://portal.spatial.nsw.gov.au/server/rest/services/"
+CONTEXT = {"roads": SIX + "NSW_Transport_Theme_multiCRS/FeatureServer/5/query", "water": SIX + "NSW_Water_Theme_multiCRS/FeatureServer/6/query"}
 TYPES = ("under trees", "in shadow", "cars or clutter", "faint kerb", "clear kerb")
 CFG = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 1e-3, "pw": 4.0, "skel": 0.0, "mine": 0.0,
        "focus": "", **json.loads(os.environ.get("KERB_CFG") or "{}")}
@@ -76,6 +82,29 @@ def data(a):
             kp.fetch(nm, co, x, y, out)
         if co in FIT and not os.path.exists(f"{out}/{nm}_align.json"):
             align(out, nm)
+        if not os.path.exists(f"{out}/{nm}_water.geojson"):
+            m = json.load(open(f"{out}/{nm}_meta.json")); b = (m["x0"], m["y0"], m["x0"] + m["w"], m["y0"] + m["w"])
+            for k, url in CONTEXT.items():
+                fs = kp.query(url, b)
+                json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_{k}.geojson", "w"))
+
+
+def context(out, nm, lot):
+    """Model input besides the photo: the lot mask, and with CFG["context"] the distance to the official road centreline
+    (0.1 m steps, up to 25 m) and the official water areas (NSW Transport and Water Themes, Spatial Services, CC BY 4.0)."""
+    if not CFG.get("context"):
+        return lot[..., None]
+    import rasterio.features as rf
+    from shapely.geometry import shape
+    from affine import Affine
+    m = json.load(open(f"{out}/{nm}_meta.json"))
+    n = lot.shape[0]; tr = Affine(CELL, 0, m["x0"], 0, -CELL, m["y0"] + m["w"])
+    def burn(k, lines):
+        fs = [shape(f["geometry"]) for f in json.load(open(f"{out}/{nm}_{k}.geojson"))["features"] if f.get("geometry")]
+        return rf.rasterize(((g, 1) for g in fs), out_shape=(n, n), transform=tr, all_touched=lines, dtype=np.uint8) if fs \
+            else np.zeros((n, n), np.uint8)
+    rd = np.minimum(ndimage.distance_transform_edt(burn("roads", True) == 0), 250).astype(np.uint8)
+    return np.stack([lot, rd, burn("water", False)], -1)
 
 
 def model(pretrained=True):
@@ -89,13 +118,13 @@ def model(pretrained=True):
         def __init__(s):
             super().__init__()
             e = getattr(torchvision.models, CFG["encoder"])(weights="IMAGENET1K_V1" if pretrained else None, progress=False)
-            c1 = nn.Conv2d(4, 64, 7, 2, 3, bias=False)
+            c1 = nn.Conv2d(NIN(), 64, 7, 2, 3, bias=False)
             with torch.no_grad():
                 c1.weight.zero_(); c1.weight[:, :3] = e.conv1.weight
             s.stem = nn.Sequential(c1, e.bn1, e.relu)
             s.enc = nn.ModuleList([nn.Sequential(e.maxpool, e.layer1), e.layer2, e.layer3, e.layer4])
             ch = [64, 64, 128, 256, 512]
-            s.full = blk(4, 16)
+            s.full = blk(NIN(), 16)
             s.up = nn.ModuleList([blk(ch[4] + ch[3], 256), blk(256 + ch[2], 128), blk(128 + ch[1], 64), blk(64 + ch[0], 32),
                                   blk(32 + 16, 16)])
             s.out = nn.Conv2d(16, 1, 1)
@@ -112,8 +141,23 @@ def model(pretrained=True):
     return U()
 
 
-def stack(rgb, lot):
-    x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, lot[..., None].astype(np.float32) - 0.5], -1)
+def NIN():
+    return 6 if CFG.get("context") else 4
+
+
+def load(net, path):
+    """Load saved weights; a model saved with fewer input layers gets the new ones at zero, so it starts out unchanged."""
+    import torch
+    sd, own = torch.load(path), net.state_dict()
+    for k, v in sd.items():
+        if v.dim() == 4 and own[k].shape[1] > v.shape[1]:
+            w = torch.zeros_like(own[k]); w[:, :v.shape[1]] = v; sd[k] = w
+    net.load_state_dict(sd)
+
+
+def stack(rgb, inp):
+    sc = np.array([1, 1 / 250, 1], np.float32)[:inp.shape[-1]]
+    x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, inp.astype(np.float32) * sc - 0.5], -1)
     return np.ascontiguousarray(x.transpose(2, 0, 1))
 
 
@@ -153,11 +197,11 @@ def train(path, out, names, init, mine):
     rng = np.random.default_rng(int(time.time())); data = []
     for nm in names:
         m, tr, rgb, lot, lab, road = labels(out, nm)
-        data.append((np.asarray(rgb), lot, lab, pools(nm, lab, road, mine)))
+        data.append((np.asarray(rgb), context(out, nm, lot), lab, pools(nm, lab, road, mine)))
         print(f"{nm}: " + ", ".join(f"{len(v)} {k}" for k, v in data[-1][-1].items()), file=sys.stderr)
     net = model(pretrained=init is None)
     if init:
-        net.load_state_dict(torch.load(init))
+        load(net, init)
     opt = torch.optim.AdamW(net.parameters(), CFG["lr"], weight_decay=1e-4)
     h = CFG["chip"] // 2; t0 = time.time(); step = 0; seen = {}
     while (done := (time.time() - t0) / (CFG["minutes"] * 60)) < 1:
@@ -165,14 +209,14 @@ def train(path, out, names, init, mine):
             g["lr"] = CFG["lr"] * min(1, done / 0.05) * 0.5 * (1 + np.cos(np.pi * done))
         xs, ys = [], []
         for _ in range(CFG["batch"]):
-            (rgb, lot, lab, pl), kind = pick(rng, data)
+            (rgb, inp, lab, pl), kind = pick(rng, data)
             seen[kind] = seen.get(kind, 0) + 1
             cs = pl[kind] if len(pl.get(kind, ())) else pl["kerb"]
             r, c = cs[rng.integers(len(cs))] + rng.integers(-40, 41, 2)
             r, c = int(np.clip(r, h, lab.shape[0] - h)), int(np.clip(c, h, lab.shape[1] - h))
             sl = (slice(r - h, r + h), slice(c - h, c + h))
             img = rgb[sl].astype(np.float32) * rng.uniform(0.75, 1.25, 3) + rng.uniform(-25, 25)
-            x, y = stack(np.clip(img, 0, 255), lot[sl]), lab[sl][None]
+            x, y = stack(np.clip(img, 0, 255), inp[sl]), lab[sl][None]
             k = int(rng.integers(4))
             x, y = np.rot90(x, k, (1, 2)), np.rot90(y, k, (1, 2))
             if rng.random() < 0.5:
@@ -194,8 +238,9 @@ def train(path, out, names, init, mine):
     return {"steps": step, "chips": seen}, {nm: d[:3] for nm, d in zip(names, data)}
 
 
-def prob(net, rgb, lot):
+def prob(net, rgb, inp):
     import torch
+    lot = inp[..., 0]
     n = rgb.shape[0]; P = np.zeros((n, n), np.float32); C = np.zeros((n, n), np.float32)
     t, s = 512, 448
     win = np.outer(*(2 * [np.minimum(np.arange(t) + 1, t - np.arange(t)).clip(max=32) / 32])).astype(np.float32)
@@ -205,10 +250,12 @@ def prob(net, rgb, lot):
             for c in starts:
                 if lot[r:r + t, c:c + t].all():
                     continue
-                x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), lot[r:r + t, c:c + t])[None])
+                x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), inp[r:r + t, c:c + t])[None])
                 P[r:r + t, c:c + t] += torch.sigmoid(net(x))[0, 0].numpy() * win; C[r:r + t, c:c + t] += win
     P /= np.maximum(C, 1e-6)
     P[ndimage.distance_transform_edt(lot > 0) * CELL > 0.5] = 0
+    if inp.shape[-1] > 2:
+        P[inp[..., 2] > 0] = 0
     return P
 
 
@@ -285,11 +332,11 @@ def run(a):
     mine = np.load(a[3]) if len(a) > 3 and os.path.exists(a[3]) else None
     data([out]); t0 = time.time()
     info, held = train(f"{out}/model.pt", out, [t[0] for t in TRAIN], init, mine)
-    net = model(False); net.load_state_dict(torch.load(f"{out}/model.pt")); net.eval()
+    net = model(False); load(net, f"{out}/model.pt"); net.eval()
     sc, an, keep = {}, {}, {}
     for nm, *_ in VAL + HOLD:
         m, tr, rgb, lot, lab, road = labels(out, nm)
-        P = prob(net, rgb, lot); keep[nm] = (tr, lab)
+        P = prob(net, rgb, context(out, nm, lot)); keep[nm] = (tr, lab)
         for th in kp.THRESHS:
             kp.vec(out, nm, P, tr, th); sc.setdefault(th, {})[nm] = kp.score(out, nm, th)
             os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
@@ -301,9 +348,9 @@ def run(a):
         os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
         an[nm]["whole_lines"] = whole(out, nm, th)
     mined = {}
-    for nm, (rgb, lot, lab) in held.items():
+    for nm, (rgb, inp, lab) in held.items():
         tr = kp.rasters(out, nm)[1]
-        kp.vec(out, nm, prob(net, rgb, lot), tr, th)
+        kp.vec(out, nm, prob(net, rgb, inp), tr, th)
         r, ms, fp = analyse(out, nm, lab, rgb, tr, lab.shape[0], keep=True)
         mined[f"{nm}_miss"], mined[f"{nm}_fp"] = ms, fp
     np.savez_compressed(f"{out}/mine.npz", **mined)

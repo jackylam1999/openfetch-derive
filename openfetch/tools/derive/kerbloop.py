@@ -36,6 +36,8 @@ def moves(best):
     m = best.get("train_misses", {})
     out = [(f"learn from misses ({t})", {**c, "focus": t}) for t in sorted(m, key=m.get, reverse=True) if m[t]]
     out.insert(2, ("learn from extra lines", {**c, "focus": "extra lines"}))
+    if not c.get("context"):
+        out.insert(0, ("add road and water map context", {**c, "context": 1, "focus": out[0][1]["focus"] if out else ""}))
     if out and not c.get("skel"):
         out.insert(1, ("learn from misses + unbroken-line loss", {**c, "skel": 1.0, "focus": out[0][1]["focus"]}))
     return out

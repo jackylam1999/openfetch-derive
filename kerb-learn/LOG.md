@@ -16,15 +16,7 @@ Each round starts from the best model so far and trains on its mistakes. Check F
 
 **Kept: ImageNet start + unbroken-line loss, bigger view (check F1 0.740). Its biggest misses on the training boxes: in shadow 16.3 km, clear kerb 13.5 km, under trees 12.8 km; the next round trains on those.**
 
-## Round 2 (started from the round 1 model (ImageNet start + unbroken-line loss, bigger view))
-
-| round | change | check F1 | Mona Vale | Newport | Parramatta | threshold | minutes |
-|---|---|---|---|---|---|---|---|
-
-
-**Nothing kept: no variant beat check F1 0.740 by 0.005; the round 1 model stays and the next round tries the next causes.**
-
-**Stopped after round 2: no results this round (jobs failed).** Best: ImageNet start + unbroken-line loss, bigger view (round 1), held-out mean found 74.1%, model: run 40986680973 artifact learn-40986680973-1-2.
+_No round 2: that slot was cancelled when the loop moved to 5 versions per round (30 Oct 07:16Z); round 3 is the second learning round._
 
 ## Round 3 (started from the round 1 model (ImageNet start + unbroken-line loss, bigger view))
 
@@ -44,12 +36,4 @@ Each round starts from the best model so far and trains on its mistakes. Check F
 
 **Kept: learn from extra lines (check F1 0.749, was 0.740). Its biggest misses on the training boxes: in shadow 15.5 km, clear kerb 13.2 km, under trees 12.8 km; the next round trains on those.**
 
-## Round 4 (started from the round 3 model (learn from extra lines))
-
-| round | change | check F1 | Mona Vale | Newport | Parramatta | threshold | minutes |
-|---|---|---|---|---|---|---|---|
-
-
-**Nothing kept: no variant beat check F1 0.749 by 0.005; the round 3 model stays and the next round tries the next causes.**
-
-**Stopped after round 4: no results this round (jobs failed).** Best: learn from extra lines (round 3), held-out mean found 72.9%, model: run 41012217641 artifact learn-41012217641-1-2.
+_Round 4 restarted 30 Oct ~10:50Z with two changes from Jacky's review: road centrelines and water areas (official NSW data) as extra map context, and a tidy step that straightens straight runs, smooths curves and joins short gaps._
