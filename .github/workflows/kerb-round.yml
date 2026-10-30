@@ -1,0 +1,76 @@
+# One round of the kerb photo model tuning loop (called by kerb-tune.yml; copy of tools/derive/github/kerb-round.yml in openfetch).
+# plan: kerbtune.py picks up to 3 variants (one change each on the best settings so far); variant: trains and scores each on its
+# own free runner; decide: logs the round to kerb-tune/LOG.md + state.json on this branch and says continue or stop.
+name: kerb-round
+on:
+  workflow_call:
+    inputs:
+      round: {type: number, required: true}
+      prev: {type: number, required: true}
+    outputs:
+      verdict: {value: '${{ jobs.decide.outputs.verdict }}'}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      variants: ${{ steps.plan.outputs.variants }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: inputs.round > 1
+        uses: actions/download-artifact@v4
+        with: {name: 'kerb-state-${{ inputs.prev }}', path: kerb-tune}
+      - id: plan
+        run: echo "variants=$(python3 openfetch/tools/derive/kerbtune.py plan kerb-tune/state.json)" >> "$GITHUB_OUTPUT"
+  variant:
+    needs: plan
+    if: needs.plan.outputs.variants != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        v: ${{ fromJSON(needs.plan.outputs.variants) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/cache/restore@v4
+        with: {path: kp, key: kerbdata-v1, fail-on-cache-miss: true}
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install numpy scipy shapely scikit-image rasterio affine pillow matplotlib
+      - run: |
+          mkdir -p res && echo '{"name": "${{ matrix.v.name }}", "artifact": "variant-${{ inputs.round }}-${{ matrix.v.id }}"}' > res/name.json
+          python3 openfetch/tools/derive/kerbphoto.py run kp res/result.json
+          cp kp/*.png kp/model.pt res/
+        env:
+          KERB_CFG: ${{ matrix.v.cfg_json }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: 'variant-${{ inputs.round }}-${{ matrix.v.id }}', path: res, if-no-files-found: warn}
+  decide:
+    needs: [plan, variant]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      verdict: ${{ steps.rec.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: inputs.round > 1
+        uses: actions/download-artifact@v4
+        with: {name: 'kerb-state-${{ inputs.prev }}', path: kerb-tune}
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'variant-${{ inputs.round }}-*', path: results}
+      - id: rec
+        run: |
+          mkdir -p kerb-tune
+          v=$(python3 openfetch/tools/derive/kerbtune.py record kerb-tune/state.json kerb-tune/LOG.md results)
+          echo "$v"; echo "verdict=$v" >> "$GITHUB_OUTPUT"
+          tail -n 5 kerb-tune/LOG.md
+      - uses: actions/upload-artifact@v4
+        with: {name: 'kerb-state-${{ inputs.round }}', path: kerb-tune}
+      - run: |
+          git config user.name "kerb-tune" && git config user.email "actions@users.noreply.github.com"
+          cp -r kerb-tune /tmp/kt && git stash -q -u || true
+          git fetch -q origin "$GITHUB_REF_NAME" && git checkout -q -f -B tune "origin/$GITHUB_REF_NAME"
+          mkdir -p kerb-tune && cp /tmp/kt/* kerb-tune/ && git add kerb-tune && git commit -q -m "kerb-tune: round ${{ inputs.round }} (${{ steps.rec.outputs.verdict }})" && git push -q origin "tune:$GITHUB_REF_NAME" || echo "log push failed (state is in the kerb-state artifact)"

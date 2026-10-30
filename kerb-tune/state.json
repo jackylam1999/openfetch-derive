@@ -1,0 +1,173 @@
+{
+ "round": 3,
+ "stale": 1,
+ "status": "stopped: no results this round (jobs failed)",
+ "tried": [
+  [
+   "more training areas",
+   "{\"batch\": 12, \"boxes\": 4, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "train longer",
+   "{\"batch\": 12, \"boxes\": 4, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "train longer",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "bridge short gaps",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "wider network",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 120, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ],
+  [
+   "wider network",
+   "{\"batch\": 12, \"boxes\": 8, \"bridge\": 0.0, \"chip\": 192, \"lr\": 0.002, \"minutes\": 192, \"pos\": 0.3, \"pw\": 4.0, \"tta\": 0, \"width\": 16}"
+  ]
+ ],
+ "history": [
+  {
+   "round": 1,
+   "name": "starting settings",
+   "mean_recall": 0.484,
+   "cfg": {
+    "minutes": 120,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 4,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
+  },
+  {
+   "round": 1,
+   "name": "more training areas",
+   "mean_recall": 0.572,
+   "cfg": {
+    "minutes": 120,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
+  },
+  {
+   "round": 1,
+   "name": "train longer",
+   "mean_recall": 0.495,
+   "cfg": {
+    "minutes": 192,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 4,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
+  },
+  {
+   "round": 2,
+   "name": "train longer",
+   "mean_recall": 0.572,
+   "cfg": {
+    "minutes": 192,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
+  },
+  {
+   "round": 2,
+   "name": "bridge short gaps",
+   "mean_recall": 0.606,
+   "cfg": {
+    "minutes": 120,
+    "width": 16,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 4.0
+   }
+  },
+  {
+   "round": 2,
+   "name": "wider network",
+   "mean_recall": 0.432,
+   "cfg": {
+    "minutes": 120,
+    "width": 24,
+    "chip": 192,
+    "batch": 12,
+    "pos": 0.3,
+    "boxes": 8,
+    "lr": 0.002,
+    "pw": 4.0,
+    "tta": 0,
+    "bridge": 0.0
+   }
+  }
+ ],
+ "best": {
+  "round": 2,
+  "name": "train longer",
+  "cfg": {
+   "minutes": 192,
+   "width": 16,
+   "chip": 192,
+   "batch": 12,
+   "pos": 0.3,
+   "boxes": 8,
+   "lr": 0.002,
+   "pw": 4.0,
+   "tta": 0,
+   "bridge": 0.0
+  },
+  "mean_recall": 0.572,
+  "thresh": 0.5,
+  "boxes": {
+   "monavale": {
+    "recall": 0.76,
+    "precision": 0.76,
+    "offset_median_m": 0.31
+   },
+   "newport": {
+    "recall": 0.57,
+    "precision": 0.56,
+    "offset_median_m": 0.5
+   },
+   "parramatta": {
+    "recall": 0.39,
+    "precision": 0.66,
+    "offset_median_m": 0.4
+   }
+  },
+  "run": "40894435053",
+  "artifact": "variant-2-2",
+  "score": 0.605
+ }
+}

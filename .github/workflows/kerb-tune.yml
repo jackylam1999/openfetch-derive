@@ -1,0 +1,65 @@
+# Automatic tuning loop for the kerb photo model (copy of tools/derive/github/kerb-tune.yml in openfetch; public repo, so runner
+# minutes are free; no secrets, ever). One run holds the whole loop: the photos and council kerbs are fetched once (cached), then up
+# to 8 rounds run one after another (kerb-round.yml); a round starts only if the one before said "continue". Results: kerb-tune/LOG.md
+# and state.json on this branch after every round; each variant's model and pictures are artifacts of this run.
+# Starts on a push that changes this file or kerbtune.py; cancel the run to stop it.
+name: kerb-tune
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/kerb-tune.yml', 'openfetch/tools/derive/kerbtune.py']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency: {group: kerb-tune, cancel-in-progress: false}
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - id: cache
+        uses: actions/cache@v4
+        with: {path: kp, key: kerbdata-v1}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: pip install numpy scipy shapely pillow && python3 openfetch/tools/derive/kerbphoto.py data kp
+  r1:
+    needs: data
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 1, prev: 0}
+  r2:
+    needs: r1
+    if: needs.r1.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 2, prev: 1}
+  r3:
+    needs: r2
+    if: needs.r2.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 3, prev: 2}
+  r4:
+    needs: r3
+    if: needs.r3.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 4, prev: 3}
+  r5:
+    needs: r4
+    if: needs.r4.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 5, prev: 4}
+  r6:
+    needs: r5
+    if: needs.r5.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 6, prev: 5}
+  r7:
+    needs: r6
+    if: needs.r6.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 7, prev: 6}
+  r8:
+    needs: r7
+    if: needs.r7.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-round.yml
+    with: {round: 8, prev: 7}
