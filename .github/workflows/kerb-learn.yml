@@ -22,7 +22,12 @@ jobs:
       - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h / | tail -1
       - id: cache
         uses: actions/cache@v4
-        with: {path: kp, key: kerbdata-v2, restore-keys: kerbdata-v1}
+        with:
+          key: kerbdata-v3
+          path: |
+            kp/*.jpg
+            kp/*.json
+            kp/*.geojson
       - if: steps.cache.outputs.cache-hit != 'true'
         run: |
           pip install numpy scipy shapely pillow

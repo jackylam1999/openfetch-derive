@@ -76,10 +76,19 @@ def align(out, name):
 
 
 def data(a):
+    """Fetch what is missing. The photos are kept as JPEG (about 1/15 of the raw size) so the shared cache stays small: each job
+    unpacks them once (GitHub refused the 4.9 GB raw cache after ~20 downloads, 30 Oct 2026)."""
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
     out = a[0]
     for nm, co, x, y in TRAIN + VAL + HOLD:
+        jpg, raw = f"{out}/{nm}_rgb.jpg", f"{out}/{nm}_rgb.npy"
+        if not os.path.exists(raw) and os.path.exists(jpg):
+            np.save(raw, np.asarray(Image.open(jpg).convert("RGB")))
         if not os.path.exists(f"{out}/{nm}_meta.json"):
             kp.fetch(nm, co, x, y, out)
+        if not os.path.exists(jpg):
+            Image.fromarray(np.load(raw)).save(jpg, quality=95)
         if co in FIT and not os.path.exists(f"{out}/{nm}_align.json"):
             align(out, nm)
         if not os.path.exists(f"{out}/{nm}_water.geojson"):
