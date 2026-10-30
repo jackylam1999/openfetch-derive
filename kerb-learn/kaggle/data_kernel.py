@@ -5,7 +5,11 @@ REF = "__REF__"
 subprocess.run(f"git clone -q https://github.com/jackylam1999/openfetch-derive /kaggle/temp/r && cd /kaggle/temp/r && git checkout -q {REF}",
                shell=True, check=True)
 os.makedirs("/kaggle/working/kp", exist_ok=True)
-r = subprocess.run("cd /kaggle/temp/r/openfetch/tools/derive && python3 kerblearn.py data /kaggle/working/kp", shell=True)
+for i in range(4):  # the photo server sometimes answers 500 for a while; data() skips what is already fetched
+    r = subprocess.run("cd /kaggle/temp/r/openfetch/tools/derive && python3 kerblearn.py data /kaggle/working/kp", shell=True)
+    if r.returncode == 0:
+        break
+    subprocess.run("sleep 120", shell=True)
 for f in glob.glob("/kaggle/working/kp/*"):
     if not f.endswith((".jpg", ".json", ".geojson")):
         os.remove(f)
