@@ -1,217 +1,132 @@
 #!/usr/bin/env python3
-"""Round planner and recorder for the kerb photo model that learns round after round (kerblearn.py, kerb-learn GitHub workflow).
+"""Round planner and recorder for the kerb photo model (kerblearn.py, kerb-learn workflows), method v2 (docs/handoffs/kerbs-method.md).
 
 Usage:
-  python3 kerbloop.py plan state.json            (prints {"variants": [...], "best_run": id, "best_artifact": name} for the round)
-  python3 kerbloop.py record state.json log.md results/   (adds the round to the log and state, prints "continue" or "stop: <reason>")
+  python3 kerbloop.py plan state.json              (prints {"variants": [...], "best_run", "best_artifact"} for the round)
+  python3 kerbloop.py record state.json log.md results/   (adds the round to the log and state, prints "continue" or "stop: <why>")
+  python3 kerbloop.py brief state.json             (at most 25 lines: all a thread reads each round)
 
-Round 1 starts three variants (later rounds up to WIDTH) from an ImageNet encoder. Every later round fine-tunes the best model so far and feeds it its own
-mistakes on the training boxes: each variant puts most of the extra chips on one probable cause of the misses (the biggest causes
-first), or on the extra lines it draws. A variant becomes the new best only if it does better on the check boxes (inside the
-training councils); the held-out boxes are reported, never used to choose. The log says, per cause, how much more kerb was found
-than by the model it started from. Stops at the target on every held-out box, after MAX_ROUNDS, after PLATEAU rounds with no gain
-of MIN_GAIN, or when nothing is left to try.
+Every round trains a control (the best model, same settings, trained on) beside at most two single changes from kerb-learn/queue.json
+(read at each plan, edited while a run is live; code waits for a round boundary). A change is kept only if its scenario score beats
+the control by more than min_gain (twice the spread of the noise round) and the worst held-out box does not fall. Round 0 trains the
+control three times with different seeds to measure that spread. Stops at the target on every held-out box, two rounds within noise
+of the control, or MAX_ROUNDS.
 """
 import sys, os, json, glob
 
-TARGET, MAX_ROUNDS, WIDTH, MIN_GAIN, PLATEAU = 0.85, 8, 5, 0.005, 2
-TYPES = ("under trees", "in shadow", "cars or clutter", "faint kerb", "clear kerb")
-START = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 1e-3, "pw": 4.0, "skel": 0.0, "mine": 0.0,
-         "focus": ""}
-FIRST = [("ImageNet start", START), ("ImageNet start + unbroken-line loss", {**START, "skel": 1.0}),
-         ("ImageNet start + unbroken-line loss, bigger view", {**START, "skel": 1.0, "chip": 256, "batch": 7})]
-TUNE = {"minutes": 150, "lr": 3e-4, "mine": 0.4}
-HOLD = ("monavale", "newport", "parramatta")
-CHECK = ("nbcheck", "cbcheck", "wocheck")
-SCENE = {"nbcheck": "coastal suburb (Northern Beaches check)", "cbcheck": "flat grid suburb (Canterbury-Bankstown check)",
-         "wocheck": "hilly harbour-side (Woollahra check)", "monavale": "leafy coastal suburb (Mona Vale, held out)",
-         "newport": "hilly coastal, rolled kerbs (Newport, held out)", "parramatta": "city centre, council never seen (Parramatta)"}
-SCALES = ("main roads", "collector roads", "local streets", "lanes and access")
+TARGET, MAX_ROUNDS, PLATEAU = 0.85, 10, 2
+HOLD = ("monavale", "newport", "parramatta", "paddington")
+QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../kerb-learn/queue.json")
+
+
+CONTROL = {"minutes": 150, "lr": 3e-4, "mine": 0.0, "focus": ""}
+SEEDS = (11, 22, 33)
 
 
 def load(p):
     if os.path.exists(p):
         return json.load(open(p))
-    return {"round": 0, "best": None, "tried": [], "history": [], "stale": 0, "status": "running"}
+    return {"round": 0, "best": None, "history": [], "done": [], "stale": 0, "status": "running", "min_gain": None, "takeaways": []}
 
 
-def moves(best, dead=()):
-    """Next changes to try, biggest training misses first. A focus that already failed to lift its own target (dead) is skipped."""
-    c = {**best["cfg"], **TUNE}
-    m = best.get("train_misses", {})
-    out = [(f"learn from misses ({t})", {**c, "focus": t}) for t in sorted(m, key=m.get, reverse=True) if m[t] and t not in dead]
-    if "extra lines" not in dead:
-        out.insert(2, ("learn from extra lines", {**c, "focus": "extra lines"}))
-    if not c.get("context"):
-        out.insert(0, ("add road and water map context", {**c, "context": 1, "focus": out[0][1]["focus"] if out else ""}))
-    if out and not c.get("skel"):
-        out.insert(1, ("learn from misses + unbroken-line loss", {**c, "skel": 1.0, "focus": out[0][1]["focus"]}))
-    return out
+def queue(st):
+    q = json.load(open(QUEUE)) if os.path.exists(QUEUE) else []
+    return [x for x in q if x["name"] not in st["done"]]
 
 
 def plan(a):
     st = load(a[0]); b = st["best"]
-    if not b:
-        vs = FIRST
+    base = {**b["cfg"], **CONTROL} if b else {**CONTROL, "encoder": "resnet34", "chip": 256, "batch": 7, "skel": 1.0, "context": 1}
+    if st["min_gain"] is None:
+        vs = [(f"noise seed {k}", {**base, "seed": k}) for k in SEEDS]
     else:
-        vs = [v for v in moves(b, st.get("dead", [])) if [v[0], b["round"]] not in st["tried"]][:WIDTH]
+        vs = [("control", {**base, "seed": 11})] + [(x["name"], {**base, **x["cfg"], "seed": 11}) for x in queue(st)[:2]]
     print(json.dumps({"variants": [{"name": n, "id": i, "cfg_json": json.dumps(c)} for i, (n, c) in enumerate(vs)],
                       "best_run": str(b["run"]) if b else "", "best_artifact": b["artifact"] if b else ""}))
-
-
-def f1(v):
-    return 2 * v.get("recall", 0) * v.get("precision", 0) / max(v.get("recall", 0) + v.get("precision", 0), 1e-6)
 
 
 def met(r):
     b = {n: r["boxes"].get(n) or {} for n in HOLD}
     return all(b[n].get("recall", 0) >= TARGET and (b[n].get("offset_median_m") or 9) <= 0.3 and b[n].get("precision", 0) >= 0.7
-               for n in HOLD)
+               for n in HOLD if n in r["boxes"])
 
 
-def causes(r):
-    """Found share per probable cause over the check and held-out boxes, and metres of extra line."""
-    tot = {t: [0, 0.0] for t in TYPES}
-    for n in CHECK + HOLD:
-        for t, (k, f) in r["boxes"].get(n, {}).get("types", {}).items():
-            tot[t][0] += k; tot[t][1] += k * (f or 0)
-    return {t: (k, f / k if k else None) for t, (k, f) in tot.items()}, sum(r["boxes"].get(n, {}).get("extra_m", 0) for n in CHECK + HOLD)
+def table(f, rs):
+    f.write("| model | scenario score | worst held-out F1 | 250 m sites ok | " + " | ".join(rs[0]["scenarios"]) + " |\n|---|---|---|---|" +
+            "---|" * len(rs[0]["scenarios"]) + "\n")
+    for r in rs:
+        f.write(f"| {r['name']} | {r['scenario_score']:.3f} | {r['worst_hold']:.3f} | {r['site_share']:.0%} | " +
+                " | ".join(f"{v:.3f}" for v in r["scenarios"].values()) + " |\n")
 
 
-def scales(r):
-    """Found share per road type over the check and held-out boxes."""
-    tot = {t: [0, 0.0] for t in SCALES}
-    for n in CHECK + HOLD:
-        for t, (k, f) in (r["boxes"].get(n, {}).get("scales") or {}).items():
-            tot[t][0] += k; tot[t][1] += k * (f or 0)
-    return {t: f / k if k else None for t, (k, f) in tot.items()}
-
-
-def hypothesis(r):
-    f = r["cfg"].get("focus", "")
-    if r["name"].startswith("add road"):
-        return "map context (roads, water) stops waterlines and lot edges being drawn as kerb and helps along main roads"
-    if f == "extra lines":
-        return "training on its own wrong lines cuts extra lines without losing found kerb"
-    if f:
-        return f"more chips on kerb missed {f} raises the found share {f}"
-    return "a fresh start from ImageNet"
-
-
-def takeaway(r, prev):
-    """Did the change do what it was meant to? Returns (text, cause the focus failed to lift or None)."""
-    f = r["cfg"].get("focus", "")
-    if not prev or not f:
-        return "", None
-    if f == "extra lines":
-        now, was = causes(r)[1], causes(prev)[1]
-        ok = now <= was * 0.95
-        return (f"extra lines {was / 1000:.1f} -> {now / 1000:.1f} km: " + ("worked" if ok else "did not work")), (None if ok else f)
-    if f not in TYPES or r["name"].startswith("add road"):
-        return "", None
-    now, was = causes(r)[0][f][1], causes(prev)[0][f][1]
-    if now is None or was is None:
-        return "", None
-    ok = now >= was + 0.01
-    return (f"found {f} {was:.0%} -> {now:.0%}: " + ("worked" if ok else "did not work, dropped from later rounds")), (None if ok else f)
-
-
-def learnt(r, prev):
-    now, ex = causes(r)
-    parts = []
-    for t in TYPES:
-        k, f = now[t]
-        if f is None:
-            continue
-        was = causes(prev)[0][t][1] if prev else None
-        parts.append(f"{t} {f:.0%}" + (f" (was {was:.0%})" if was is not None else "") + f" of {k * 0.5 / 1000:.1f} km")
-    was_ex = causes(prev)[1] if prev else None
-    wl = sum((r["boxes"].get(n) or {}).get("whole_lines", 0) for n in HOLD) / len(HOLD)
-    return ("found by cause: " + "; ".join(parts) + f". Extra lines {ex / 1000:.1f} km" +
-            (f" (was {was_ex / 1000:.1f} km)" if was_ex is not None else "") + f". Whole kerb lines found (held-out) {wl:.0%}.")
-
-
-def row(rnd, r):
-    b = r["boxes"]
-    cell = lambda n: f"{b[n]['recall']:.0%} / {b[n]['precision']:.0%} / {b[n].get('offset_median_m')} m" if b.get(n) else "-"
-    return (f"| {rnd} | {r['name']} | {r['val_f1']:.3f} | {cell('monavale')} | {cell('newport')} | {cell('parramatta')} | "
-            f"{r['thresh']} | {r.get('minutes')} |\n")
+def row(r):
+    return "; ".join(f"{n} {b['recall']:.0%}/{b['precision']:.0%}/{b.get('offset_median_m')} m" for n, b in r["boxes"].items() if b.get("role") == "hold")
 
 
 def record(a):
     sp, lp, rd = a
-    st = load(sp); st["round"] += 1; prev = st["best"]
+    st = load(sp); prev = st["best"]
     res = []
     for p in sorted(glob.glob(f"{rd}/**/result.json", recursive=True)):
         r = json.load(open(p)); r.update(json.load(open(os.path.join(os.path.dirname(p), "name.json")))); res.append(r)
+    res.sort(key=lambda r: r["name"])
+    if not res:
+        st["status"] = "stopped: no results this round (jobs failed)"
+        json.dump(st, open(sp, "w"), indent=1); print(st["status"]); return
+    st["round"] += 1
+    best = lambda rs: max(rs, key=lambda r: r["scenario_score"])
+    if st["min_gain"] is None:
+        sc = [r["scenario_score"] for r in res]; st["min_gain"] = round(max(0.005, max(sc) - min(sc)), 3)
+        top, ctl, kept = best(res), None, []
+        take = (f"Round 0. Question: how much does the score move when nothing changes? Three seeds: {', '.join(f'{x:.3f}' for x in sc)}. "
+                f"Noise floor {max(sc) - min(sc):.3f}; a change must beat the control by {st['min_gain']} from now on.")
+    else:
+        ctl = next(r for r in res if r["name"] == "control"); ch = [r for r in res if r is not ctl]
+        kept = [r for r in ch if r["scenario_score"] > ctl["scenario_score"] + st["min_gain"] and r["worst_hold"] >= ctl["worst_hold"] - st["min_gain"]]
+        top = best(kept + [ctl])
+        q = queue({**st, "done": st["done"] + [r["name"] for r in ch]})
+        verdicts = "; ".join(f"{r['name']} {r['scenario_score']:.3f} ({'kept' if r in kept else 'within noise' if r['scenario_score'] > ctl['scenario_score'] - st['min_gain'] else 'dropped'})" for r in ch)
+        moved = max(top["scenarios"], key=lambda k: top["scenarios"][k] - ctl["scenarios"][k]) if top is not ctl else "none"
+        take = (f"Round {st['round']}. Question: " + "; ".join(f"does {r['name']} raise the scenario score?" for r in ch) +
+                f"\nControl: {ctl['scenario_score']:.3f} (noise +-{st['min_gain']}). Changes: {verdicts}." +
+                f"\nLearnt: most movement in scenario '{moved}'; site share {top['site_share']:.0%}, worst held-out F1 {top['worst_hold']:.3f}." +
+                f"\nNext: {q[0]['name'] + ' (' + q[0].get('why', '') + ')' if q else 'queue empty, add the next change to kerb-learn/queue.json'}.")
+        st["stale"] = 0 if kept else st["stale"] + 1
+        st["done"] += [r["name"] for r in ch]
     new = not os.path.exists(lp) or os.path.getsize(lp) == 0
     with open(lp, "a") as f:
         if new:
-            f.write("# Kerb photo model: learning log\n\nEach round starts from the best model so far and trains on its mistakes. "
-                    "Check F1 = balance of found and precise on the check boxes (inside the training councils), used to keep or drop "
-                    "a model. Held-out boxes (never trained on, Parramatta a council never seen): found / precise / median offset "
-                    "within 1 m. Bar: 85% found, 0.3 m, every held-out box.\n")
-        start = f"round {prev['round']} model ({prev['name']})" if prev else "ImageNet encoder"
-        f.write(f"\n## Round {st['round']} (started from the {start})\n\n| round | change | check F1 | Mona Vale | Newport | "
-                "Parramatta | threshold | minutes |\n|---|---|---|---|---|---|---|---|\n")
-        for r in res:
-            f.write(row(st["round"], r))
-        for r in res:
-            tk, bad = takeaway(r, prev)
-            f.write(f"\n- {r['name']}. Idea: {hypothesis(r)}. Result: {learnt(r, prev)}" + (f" Take-away: {tk}." if tk else ""))
-            if bad and bad not in st.setdefault("dead", []):
-                st["dead"].append(bad)
-        top_ = max(res, key=lambda r: r["val_f1"]) if res else None
-        if top_:
-            b = top_["boxes"]
-            f.write(f"\n\nBy scenario (best of round, {top_['name']}): found / precise / median offset\n\n| box | scenario | result |\n"
-                    "|---|---|---|\n" + "".join(f"| {n} | {SCENE[n]} | " + (f"{b[n]['recall']:.0%} / {b[n]['precision']:.0%} / "
-                    f"{b[n].get('offset_median_m')} m" if b.get(n) else "-") + " |\n" for n in CHECK + HOLD))
-            sn, sp_ = scales(top_), scales(prev) if prev else {}
-            f.write("\nBy road type (all check and held-out boxes): " + "; ".join(
-                f"{t} {v:.0%}" + (f" (was {sp_[t]:.0%})" if sp_.get(t) is not None else "") for t, v in sn.items() if v is not None) + ".\n")
-            if st.get("dead"):
-                f.write(f"\nNo longer tried (did not help when tried): {', '.join(st['dead'])}.\n")
-    for r in res:
-        if prev:
-            st["tried"].append([r["name"], prev["round"]])
-        st["history"].append({"round": st["round"], "name": r["name"], "val_f1": r["val_f1"], "score": r["score"]})
-    top = max(res, key=lambda r: r["val_f1"]) if res else None
-    if top and (not prev or top["val_f1"] >= prev["val_f1"] + MIN_GAIN):
-        st["best"] = {k: top.get(k) for k in ("name", "cfg", "val_f1", "score", "mean_recall", "thresh", "boxes", "train_misses",
-                                             "train_extra_points", "artifact", "run")}
-        st["best"]["round"] = st["round"]; st["stale"] = 0
-        m = top["train_misses"]
-        verdict = (f"Kept: {top['name']} (check F1 {top['val_f1']:.3f}" + (f", was {prev['val_f1']:.3f}" if prev else "") +
-                   f"). Its biggest misses on the training boxes: " +
-                   ", ".join(f"{t} {m[t] * 0.5 / 1000:.1f} km" for t in sorted(m, key=m.get, reverse=True)[:3]) +
-                   "; the next round trains on those.")
-    else:
-        st["stale"] += 1
-        verdict = (f"Nothing kept: no variant beat check F1 {prev['val_f1']:.3f} by {MIN_GAIN}; the round {prev['round']} model "
-                   "stays and the next round tries the next causes." if prev else "No results.")
-    with open(lp, "a") as f:
-        f.write(f"\n\n**{verdict}**\n")
-    why = None
-    if st["best"] and met(st["best"]):
-        why = "target reached"
-    elif st["round"] >= MAX_ROUNDS:
-        why = f"round cap ({MAX_ROUNDS}) reached"
-    elif st["stale"] >= PLATEAU:
-        why = f"plateau ({PLATEAU} rounds without a check F1 gain of {MIN_GAIN})"
-    elif not res:
-        why = "no results this round (jobs failed)"
-    elif not [v for v in moves(st["best"], st.get("dead", [])) if [v[0], st["best"]["round"]] not in st["tried"]]:
-        why = "every change tried"
-    if why:
-        st["status"] = "stopped: " + why
-        b = st["best"] or {}
-        with open(lp, "a") as f:
-            f.write(f"\n**Stopped after round {st['round']}: {why}.** Best: {b.get('name')} (round {b.get('round')}), held-out mean "
-                    f"found {b.get('mean_recall', 0):.1%}, model: run {b.get('run')} artifact {b.get('artifact')}.\n")
+            f.write("# Kerb photo model: log (method v2)\n\nScenario score = mean over scenarios of the mean box F1 (found and precise within 1 m). "
+                    "Site share = share of 250 m tiles with 85%+ found and median offset 0.3 m or less.\n")
+        f.write(f"\n## Round {st['round']}\n\n"); table(f, res)
+        f.write("\nHeld-out (found/precise/median offset): " + row(top) + "\n\n```\n" + take + "\n```\n")
+    st["best"] = {k: top.get(k) for k in ("name", "cfg", "thresh", "scenario_score", "worst_hold", "site_share", "scenarios", "boxes", "artifact", "run")}
+    st["best"]["round"] = st["round"]
+    st["history"].append({"round": st["round"], "scores": {r["name"]: r["scenario_score"] for r in res}})
+    st["takeaways"] = (st["takeaways"] + [take])[-3:]
+    why = ("target reached" if met(top) else f"round cap ({MAX_ROUNDS})" if st["round"] > MAX_ROUNDS else
+           f"plateau ({PLATEAU} rounds within noise of the control)" if st["stale"] >= PLATEAU else None)
+    st["status"] = "stopped: " + why if why else "running"
     json.dump(st, open(sp, "w"), indent=1)
     print("stop: " + why if why else "continue")
 
 
+def brief(a):
+    st = load(a[0]); b = st["best"]
+    print(f"Round {st['round']} | {st['status']} | noise floor (min_gain) {st['min_gain']} | stale rounds {st['stale']}/{PLATEAU}")
+    if b:
+        print(f"Best: {b['name']} (round {b['round']}) scenario score {b['scenario_score']:.3f}, worst held-out F1 {b['worst_hold']:.3f}, "
+              f"site share {b['site_share']:.0%}, threshold {b['thresh']}")
+        print("Scenarios: " + ", ".join(f"{k} {v:.3f}" for k, v in b["scenarios"].items()))
+        for n, x in b["boxes"].items():
+            if x.get("role") == "hold":
+                print(f"  held-out {n}: found {x['recall']:.0%}, precise {x['precision']:.0%}, offset {x.get('offset_median_m')} m, whole lines {x['whole_lines']:.0%}")
+        print(f"Target: found >= {TARGET:.0%}, offset <= 0.3 m, precision >= 70% on every held-out box")
+    for t in st["takeaways"][-1:]:
+        print("Last round:\n" + t)
+    q = queue(st)
+    print("Queue: " + (", ".join(x["name"] for x in q[:4]) if q else "empty"))
+
+
 if __name__ == "__main__":
-    {"plan": plan, "record": record}[sys.argv[1]](sys.argv[2:])
+    {"plan": plan, "record": record, "brief": brief}[sys.argv[1]](sys.argv[2:])

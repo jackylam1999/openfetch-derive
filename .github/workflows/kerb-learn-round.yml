@@ -24,6 +24,7 @@ jobs:
       - if: inputs.slot > 1
         uses: actions/download-artifact@v4
         with: {name: 'kerb-learn-state-${{ inputs.prev }}', path: kerb-learn}
+      - run: git checkout -- kerb-learn/queue.json kerb-learn/boxes.json
       - id: plan
         run: |
           p=$(python3 openfetch/tools/derive/kerbloop.py plan kerb-learn/state.json)
@@ -47,7 +48,7 @@ jobs:
         with: {python-version: '3.12'}
       - uses: actions/cache/restore@v4
         with:
-          key: kerbdata-v3
+          key: kerbdata-v4
           fail-on-cache-miss: true
           path: |
             kp/*.jpg
@@ -64,13 +65,13 @@ jobs:
       - run: |
           mkdir -p res
           echo '{"name": "${{ matrix.v.name }}", "artifact": "learn-${{ github.run_id }}-${{ inputs.slot }}-${{ matrix.v.id }}", "run": "${{ github.run_id }}"}' > res/name.json
-          cd openfetch/tools/derive && python3 kerblearn.py run ../../../kp ../../../res/result.json ../../../best/model.pt ../../../best/mine.npz 2> ../../../res/run.log
+          cd openfetch/tools/derive && python3 kerblearn.py run ../../../kp ../../../res/result.json ../../../best/model.pt 2> ../../../res/run.log
         env:
           KERB_CFG: ${{ matrix.v.cfg_json }}
       - if: always()
         run: |
           tail -n 30 res/run.log || true
-          th=$(python3 -c 'import json; print(json.load(open("res/result.json"))["thresh"])' 2>/dev/null) && for n in monavale newport parramatta nbcheck cbcheck wocheck; do cp "kp/${n}_${th}.png" res/ || true; done
+          th=$(python3 -c 'import json; print(json.load(open("res/result.json"))["thresh"])' 2>/dev/null) && for n in monavale newport parramatta paddington nbcheck cbcheck wocheck olympicpark; do cp "kp/${n}_${th}.png" res/ || true; done
           cp kp/model.pt kp/mine.npz res/ || true
       - if: always()
         uses: actions/upload-artifact@v4

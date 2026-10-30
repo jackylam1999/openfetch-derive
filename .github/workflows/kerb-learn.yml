@@ -2,12 +2,9 @@
 # are free; no secrets, ever. One run holds up to 8 rounds: the photos and council kerbs are fetched once (cached), then each round
 # (kerb-learn-round.yml) fine-tunes the best model so far on its own mistakes. A run picks up from kerb-learn/state.json on this
 # branch, so a cancelled run can be restarted without losing the best model. Log: kerb-learn/LOG.md on this branch.
-# Starts on a push that changes this file, the round file or kerbloop.py; cancel the run to stop it.
+# Starts by hand only (workflow_dispatch); a push never starts or restarts it. Changes go into kerb-learn/queue.json between rounds.
 name: kerb-learn
 on:
-  push:
-    branches: ['claude/**']
-    paths: ['.github/workflows/kerb-learn.yml', '.github/workflows/kerb-learn-round.yml', 'openfetch/tools/derive/kerbloop.py']
   workflow_dispatch:
 permissions:
   contents: write
@@ -16,14 +13,14 @@ concurrency: {group: kerb-learn, cancel-in-progress: false}
 jobs:
   data:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
       - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h / | tail -1
       - id: cache
         uses: actions/cache@v4
         with:
-          key: kerbdata-v3
+          key: kerbdata-v4
           path: |
             kp/*.jpg
             kp/*.json

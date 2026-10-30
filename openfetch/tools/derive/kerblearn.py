@@ -31,19 +31,18 @@ kp.COUNCILS.update({
     "wo": ("https://maps.woollahra.nsw.gov.au/server/rest/services/basemap/basemap_eng_assets/MapServer/43/query", (0.0, 0.0),
            "OBJECTID"),
 })
-TRAIN = kp.TRAIN + [("cb1", "cb", 318000, 6245000), ("cb2", "cb", 317000, 6246000), ("cb3", "cb", 326000, 6244000),
-                    ("wo1", "wo", 338000, 6249000), ("wo2", "wo", 337000, 6250000),
-                    ("cb4", "cb", 324000, 6245000), ("cb5", "cb", 322000, 6245000), ("cb6", "cb", 320000, 6244000),
-                    ("cb7", "cb", 316000, 6241000), ("cb8", "cb", 318000, 6241000), ("wo3", "wo", 337000, 6248000),
-                    ("nb9", "nb", 341000, 6264000), ("nb10", "nb", 339000, 6262000)]
-VAL = [("nbcheck", "nb", 342000, 6269000), ("cbcheck", "cb", 320000, 6246000), ("wocheck", "wo", 339000, 6250000)]
-HOLD = kp.HOLD
-FIT = {"cb", "wo"}
+BOXES = json.load(open(os.environ.get("KERB_BOXES") or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                                     "../../../kerb-learn/boxes.json")))
+ROLE = lambda r: [(b["name"], b["council"], b["x"], b["y"]) for b in BOXES["boxes"] if b["role"] == r]
+TRAIN, VAL, HOLD = ROLE("train"), ROLE("check"), ROLE("hold")
+SCEN = {b["name"]: b["scenario"] for b in BOXES["boxes"]}
+CO = {b["name"]: b["council"] for b in BOXES["boxes"]}
 SIX = "https://portal.spatial.nsw.gov.au/server/rest/services/"
+LGA = SIX + "NSW_Administrative_Boundaries_Theme_multiCRS/FeatureServer/8/query"
 CONTEXT = {"roads": SIX + "NSW_Transport_Theme_multiCRS/FeatureServer/5/query", "water": SIX + "NSW_Water_Theme_multiCRS/FeatureServer/6/query"}
 TYPES = ("under trees", "in shadow", "cars or clutter", "faint kerb", "clear kerb")
 CFG = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 1e-3, "pw": 4.0, "skel": 0.0, "mine": 0.0,
-       "focus": "", **json.loads(os.environ.get("KERB_CFG") or "{}")}
+       "focus": "", "seed": 0, "tta": 0, "jitter": 0, **json.loads(os.environ.get("KERB_CFG") or "{}")}
 kp.CFG.update(CFG)
 MEAN, STD = np.array([0.485, 0.456, 0.406], np.float32), np.array([0.229, 0.224, 0.225], np.float32)
 CELL, NEAR, POS, IGN, TOL = kp.CELL, kp.NEAR, 0.3, 0.6, 1.0
@@ -79,12 +78,15 @@ def align(out, name):
 
 
 def data(a):
-    """Fetch what is missing. The photos are kept as JPEG (about 1/15 of the raw size) so the shared cache stays small: each job
-    unpacks them once (GitHub refused the 4.9 GB raw cache after ~20 downloads, 30 Oct 2026)."""
+    """Fetch what is missing: photo, council kerbs moved onto the photo edge (align), lots, the council's area, roads, water.
+    The photos are kept as JPEG (about 1/15 of the raw size) so the shared cache stays small: each job unpacks them once
+    (GitHub refused the 4.9 GB raw cache after ~20 downloads, 30 Oct 2026)."""
     from PIL import Image
     Image.MAX_IMAGE_PIXELS = None
     out = a[0]
-    for nm, co, x, y in TRAIN + VAL + HOLD:
+
+    def one(box):
+        nm, co, x, y = box
         jpg, raw = f"{out}/{nm}_rgb.jpg", f"{out}/{nm}_rgb.npy"
         if not os.path.exists(raw) and os.path.exists(jpg):
             np.save(raw, np.asarray(Image.open(jpg).convert("RGB")))
@@ -92,14 +94,64 @@ def data(a):
             kp.fetch(nm, co, x, y, out)
         if not os.path.exists(jpg):
             Image.fromarray(np.load(raw)).save(jpg, quality=95)
-        if co in FIT and not os.path.exists(f"{out}/{nm}_align.json"):
+        if not os.path.exists(f"{out}/{nm}_align.json"):
             align(out, nm)
+        if not os.path.exists(f"{out}/{nm}_lga.geojson"):
+            m = json.load(open(f"{out}/{nm}_meta.json")); b = (m["x0"], m["y0"], m["x0"] + m["w"], m["y0"] + m["w"])
+            fs = [f for f in kp.query(LGA, b, fields="OBJECTID,lganame") if f["properties"]["lganame"] == BOXES["lga"][co]]
+            json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_lga.geojson", "w"))
         rp = f"{out}/{nm}_roads.geojson"
         if not os.path.exists(f"{out}/{nm}_water.geojson") or "functionhierarchy" not in open(rp).read(4000):
             m = json.load(open(f"{out}/{nm}_meta.json")); b = (m["x0"], m["y0"], m["x0"] + m["w"], m["y0"] + m["w"])
             for k, url in CONTEXT.items():
                 fs = kp.query(url, b, fields="OBJECTID,functionhierarchy" if k == "roads" else "OBJECTID")
                 json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_{k}.geojson", "w"))
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(6) as ex:
+        list(ex.map(one, TRAIN + VAL + HOLD))
+
+
+def lot_side(lots, l):
+    """+1 if the lots are on the left of line l, -1 if on the right (vote over points every 2 m, 1.5 m out)."""
+    from shapely.geometry import Point
+    v = 0
+    for t in np.arange(0.5, max(l.length - 0.5, 0.6), 2.0):
+        a, b = l.interpolate(max(t - 0.5, 0)), l.interpolate(min(t + 0.5, l.length))
+        dx, dy = b.x - a.x, b.y - a.y; k = np.hypot(dx, dy)
+        if not k:
+            continue
+        p = l.interpolate(t); L, R = Point(p.x - dy / k * 1.5, p.y + dx / k * 1.5), Point(p.x + dy / k * 1.5, p.y - dx / k * 1.5)
+        v += len(lots.query(L, predicate="intersects")) > 0
+        v -= len(lots.query(R, predicate="intersects")) > 0
+    return 1 if v >= 0 else -1
+
+
+def reference(out, nm):
+    """The kerb line the model learns and is scored against is the kerb face (kerbs-method.md R4): each council's lines are moved
+    toward the lots by that council's measured gutter offset (BOXES["gutter"], metres). The fetched lines stay in _kerbs0."""
+    from shapely.geometry import shape, mapping
+    from shapely.strtree import STRtree
+    k0, k = f"{out}/{nm}_kerbs0.geojson", f"{out}/{nm}_kerbs.geojson"
+    if not os.path.exists(k0):
+        os.replace(k, k0)
+    fc = json.load(open(k0)); d = BOXES["gutter"].get(CO[nm], 0)
+    if d:
+        lots = STRtree([shape(f["geometry"]) for f in json.load(open(f"{out}/{nm}_lots.geojson"))["features"]])
+        for f in fc["features"]:
+            g = shape(f["geometry"]); parts = [p.offset_curve(d * lot_side(lots, p)) for p in getattr(g, "geoms", [g])]
+            f["geometry"] = mapping(parts[0] if len(parts) == 1 else type(g)(
+                [q for p in parts for q in getattr(p, "geoms", [p]) if not q.is_empty]))
+    json.dump(fc, open(k, "w"))
+
+
+def inside(out, nm, n, tr):
+    """True inside the box's council (the official LGA area): outside it nothing is trained, drawn or scored."""
+    import rasterio.features as rf
+    from shapely.geometry import shape
+    fs = [shape(f["geometry"]) for f in json.load(open(f"{out}/{nm}_lga.geojson"))["features"]]
+    if not fs:
+        return np.ones((n, n), bool)
+    return rf.rasterize(((g, 1) for g in fs), out_shape=(n, n), transform=tr, dtype=np.uint8).astype(bool)
 
 
 def context(out, nm, lot):
@@ -182,6 +234,7 @@ def labels(out, nm):
     lab = np.zeros(K.shape, np.uint8)
     lab[(dk > IGN) & (dk <= NEAR)] = 1; lab[(dk > TOL) & (dk <= NEAR)] = 4; lab[dk <= POS] = 2; lab[K] = 3
     road = (lot == 0) & (ndimage.distance_transform_edt(lot == 0) * CELL <= 20) & (dk <= NEAR)
+    ins = inside(out, nm, K.shape[0], tr); lab[~ins] = 0; road &= ins
     return m, tr, rgb, lot, lab, road
 
 
@@ -207,7 +260,7 @@ def pick(rng, data):
 def train(path, out, names, init, mine):
     import torch
     torch.set_num_threads(os.cpu_count())
-    rng = np.random.default_rng(int(time.time())); data = []
+    seed = CFG["seed"] or int(time.time()); rng = np.random.default_rng(seed); torch.manual_seed(seed); data = []
     for nm in names:
         m, tr, rgb, lot, lab, road = labels(out, nm)
         data.append((np.asarray(rgb), context(out, nm, lot), lab, pools(nm, lab, road, mine)))
@@ -225,11 +278,19 @@ def train(path, out, names, init, mine):
             (rgb, inp, lab, pl), kind = pick(rng, data)
             seen[kind] = seen.get(kind, 0) + 1
             cs = pl[kind] if len(pl.get(kind, ())) else pl["kerb"]
+            z = rng.uniform(0.8, 1.25) if CFG["jitter"] else 1.0
+            hz = int(round(h * z))
             r, c = cs[rng.integers(len(cs))] + rng.integers(-40, 41, 2)
-            r, c = int(np.clip(r, h, lab.shape[0] - h)), int(np.clip(c, h, lab.shape[1] - h))
-            sl = (slice(r - h, r + h), slice(c - h, c + h))
-            img = rgb[sl].astype(np.float32) * rng.uniform(0.75, 1.25, 3) + rng.uniform(-25, 25)
-            x, y = stack(np.clip(img, 0, 255), inp[sl]), lab[sl][None]
+            r, c = int(np.clip(r, hz, lab.shape[0] - hz)), int(np.clip(c, hz, lab.shape[1] - hz))
+            sl = (slice(r - hz, r + hz), slice(c - hz, c + hz))
+            lo, hi, off = (0.65, 1.35, 40) if CFG["jitter"] else (0.75, 1.25, 25)
+            img = rgb[sl].astype(np.float32) * rng.uniform(lo, hi, 3) + rng.uniform(-off, off)
+            ip, lb = inp[sl], lab[sl]
+            if hz != h:
+                f = h / hz
+                img = ndimage.zoom(img, (f, f, 1), order=1)[:2 * h, :2 * h]
+                ip, lb = ndimage.zoom(ip, (f, f, 1), order=0)[:2 * h, :2 * h], ndimage.zoom(lb, f, order=0)[:2 * h, :2 * h]
+            x, y = stack(np.clip(img, 0, 255), ip), lb[None]
             k = int(rng.integers(4))
             x, y = np.rot90(x, k, (1, 2)), np.rot90(y, k, (1, 2))
             if rng.random() < 0.5:
@@ -251,8 +312,10 @@ def train(path, out, names, init, mine):
     return {"steps": step, "chips": seen}, {nm: d[:3] for nm, d in zip(names, data)}
 
 
-def prob(net, rgb, inp):
+def prob(net, rgb, inp, ins=None, tta=None):
+    """Kerb probability per pixel. tta (default CFG["tta"]): average the model over flips and a half turn of each window."""
     import torch
+    tta = CFG["tta"] if tta is None else tta
     lot = inp[..., 0]
     n = rgb.shape[0]; P = np.zeros((n, n), np.float32); C = np.zeros((n, n), np.float32)
     t, s = 512, 448
@@ -264,11 +327,16 @@ def prob(net, rgb, inp):
                 if lot[r:r + t, c:c + t].all():
                     continue
                 x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), inp[r:r + t, c:c + t])[None])
-                P[r:r + t, c:c + t] += torch.sigmoid(net(x))[0, 0].numpy() * win; C[r:r + t, c:c + t] += win
+                p = torch.sigmoid(net(x))
+                for d in ((2,), (3,), (2, 3)) if tta else ():
+                    p += torch.sigmoid(net(x.flip(d))).flip(d)
+                P[r:r + t, c:c + t] += p[0, 0].numpy() / (4 if tta else 1) * win; C[r:r + t, c:c + t] += win
     P /= np.maximum(C, 1e-6)
     P[ndimage.distance_transform_edt(lot > 0) * CELL > 0.5] = 0
     if inp.shape[-1] > 2:
         P[inp[..., 2] > 0] = 0
+    if ins is not None:
+        P[~ins] = 0
     return P
 
 
@@ -317,7 +385,7 @@ def scale(out, nm, on, tr):
 
 
 def analyse(out, nm, lab, rgb, tr, n, keep=False):
-    """Found share per probable cause, whole lines found, and (training boxes) the missed and extra points for the next round."""
+    """Found share per probable cause and road type, 250 m site tiles passing the bar, extra line length."""
     import rasterio.features as rf
     from shapely.geometry import shape
     fs = json.load(open(f"{out}/{nm}_derived.geojson"))["features"]
@@ -327,8 +395,15 @@ def analyse(out, nm, lab, rgb, tr, n, keep=False):
     core = np.zeros((n, n), bool); mg = int(kp.MARGIN / CELL); core[mg:n - mg, mg:n - mg] = True
     on = np.argwhere((lab == 3) & core); on = on[::5]
     hit = dD[on[:, 0], on[:, 1]] <= TOL
+    tiles, ok, q = 0, 0, int(250 / CELL)
+    ti = ((on[:, 0] - mg) // q) * 4 + (on[:, 1] - mg) // q
+    for i in range(16):
+        k = ti == i
+        if k.sum() * 5 * CELL < 50:
+            continue
+        tiles += 1; ok += hit[k].mean() >= 0.85 and float(np.median(dD[on[k][:, 0], on[k][:, 1]][hit[k]])) <= 0.3
     ty = causes(rgb, on)
-    res = {"types": {TYPES[i]: [int((ty == i).sum()), round(float(hit[ty == i].mean()), 3) if (ty == i).any() else None]
+    res = {"tiles": [int(ok), tiles], "types": {TYPES[i]: [int((ty == i).sum()), round(float(hit[ty == i].mean()), 3) if (ty == i).any() else None]
                      for i in range(len(TYPES))}}
     sc = scale(out, nm, on, tr)
     res["scales"] = {SCALES[i]: [int((sc == i).sum()), round(float(hit[sc == i].mean()), 3) if (sc == i).any() else None]
@@ -363,18 +438,13 @@ def f1(v):
     return 2 * v.get("recall", 0) * v.get("precision", 0) / max(v.get("recall", 0) + v.get("precision", 0), 1e-6)
 
 
-def run(a):
-    import torch
-    out, res_path = a[0], a[1]
-    init = a[2] if len(a) > 2 and os.path.exists(a[2]) else None
-    mine = np.load(a[3]) if len(a) > 3 and os.path.exists(a[3]) else None
-    data([out]); t0 = time.time()
-    info, held = train(f"{out}/model.pt", out, [t[0] for t in TRAIN], init, mine)
-    net = model(False); load(net, f"{out}/model.pt"); net.eval()
-    sc, an, keep = {}, {}, {}
+def evaluate(net, out, tta):
+    """Score the check and held-out boxes at every threshold (the check boxes pick it). Per box: found / precise / offset, found
+    by cause and road type, whole lines, 250 m site tiles. Scenario score = mean over scenarios of the mean box F1 (R5)."""
+    sc, keep, boxes, by = {}, {}, {}, {}
     for nm, *_ in VAL + HOLD:
         m, tr, rgb, lot, lab, road = labels(out, nm)
-        P = prob(net, rgb, context(out, nm, lot)); keep[nm] = (tr, lab)
+        P = prob(net, rgb, context(out, nm, lot), inside(out, nm, lab.shape[0], tr), tta); keep[nm] = (tr, lab)
         for th in kp.THRESHS:
             kp.vec(out, nm, P, tr, th); sc.setdefault(th, {})[nm] = kp.score(out, nm, th)
             os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
@@ -382,26 +452,38 @@ def run(a):
     for nm, *_ in VAL + HOLD:
         tr, lab = keep.pop(nm); rgb = np.load(f"{out}/{nm}_rgb.npy", mmap_mode="r")
         os.replace(f"{out}/{nm}_derived_{th}.geojson", f"{out}/{nm}_derived.geojson")
-        an[nm] = analyse(out, nm, lab, rgb, tr, lab.shape[0])[0]
+        an = analyse(out, nm, lab, rgb, tr, lab.shape[0])[0]
         os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
-        an[nm]["whole_lines"] = whole(out, nm, th)
-    mined = {}
-    for nm, (rgb, inp, lab) in held.items():
-        tr = kp.rasters(out, nm)[1]
-        kp.vec(out, nm, prob(net, rgb, inp), tr, th)
-        r, ms, fp = analyse(out, nm, lab, rgb, tr, lab.shape[0], keep=True)
-        mined[f"{nm}_miss"], mined[f"{nm}_fp"] = ms, fp
-    np.savez_compressed(f"{out}/mine.npz", **mined)
-    miss = np.concatenate([v[:, 2] for k, v in mined.items() if k.endswith("_miss")])
-    res = {"cfg": CFG, "thresh": th, "train": info, "minutes": round((time.time() - t0) / 60),
-           "val_f1": round(float(np.mean([f1(sc[th][v[0]]) for v in VAL])), 3),
-           "score": round(float(np.mean([f1(sc[th][v[0]]) for v in HOLD])), 3),
-           "mean_recall": round(float(np.mean([sc[th][v[0]].get("recall", 0) for v in HOLD])), 3),
-           "boxes": {v[0]: {**sc[th][v[0]], **an[v[0]]} for v in VAL + HOLD},
-           "train_misses": {TYPES[i]: int((miss == i).sum()) for i in range(len(TYPES))},
-           "train_extra_points": int(sum(len(v) for k, v in mined.items() if k.endswith("_fp"))), "all": sc}
+        boxes[nm] = {**sc[th][nm], **an, "whole_lines": whole(out, nm, th), "f1": round(f1(sc[th][nm]), 3), "scenario": SCEN[nm],
+                     "role": "hold" if nm in dict(h[:2] for h in HOLD) else "check"}
+        by.setdefault(SCEN[nm], []).append(boxes[nm]["f1"])
+    t = [sum(b["tiles"][i] for b in boxes.values()) for i in (0, 1)]
+    mean = lambda v: round(float(np.mean(v)), 3)
+    return {"thresh": th, "val_f1": mean([boxes[v[0]]["f1"] for v in VAL]), "score": mean([boxes[v[0]]["f1"] for v in HOLD]),
+            "mean_recall": mean([boxes[v[0]].get("recall", 0) for v in HOLD]),
+            "scenario_score": mean([np.mean(v) for v in by.values()]), "scenarios": {k: mean(v) for k, v in by.items()},
+            "worst_hold": min(boxes[v[0]]["f1"] for v in HOLD), "site_share": round(t[0] / max(t[1], 1), 3), "boxes": boxes}
+
+
+def run(a):
+    """One variant: fine-tune the given model for CFG minutes (0 = score it as it is), then score it. CFG["eval_tta"] also scores
+    the same model with test-time flips switched the other way, so an inference-only change is judged on the same weights."""
+    out, res_path = a[0], a[1]
+    init = a[2] if len(a) > 2 and os.path.exists(a[2]) else None
+    data([out])
+    for nm, *_ in TRAIN + VAL + HOLD:
+        reference(out, nm)
+    t0 = time.time(); info = {"steps": 0}
+    if CFG["minutes"]:
+        info = train(f"{out}/model.pt", out, [t[0] for t in TRAIN], init, None)[0]
+    else:
+        import shutil
+        shutil.copy(init, f"{out}/model.pt")
+    net = model(False); load(net, f"{out}/model.pt"); net.eval()
+    ev = {"tta": evaluate(net, out, 1 - CFG["tta"])} if CFG.get("eval_tta") else {}
+    res = {"cfg": CFG, "train": info, **evaluate(net, out, CFG["tta"]), "eval": ev, "minutes": round((time.time() - t0) / 60)}
     json.dump(res, open(res_path, "w"), indent=1)
-    print("RESULT", json.dumps({k: res[k] for k in ("thresh", "val_f1", "score", "mean_recall", "train_misses")}))
+    print("RESULT", json.dumps({k: res[k] for k in ("thresh", "val_f1", "score", "scenario_score", "site_share")}))
 
 
 if __name__ == "__main__":

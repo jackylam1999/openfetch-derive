@@ -1,0 +1,27 @@
+[
+ {
+  "name": "flip-average at prediction",
+  "why": "inference only, cheap, may sharpen offset and precision",
+  "cfg": {
+   "minutes": 0,
+   "tta": 1
+  },
+  "kill": "F1 below control"
+ },
+ {
+  "name": "scale and colour jitter",
+  "why": "held-out gap and shadow",
+  "cfg": {
+   "jitter": 1
+  },
+  "kill": "Parramatta CBD and wocheck do not move"
+ },
+ {
+  "name": "train 150 min more",
+  "why": "under-trained or at capacity?",
+  "cfg": {
+   "minutes": 300
+  },
+  "kill": "within noise: model is at capacity"
+ }
+]
