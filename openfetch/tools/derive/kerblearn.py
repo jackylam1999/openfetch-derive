@@ -81,6 +81,24 @@ def align(out, name):
     json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{name}_kerbs.geojson", "w"))
 
 
+WEAK = 1.05
+
+
+def unweak(out, nm):
+    """Undo an align() shift the photo barely supports (edge gain under WEAK): in the Melbourne CBD tall buildings pulled the lines
+    1.9 m for a 2% gain (30 Oct 2026). The council's own position is kept instead. Runs once per box (marks the align file)."""
+    from shapely.geometry import shape, mapping
+    from shapely.affinity import translate
+    p = f"{out}/{nm}_align.json"; a = json.load(open(p))
+    if a["edge_gain"] >= WEAK or a.get("undone") or not (a["dx"] or a["dy"]):
+        return
+    fs = json.load(open(f"{out}/{nm}_kerbs.geojson"))["features"]
+    for f in fs:
+        f["geometry"] = mapping(translate(shape(f["geometry"]), -a["dx"], -a["dy"]))
+    json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_kerbs.geojson", "w"))
+    a["undone"] = True; json.dump(a, open(p, "w"))
+
+
 def data(a):
     """Fetch what is missing: photo, council kerbs moved onto the photo edge (align), lots, the council's area, roads, water.
     The photos are kept as JPEG (about 1/15 of the raw size) so the shared cache stays small: each job unpacks them once
@@ -100,6 +118,7 @@ def data(a):
             Image.fromarray(np.load(raw)).save(jpg, quality=95)
         if not os.path.exists(f"{out}/{nm}_align.json"):
             align(out, nm)
+        unweak(out, nm)
         if not os.path.exists(f"{out}/{nm}_lga.geojson"):
             m = json.load(open(f"{out}/{nm}_meta.json")); b = (m["x0"], m["y0"], m["x0"] + m["w"], m["y0"] + m["w"])
             fs = [f for f in kp.query(LGA, b, fields="OBJECTID,lganame") if f["properties"]["lganame"] == BOXES["lga"][co]]
@@ -245,6 +264,8 @@ def labels(out, nm):
     lab[(dk > IGN) & (dk <= NEAR)] = 1; lab[(dk > TOL) & (dk <= NEAR)] = 4; lab[dk <= POS] = 2; lab[K] = 3
     road = (lot == 0) & (ndimage.distance_transform_edt(lot == 0) * CELL <= 20) & (dk <= NEAR)
     ins = inside(out, nm, K.shape[0], tr); lab[~ins] = 0; road &= ins
+    blank = np.asarray(rgb).max(-1) <= 3  # photo tiles the server refused: no labels where there is no picture
+    lab[blank] = 0; road &= ~blank
     return m, tr, rgb, lot, lab, road
 
 
