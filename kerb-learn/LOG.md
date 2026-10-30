@@ -37,3 +37,21 @@ _No round 2: that slot was cancelled when the loop moved to 5 versions per round
 **Kept: learn from extra lines (check F1 0.749, was 0.740). Its biggest misses on the training boxes: in shadow 15.5 km, clear kerb 13.2 km, under trees 12.8 km; the next round trains on those.**
 
 _Round 4 restarted 30 Oct ~10:50Z with two changes from Jacky's review: road centrelines and water areas (official NSW data) as extra map context, and a tidy step that straightens straight runs, smooths curves and joins short gaps._
+
+## Round 4 (started from the round 3 model (learn from extra lines))
+
+| round | change | check F1 | Mona Vale | Newport | Parramatta | threshold | minutes |
+|---|---|---|---|---|---|---|---|
+| 4 | add road and water map context | 0.773 | 87% / 72% / 0.31 m | 72% / 60% / 0.47 m | 63% / 65% / 0.42 m | 0.6 | 184 |
+| 4 | learn from misses (in shadow) | 0.733 | 86% / 70% / 0.32 m | 69% / 50% / 0.49 m | 63% / 58% / 0.41 m | 0.6 | 179 |
+| 4 | learn from misses (clear kerb) | 0.721 | 86% / 68% / 0.32 m | 72% / 49% / 0.5 m | 63% / 57% / 0.41 m | 0.6 | 165 |
+| 4 | learn from extra lines | 0.753 | 86% / 72% / 0.31 m | 69% / 55% / 0.48 m | 63% / 61% / 0.41 m | 0.6 | 138 |
+| 4 | learn from misses (under trees) | 0.739 | 85% / 69% / 0.34 m | 71% / 52% / 0.5 m | 64% / 62% / 0.4 m | 0.6 | 178 |
+
+- add road and water map context: found by cause: under trees 75% (was 73%) of 15.5 km; in shadow 68% (was 66%) of 27.5 km; cars or clutter 82% (was 82%) of 12.2 km; faint kerb 53% (was 52%) of 3.8 km; clear kerb 84% (was 84%) of 55.3 km. Extra lines 32.7 km (was 32.6 km). Whole kerb lines found (held-out) 59%.
+- learn from misses (in shadow): found by cause: under trees 73% (was 73%) of 15.5 km; in shadow 66% (was 66%) of 27.5 km; cars or clutter 82% (was 82%) of 12.2 km; faint kerb 53% (was 52%) of 3.8 km; clear kerb 85% (was 84%) of 55.3 km. Extra lines 38.8 km (was 32.6 km). Whole kerb lines found (held-out) 57%.
+- learn from misses (clear kerb): found by cause: under trees 74% (was 73%) of 15.5 km; in shadow 66% (was 66%) of 27.5 km; cars or clutter 81% (was 82%) of 12.2 km; faint kerb 54% (was 52%) of 3.8 km; clear kerb 85% (was 84%) of 55.3 km. Extra lines 42.0 km (was 32.6 km). Whole kerb lines found (held-out) 57%.
+- learn from extra lines: found by cause: under trees 75% (was 73%) of 15.5 km; in shadow 67% (was 66%) of 27.5 km; cars or clutter 82% (was 82%) of 12.2 km; faint kerb 55% (was 52%) of 3.8 km; clear kerb 84% (was 84%) of 55.3 km. Extra lines 34.2 km (was 32.6 km). Whole kerb lines found (held-out) 58%.
+- learn from misses (under trees): found by cause: under trees 74% (was 73%) of 15.5 km; in shadow 67% (was 66%) of 27.5 km; cars or clutter 82% (was 82%) of 12.2 km; faint kerb 53% (was 52%) of 3.8 km; clear kerb 84% (was 84%) of 55.3 km. Extra lines 36.3 km (was 32.6 km). Whole kerb lines found (held-out) 55%.
+
+**Kept: add road and water map context (check F1 0.773, was 0.749). Its biggest misses on the training boxes: in shadow 14.6 km, clear kerb 12.7 km, under trees 12.5 km; the next round trains on those.**

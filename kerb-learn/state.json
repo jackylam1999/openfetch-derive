@@ -1,7 +1,7 @@
 {
- "round": 3,
+ "round": 4,
  "best": {
-  "name": "learn from extra lines",
+  "name": "add road and water map context",
   "cfg": {
    "encoder": "resnet34",
    "minutes": 100,
@@ -11,235 +11,236 @@
    "pw": 4.0,
    "skel": 1.0,
    "mine": 0.4,
-   "focus": "extra lines"
+   "focus": "in shadow",
+   "context": 1
   },
-  "val_f1": 0.749,
-  "score": 0.678,
-  "mean_recall": 0.729,
+  "val_f1": 0.773,
+  "score": 0.692,
+  "mean_recall": 0.74,
   "thresh": 0.6,
   "boxes": {
    "nbcheck": {
     "reference_km": 10.08,
-    "derived_km": 13.48,
-    "recall": 0.789,
-    "precision": 0.61,
-    "offset_median_m": 0.35,
-    "offset_p90_m": 0.79,
+    "derived_km": 12.38,
+    "recall": 0.783,
+    "precision": 0.659,
+    "offset_median_m": 0.36,
+    "offset_p90_m": 0.78,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.531,
-    "recall_at_2.0m": 0.886,
+    "recall_at_0.5m": 0.535,
+    "recall_at_2.0m": 0.881,
     "types": {
      "under trees": [
       1874,
-      0.768
+      0.787
      ],
      "in shadow": [
       3617,
-      0.768
+      0.766
      ],
      "cars or clutter": [
       2925,
-      0.885
+      0.866
      ],
      "faint kerb": [
       842,
-      0.589
+      0.599
      ],
      "clear kerb": [
       16016,
-      0.79
+      0.786
      ]
     },
-    "extra_m": 4990,
+    "extra_m": 4688,
     "whole_lines": 0.765
    },
    "cbcheck": {
     "reference_km": 19.73,
-    "derived_km": 21.94,
-    "recall": 0.945,
-    "precision": 0.859,
+    "derived_km": 21.89,
+    "recall": 0.95,
+    "precision": 0.86,
     "offset_median_m": 0.21,
-    "offset_p90_m": 0.51,
+    "offset_p90_m": 0.5,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.85,
-    "recall_at_2.0m": 0.966,
+    "recall_at_0.5m": 0.854,
+    "recall_at_2.0m": 0.967,
     "types": {
      "under trees": [
       6820,
-      0.927
+      0.935
      ],
      "in shadow": [
       4336,
-      0.867
+      0.878
      ],
      "cars or clutter": [
       5177,
-      0.954
+      0.959
      ],
      "faint kerb": [
       1123,
-      0.886
+      0.883
      ],
      "clear kerb": [
       28013,
       0.968
      ]
     },
-    "extra_m": 2591,
-    "whole_lines": 0.904
+    "extra_m": 2668,
+    "whole_lines": 0.912
    },
    "wocheck": {
     "reference_km": 10.54,
-    "derived_km": 10.11,
-    "recall": 0.647,
-    "precision": 0.672,
-    "offset_median_m": 0.32,
-    "offset_p90_m": 0.76,
+    "derived_km": 9.38,
+    "recall": 0.663,
+    "precision": 0.742,
+    "offset_median_m": 0.29,
+    "offset_p90_m": 0.73,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.459,
-    "recall_at_2.0m": 0.752,
+    "recall_at_0.5m": 0.495,
+    "recall_at_2.0m": 0.778,
     "types": {
      "under trees": [
       7217,
-      0.638
+      0.632
      ],
      "in shadow": [
       5748,
-      0.543
+      0.595
      ],
      "cars or clutter": [
       2335,
-      0.728
+      0.72
      ],
      "faint kerb": [
       994,
-      0.542
+      0.568
      ],
      "clear kerb": [
       9981,
-      0.722
+      0.732
      ]
     },
-    "extra_m": 3280,
-    "whole_lines": 0.496
+    "extra_m": 2788,
+    "whole_lines": 0.512
    },
    "monavale": {
     "reference_km": 16.4,
-    "derived_km": 20.66,
-    "recall": 0.858,
-    "precision": 0.721,
+    "derived_km": 20.98,
+    "recall": 0.866,
+    "precision": 0.715,
     "offset_median_m": 0.31,
-    "offset_p90_m": 0.74,
+    "offset_p90_m": 0.75,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.64,
-    "recall_at_2.0m": 0.941,
+    "recall_at_0.5m": 0.638,
+    "recall_at_2.0m": 0.953,
     "types": {
      "under trees": [
       6373,
-      0.734
+      0.769
      ],
      "in shadow": [
       11507,
-      0.813
+      0.834
      ],
      "cars or clutter": [
       4065,
-      0.931
+      0.925
      ],
      "faint kerb": [
       863,
-      0.554
+      0.562
      ],
      "clear kerb": [
       19569,
-      0.936
+      0.935
      ]
     },
-    "extra_m": 6098,
-    "whole_lines": 0.821
+    "extra_m": 6516,
+    "whole_lines": 0.804
    },
    "newport": {
     "reference_km": 12.54,
-    "derived_km": 16.86,
-    "recall": 0.706,
-    "precision": 0.561,
+    "derived_km": 16.3,
+    "recall": 0.724,
+    "precision": 0.596,
     "offset_median_m": 0.47,
-    "offset_p90_m": 0.87,
+    "offset_p90_m": 0.88,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.388,
-    "recall_at_2.0m": 0.909,
+    "recall_at_0.5m": 0.401,
+    "recall_at_2.0m": 0.927,
     "types": {
      "under trees": [
       5402,
-      0.592
+      0.615
      ],
      "in shadow": [
       4519,
-      0.608
+      0.647
      ],
      "cars or clutter": [
       2739,
-      0.794
+      0.808
      ],
      "faint kerb": [
       1784,
-      0.506
+      0.533
      ],
      "clear kerb": [
       13751,
-      0.824
+      0.834
      ]
     },
-    "extra_m": 6422,
-    "whole_lines": 0.505
+    "extra_m": 6908,
+    "whole_lines": 0.593
    },
    "parramatta": {
     "reference_km": 24.99,
-    "derived_km": 24.37,
-    "recall": 0.624,
-    "precision": 0.628,
-    "offset_median_m": 0.4,
-    "offset_p90_m": 0.8,
+    "derived_km": 23.9,
+    "recall": 0.631,
+    "precision": 0.649,
+    "offset_median_m": 0.42,
+    "offset_p90_m": 0.83,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.388,
-    "recall_at_2.0m": 0.739,
+    "recall_at_0.5m": 0.366,
+    "recall_at_2.0m": 0.755,
     "types": {
      "under trees": [
       3395,
-      0.758
+      0.76
      ],
      "in shadow": [
       25201,
-      0.568
+      0.579
      ],
      "cars or clutter": [
       7148,
-      0.669
+      0.692
      ],
      "faint kerb": [
       1993,
-      0.269
+      0.282
      ],
      "clear kerb": [
       23301,
-      0.707
+      0.712
      ]
     },
-    "extra_m": 9251,
+    "extra_m": 9117,
     "whole_lines": 0.385
    }
   },
   "train_misses": {
-   "under trees": 25608,
-   "in shadow": 31038,
-   "cars or clutter": 4836,
-   "faint kerb": 7269,
-   "clear kerb": 26358
+   "under trees": 24939,
+   "in shadow": 29152,
+   "cars or clutter": 4737,
+   "faint kerb": 7134,
+   "clear kerb": 25359
   },
-  "train_extra_points": 147793,
-  "artifact": "learn-41012217641-1-2",
-  "run": "41012217641",
-  "round": 3
+  "train_extra_points": 154453,
+  "artifact": "learn-41042832131-1-0",
+  "run": "41042832131",
+  "round": 4
  },
  "tried": [
   [
@@ -261,6 +262,26 @@
   [
    "learn from misses (faint kerb)",
    1
+  ],
+  [
+   "add road and water map context",
+   3
+  ],
+  [
+   "learn from misses (in shadow)",
+   3
+  ],
+  [
+   "learn from misses (clear kerb)",
+   3
+  ],
+  [
+   "learn from extra lines",
+   3
+  ],
+  [
+   "learn from misses (under trees)",
+   3
   ]
  ],
  "history": [
@@ -311,6 +332,36 @@
    "name": "learn from misses (faint kerb)",
    "val_f1": 0.713,
    "score": 0.622
+  },
+  {
+   "round": 4,
+   "name": "add road and water map context",
+   "val_f1": 0.773,
+   "score": 0.692
+  },
+  {
+   "round": 4,
+   "name": "learn from misses (in shadow)",
+   "val_f1": 0.733,
+   "score": 0.653
+  },
+  {
+   "round": 4,
+   "name": "learn from misses (clear kerb)",
+   "val_f1": 0.721,
+   "score": 0.648
+  },
+  {
+   "round": 4,
+   "name": "learn from extra lines",
+   "val_f1": 0.753,
+   "score": 0.672
+  },
+  {
+   "round": 4,
+   "name": "learn from misses (under trees)",
+   "val_f1": 0.739,
+   "score": 0.663
   }
  ],
  "stale": 0,
