@@ -1,5 +1,5 @@
 {
- "round": 3,
+ "round": 4,
  "best": {
   "name": "learn from extra lines",
   "cfg": {
@@ -313,6 +313,6 @@
    "score": 0.622
   }
  ],
- "stale": 0,
+ "stale": 1,
  "status": "stopped: no results this round (jobs failed)"
 }

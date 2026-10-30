@@ -43,3 +43,13 @@ Each round starts from the best model so far and trains on its mistakes. Check F
 - learn from misses (faint kerb): found by cause: under trees 72% (was 75%) of 15.5 km; in shadow 65% (was 66%) of 27.5 km; cars or clutter 79% (was 82%) of 12.2 km; faint kerb 56% (was 53%) of 3.8 km; clear kerb 82% (was 85%) of 55.3 km. Extra lines 42.6 km (was 34.9 km). Whole kerb lines found (held-out) 50%.
 
 **Kept: learn from extra lines (check F1 0.749, was 0.740). Its biggest misses on the training boxes: in shadow 15.5 km, clear kerb 13.2 km, under trees 12.8 km; the next round trains on those.**
+
+## Round 4 (started from the round 3 model (learn from extra lines))
+
+| round | change | check F1 | Mona Vale | Newport | Parramatta | threshold | minutes |
+|---|---|---|---|---|---|---|---|
+
+
+**Nothing kept: no variant beat check F1 0.749 by 0.005; the round 3 model stays and the next round tries the next causes.**
+
+**Stopped after round 4: no results this round (jobs failed).** Best: learn from extra lines (round 3), held-out mean found 72.9%, model: run 41012217641 artifact learn-41012217641-1-2.
