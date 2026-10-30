@@ -179,6 +179,12 @@ def inside(out, nm, n, tr):
 
 
 def context(out, nm, lot):
+    if not CFG.get("context"):
+        return lot[..., None]
+    return np.concatenate([lot[..., None], np.stack(cached(out, nm, "ctx", lambda: list(_context(out, nm, lot)[..., 1:].transpose(2, 0, 1))), -1)], -1)
+
+
+def _context(out, nm, lot):
     """Model input besides the photo: the lot mask, and with CFG["context"] the distance to the official road centreline
     (0.1 m steps, up to 25 m) and the official water areas (NSW Transport and Water Themes, Spatial Services, CC BY 4.0)."""
     if not CFG.get("context"):
@@ -255,7 +261,28 @@ def stack(rgb, inp):
     return np.ascontiguousarray(x.transpose(2, 0, 1))
 
 
+def cached(out, nm, kind, make):
+    """Arrays that take minutes per box (distance maps over 11000 x 11000 cells) are kept on disk, keyed by the kerb lines, so the
+    later variants of a round and the scoring step reuse them (a GPU round spent most of its time rebuilding them, 30 Oct 2026)."""
+    import hashlib
+    key = hashlib.md5(open(f"{out}/{nm}_kerbs.geojson", "rb").read()).hexdigest()[:10]
+    p = f"{out}/_cache/{nm}_{kind}_{key}.npz"
+    if os.path.exists(p):
+        z = np.load(p); return [z[k] for k in sorted(z.files, key=int)]
+    v = make(); os.makedirs(f"{out}/_cache", exist_ok=True)
+    np.savez_compressed(p + ".tmp.npz", **{str(i): x for i, x in enumerate(v)}); os.replace(p + ".tmp.npz", p)
+    return v
+
+
 def labels(out, nm):
+    from affine import Affine
+    m = json.load(open(f"{out}/{nm}_meta.json")); tr = Affine(CELL, 0, m["x0"], 0, -CELL, m["y0"] + m["w"])
+    rgb = np.load(f"{out}/{nm}_rgb.npy", mmap_mode="r")
+    lot, lab, road = cached(out, nm, "lab", lambda: _labels(out, nm)[3:])
+    return m, tr, rgb, lot, lab, road
+
+
+def _labels(out, nm):
     """0 = not scored, 1 = not kerb but within 1 m, 4 = over 1 m from a kerb, 2 = within POS m of a council kerb, 3 = on the line."""
     m, tr, rgb, lot, kb = kp.rasters(out, nm)
     K = kb().astype(bool)
