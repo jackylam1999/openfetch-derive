@@ -5,7 +5,7 @@ Usage:
   python3 kerbloop.py plan state.json            (prints {"variants": [...], "best_run": id, "best_artifact": name} for the round)
   python3 kerbloop.py record state.json log.md results/   (adds the round to the log and state, prints "continue" or "stop: <reason>")
 
-Round 1 starts three variants from an ImageNet encoder. Every later round fine-tunes the best model so far and feeds it its own
+Round 1 starts three variants (later rounds up to WIDTH) from an ImageNet encoder. Every later round fine-tunes the best model so far and feeds it its own
 mistakes on the training boxes: each variant puts most of the extra chips on one probable cause of the misses (the biggest causes
 first), or on the extra lines it draws. A variant becomes the new best only if it does better on the check boxes (inside the
 training councils); the held-out boxes are reported, never used to choose. The log says, per cause, how much more kerb was found
@@ -14,7 +14,7 @@ of MIN_GAIN, or when nothing is left to try.
 """
 import sys, os, json, glob
 
-TARGET, MAX_ROUNDS, WIDTH, MIN_GAIN, PLATEAU = 0.85, 8, 3, 0.005, 2
+TARGET, MAX_ROUNDS, WIDTH, MIN_GAIN, PLATEAU = 0.85, 8, 5, 0.005, 2
 TYPES = ("under trees", "in shadow", "cars or clutter", "faint kerb", "clear kerb")
 START = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 1e-3, "pw": 4.0, "skel": 0.0, "mine": 0.0,
          "focus": ""}

@@ -1,4 +1,4 @@
-# One round of the learning kerb photo model (called by kerb-learn.yml). plan: kerbloop.py picks up to 3 variants and names the best
+# One round of the learning kerb photo model (called by kerb-learn.yml). plan: kerbloop.py picks up to 5 variants and names the best
 # model so far; variant: each fine-tunes that model on its own free runner (kerblearn.py run) and uploads its model, its mistakes
 # on the training boxes and its scores; decide: keeps the variant only if it beats the best on the check boxes, writes what the round
 # learnt to kerb-learn/LOG.md + state.json on this branch and says continue or stop.
