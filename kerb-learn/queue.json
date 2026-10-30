@@ -1,9 +1,8 @@
 [
  {
   "name": "flip-average at prediction",
-  "why": "inference only, cheap, may sharpen offset and precision",
+  "why": "inference only; trained exactly like the control (same seed), so only the flips differ",
   "cfg": {
-   "minutes": 0,
    "tta": 1
   },
   "kill": "F1 below control"

@@ -48,6 +48,7 @@ TYPES = ("under trees", "in shadow", "cars or clutter", "faint kerb", "clear ker
 CFG = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 1e-3, "pw": 4.0, "skel": 0.0, "mine": 0.0,
        "focus": "", "seed": 0, "tta": 0, "jitter": 0, **json.loads(os.environ.get("KERB_CFG") or "{}")}
 kp.CFG.update(CFG)
+kp.THRESHS = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8)  # round 0 picked 0.6, the old top end, so the range is widened
 MEAN, STD = np.array([0.485, 0.456, 0.406], np.float32), np.array([0.229, 0.224, 0.225], np.float32)
 CELL, NEAR, POS, IGN, TOL = kp.CELL, kp.NEAR, 0.3, 0.6, 1.0
 
@@ -285,6 +286,12 @@ def labels(out, nm):
 def _labels(out, nm):
     """0 = not scored, 1 = not kerb but within 1 m, 4 = over 1 m from a kerb, 2 = within POS m of a council kerb, 3 = on the line."""
     m, tr, rgb, lot, kb = kp.rasters(out, nm)
+    if os.path.exists(f"{out}/{nm}_notlot.geojson"):  # Melbourne: council road polygons are never a lot (kerbvic.py)
+        import rasterio.features as rf
+        from shapely.geometry import shape
+        fs = [shape(f["geometry"]) for f in json.load(open(f"{out}/{nm}_notlot.geojson"))["features"]]
+        if fs:
+            lot[rf.rasterize(((g, 1) for g in fs), out_shape=lot.shape, transform=tr, dtype=np.uint8) > 0] = 0
     K = kb().astype(bool)
     dk = ndimage.distance_transform_edt(~K).astype(np.float32) * CELL
     lab = np.zeros(K.shape, np.uint8)
@@ -498,25 +505,48 @@ def f1(v):
     return 2 * v.get("recall", 0) * v.get("precision", 0) / max(v.get("recall", 0) + v.get("precision", 0), 1e-6)
 
 
+def _thresholds(job):
+    """CPU part of scoring one box (runs in a worker): lines at every threshold, each scored against the council kerbs."""
+    out, nm, pp, tr = job
+    P = np.load(pp); sc = {}
+    for th in kp.THRESHS:
+        kp.vec(out, nm, P, tr, th); sc[th] = kp.score(out, nm, th)
+        os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
+    os.remove(pp)
+    return nm, sc
+
+
+def _final(job):
+    out, nm, th, s = job
+    m, tr, rgb, lot, lab, road = labels(out, nm)
+    os.replace(f"{out}/{nm}_derived_{th}.geojson", f"{out}/{nm}_derived.geojson")
+    an = analyse(out, nm, lab, rgb, tr, lab.shape[0])[0]
+    os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
+    return nm, {**s, **an, "whole_lines": whole(out, nm, th), "f1": round(f1(s), 3), "scenario": SCEN[nm],
+                "role": "hold" if nm in dict(h[:2] for h in HOLD) else "check"}
+
+
 def evaluate(net, out, tta):
     """Score the check and held-out boxes at every threshold (the check boxes pick it). Per box: found / precise / offset, found
-    by cause and road type, whole lines, 250 m site tiles. Scenario score = mean over scenarios of the mean box F1 (R5)."""
-    sc, keep, boxes, by = {}, {}, {}, {}
-    for nm, *_ in VAL + HOLD:
-        m, tr, rgb, lot, lab, road = labels(out, nm)
-        P = prob(net, rgb, context(out, nm, lot), inside(out, nm, lab.shape[0], tr), tta); keep[nm] = (tr, lab)
-        for th in kp.THRESHS:
-            kp.vec(out, nm, P, tr, th); sc.setdefault(th, {})[nm] = kp.score(out, nm, th)
-            os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
-    th = max(kp.THRESHS, key=lambda t: np.mean([f1(sc[t][v[0]]) for v in VAL]))
-    for nm, *_ in VAL + HOLD:
-        tr, lab = keep.pop(nm); rgb = np.load(f"{out}/{nm}_rgb.npy", mmap_mode="r")
-        os.replace(f"{out}/{nm}_derived_{th}.geojson", f"{out}/{nm}_derived.geojson")
-        an = analyse(out, nm, lab, rgb, tr, lab.shape[0])[0]
-        os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
-        boxes[nm] = {**sc[th][nm], **an, "whole_lines": whole(out, nm, th), "f1": round(f1(sc[th][nm]), 3), "scenario": SCEN[nm],
-                     "role": "hold" if nm in dict(h[:2] for h in HOLD) else "check"}
-        by.setdefault(SCEN[nm], []).append(boxes[nm]["f1"])
+    by cause and road type, whole lines, 250 m site tiles. Scenario score = mean over scenarios of the mean box F1 (R5).
+    The GPU makes each box's kerb probability while CPU workers turn the previous boxes into lines and score them (a round 0
+    variant spent about 90 minutes here one box after another, 30 Oct 2026)."""
+    import multiprocessing as mp
+    sc, boxes, by, jobs = {}, {}, {}, []
+    with mp.get_context("fork").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+        for nm, *_ in VAL + HOLD:
+            m, tr, rgb, lot, lab, road = labels(out, nm)
+            P = prob(net, rgb, context(out, nm, lot), inside(out, nm, lab.shape[0], tr), tta)
+            pp = f"{out}/_P_{nm}.npy"; np.save(pp, P); del P
+            jobs.append(pool.apply_async(_thresholds, ((out, nm, pp, tr),)))
+        for j in jobs:
+            nm, s = j.get()
+            for th, v in s.items():
+                sc.setdefault(th, {})[nm] = v
+        th = max(kp.THRESHS, key=lambda t: np.mean([f1(sc[t][v[0]]) for v in VAL]))
+        boxes = dict(pool.map(_final, [(out, nm, th, sc[th][nm]) for nm, *_ in VAL + HOLD]))
+    for nm, b in boxes.items():
+        by.setdefault(SCEN[nm], []).append(b["f1"])
     t = [sum(b["tiles"][i] for b in boxes.values()) for i in (0, 1)]
     mean = lambda v: round(float(np.mean(v)), 3)
     return {"thresh": th, "val_f1": mean([boxes[v[0]]["f1"] for v in VAL]), "score": mean([boxes[v[0]]["f1"] for v in HOLD]),

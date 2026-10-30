@@ -3,8 +3,10 @@
 
 Writes the same files as kerbphoto.fetch, in GDA2020 MGA zone 55 (EPSG:7855): the Vicmap Basemaps aerial AERIAL_VG2020 (about 10 cm;
 the WMS serves only VicGrid 2020, EPSG:7899, so each box is fetched in 7899 and warped onto the MGA grid), City of Melbourne kerbs
-(open data "Road segments, with surface type", type Road Kerb: thin polygons, used as their outlines; lon/lat in GDA94), Vicmap Property parcels without
-road parcels as the lots, the LGA from Vicmap Admin, Vicmap Transport roads (class_code mapped onto the NSW functionhierarchy scale)
+(open data "Road segments, with surface type", types Road Kerb and Road Median: polygons, used as their outlines, since a median is kerbed (round 0 drew CBD medians the
+kerb set lacked); lon/lat in GDA94), Vicmap Property parcels without
+road parcels as the lots, minus every City of Melbourne road segment polygon (notlot: some streets, e.g. Swanston Street, are
+Crown allotments not flagged as road, so the model drew nothing there in round 0), the LGA from Vicmap Admin, Vicmap Transport roads (class_code mapped onto the NSW functionhierarchy scale)
 and Vicmap Hydro water areas.
 """
 import sys, os, json, io, urllib.parse
@@ -18,7 +20,7 @@ VM = "https://services-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/"
 LOTS, LGA = VM + "Vicmap_Parcel/FeatureServer/0/query", VM + "Vicmap_Admin/FeatureServer/9/query"
 ROADS, WATER = VM + "Vicmap_Transport/FeatureServer/1/query", VM + "Vicmap_Hydro/FeatureServer/1/query"
 COM = ("https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets/road-segments-with-surface-type/exports/geojson?"
-       + urllib.parse.urlencode({"where": 'type="Road Kerb"'}))
+       + urllib.parse.urlencode({"where": 'type="Road Kerb" or type="Road Median"'}))
 HIER = {0: 2, 1: 2, 2: 2, 3: 4, 4: 4, 5: 6}  # Vicmap class_code (freeway..local) -> NSW functionhierarchy band
 LGA_NAME = {"com": "MELBOURNE"}
 
@@ -61,6 +63,17 @@ def com_kerbs(out):
     return json.load(open(p))["features"]
 
 
+def com_segments(out):
+    """All City of Melbourne road segment polygons (carriageway, footway, kerb, channel, median...), once per cache, in MGA 55."""
+    p = f"{out}/_com_segments.geojson"
+    if not os.path.exists(p):
+        from rasterio.warp import transform_geom
+        fs = [{"type": "Feature", "geometry": transform_geom("EPSG:4283", f"EPSG:{SR}", f["geometry"]), "properties": {}}
+              for f in json.loads(kp.get(COM.split("?")[0]))["features"] if f.get("geometry")]
+        json.dump({"type": "FeatureCollection", "features": fs}, open(p, "w"))
+    return json.load(open(p))["features"]
+
+
 def fetch(name, council, x0, y0, out):
     from shapely.geometry import shape, box
     os.makedirs(out, exist_ok=True)
@@ -71,10 +84,11 @@ def fetch(name, council, x0, y0, out):
     q = lambda url, f: kp.query(url, (X0, Y0, X0 + W, Y0 + W), sr=SR, fields=f)
     lots = [f for f in q(LOTS, "OBJECTID,parcel_road") if f["properties"].get("parcel_road") != "Y"]
     roads = q(ROADS, "OBJECTID,class_code")
+    notlot = [f for f in com_segments(out) if shape(f["geometry"]).intersects(bb)]
     for f in roads:
         f["properties"] = {"functionhierarchy": HIER.get(f["properties"].get("class_code"), 7)}
     lga = [f for f in q(LGA, "OBJECTID,lga_name") if f["properties"].get("lga_name") == LGA_NAME[council]]
-    for k, fs in (("kerbs", kerbs), ("lots", lots), ("roads", roads), ("water", q(WATER, "OBJECTID")), ("lga", lga)):
+    for k, fs in (("kerbs", kerbs), ("lots", lots), ("notlot", notlot), ("roads", roads), ("water", q(WATER, "OBJECTID")), ("lga", lga)):
         json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{name}_{k}.geojson", "w"))
     json.dump({"x0": X0, "y0": Y0, "w": W, "box": [x0, y0, x0 + kp.SIZE, y0 + kp.SIZE], "crs": SR}, open(f"{out}/{name}_meta.json", "w"))
     print(f"{name}: Vicmap photo, {len(kerbs)} council kerbs, {len(lots)} lots, {len(roads)} roads", file=sys.stderr)
