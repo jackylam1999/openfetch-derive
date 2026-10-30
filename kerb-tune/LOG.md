@@ -14,3 +14,5 @@ found / precise / offset per held-out box at the chosen threshold (1 m tolerance
 Round 2's log push failed (fixed 30 Oct); rows above copied from its run log. From round 3 the best version is the one with the best
 balance of found and precise (mean F1), not found alone: "bridge short gaps" found more by drawing many extra lines (Newport 47% precise).
 Best after round 2 by that measure: train longer (8 areas, 192 min), F1 0.605.
+
+**Stopped after round 3: no results this round (jobs failed).** Best: train longer (round 2), mean found 57.2%, settings `{"batch": 12, "boxes": 8, "bridge": 0.0, "chip": 192, "lr": 0.002, "minutes": 192, "pos": 0.3, "pw": 4.0, "tta": 0, "width": 16}`, model: run 40894435053 artifact variant-2-2.
