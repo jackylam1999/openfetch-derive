@@ -73,7 +73,10 @@ def fetch(name, council, x0, y0, out):
     n = int(round(W / CELL)); rgb = np.zeros((n, n, 3), np.uint8)
     for tx in range(0, W, 400):
         for ty in range(0, W, 400):
-            b = get(IMG.format(X0 + tx, Y0 + ty, X0 + tx + 400, Y0 + ty + 400))
+            try:
+                b = get(IMG.format(X0 + tx, Y0 + ty, X0 + tx + 400, Y0 + ty + 400))
+            except Exception as e:  # one tile the server keeps refusing (Villawood, 30 Oct) is left blank, not the whole box
+                b = str(e).encode()
             if b[:2] != b"\xff\xd8":
                 print(f"{name}: no photo at {X0 + tx},{Y0 + ty}", file=sys.stderr); continue
             a = np.asarray(Image.open(io.BytesIO(b)).convert("RGB"))

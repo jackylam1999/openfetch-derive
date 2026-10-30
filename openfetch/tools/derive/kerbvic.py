@@ -3,7 +3,7 @@
 
 Writes the same files as kerbphoto.fetch, in GDA2020 MGA zone 55 (EPSG:7855): the Vicmap Basemaps aerial AERIAL_VG2020 (about 10 cm;
 the WMS serves only VicGrid 2020, EPSG:7899, so each box is fetched in 7899 and warped onto the MGA grid), City of Melbourne kerbs
-(open data "Road segments, with surface type", type Road Kerb: thin polygons, used as their outlines), Vicmap Property parcels without
+(open data "Road segments, with surface type", type Road Kerb: thin polygons, used as their outlines; lon/lat in GDA94), Vicmap Property parcels without
 road parcels as the lots, the LGA from Vicmap Admin, Vicmap Transport roads (class_code mapped onto the NSW functionhierarchy scale)
 and Vicmap Hydro water areas.
 """
@@ -55,7 +55,7 @@ def com_kerbs(out):
         fs = []
         for f in json.loads(kp.get(COM))["features"]:
             if f.get("geometry"):
-                g = shape(transform_geom("EPSG:4326", f"EPSG:{SR}", f["geometry"]))
+                g = shape(transform_geom("EPSG:4283", f"EPSG:{SR}", f["geometry"]))  # lon/lat are GDA94 (first cache: 1.4 m south)
                 fs.append({"type": "Feature", "geometry": mapping(g.boundary), "properties": {}})
         json.dump({"type": "FeatureCollection", "features": fs}, open(p, "w"))
     return json.load(open(p))["features"]

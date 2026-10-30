@@ -14,6 +14,7 @@ os.environ.setdefault("KAGGLE_API_TOKEN", os.environ.get("KAGGLE_KEY", ""))
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.join(HERE, "../.."); USER = "jackylam1999"
 STATE, LOG = f"{ROOT}/kerb-learn/state.json", f"{ROOT}/kerb-learn/LOG.md"
 LOOP = f"{ROOT}/openfetch/tools/derive/kerbloop.py"
+CACHES = ("data", "data-com", "data-villawood")  # NSW, Melbourne, and the box the first NSW cache missed
 WORK = os.environ.get("KERB_KAGGLE_WORK", "/tmp/kerb-kaggle")
 
 
@@ -44,7 +45,7 @@ def round_(a):
     s = (open(f"{HERE}/train_kernel.py").read().replace("__REF__", a[0]).replace("__ROUND__", str(st["round"]))
          .replace("__VARIANTS__", json.dumps(p["variants"])))
     push("openfetch-kerb-train", s, True, {"dataset_sources": [f"{USER}/openfetch-kerb-best"],
-                                            "kernel_sources": [f"{USER}/openfetch-kerb-data", f"{USER}/openfetch-kerb-data-com"]})
+                                            "kernel_sources": [f"{USER}/openfetch-kerb-{k}" for k in CACHES]})
 
 
 def status(a):

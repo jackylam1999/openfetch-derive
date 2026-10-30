@@ -112,8 +112,8 @@ def data(a):
                 json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_{k}.geojson", "w"))
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(6) as ex:
-        only = os.environ.get("KERB_COUNCILS")  # e.g. "com": fetch only these councils' boxes
-        list(ex.map(one, [t for t in TRAIN + VAL + HOLD if not only or t[1] in only.split(",")]))
+        only = os.environ.get("KERB_COUNCILS")  # e.g. "com" or "villawood": fetch only these councils' or boxes' data
+        list(ex.map(one, [t for t in TRAIN + VAL + HOLD if not only or {t[0], t[1]} & set(only.split(","))]))
 
 
 def lot_side(lots, l):
