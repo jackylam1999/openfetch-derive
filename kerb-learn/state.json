@@ -1,0 +1,267 @@
+{
+ "round": 1,
+ "best": {
+  "name": "ImageNet start + unbroken-line loss, bigger view",
+  "cfg": {
+   "encoder": "resnet34",
+   "minutes": 150,
+   "chip": 256,
+   "batch": 7,
+   "lr": 0.001,
+   "pw": 4.0,
+   "skel": 1.0,
+   "mine": 0.0,
+   "focus": ""
+  },
+  "val_f1": 0.74,
+  "score": 0.671,
+  "mean_recall": 0.741,
+  "thresh": 0.6,
+  "boxes": {
+   "nbcheck": {
+    "reference_km": 10.08,
+    "derived_km": 14.21,
+    "recall": 0.797,
+    "precision": 0.585,
+    "offset_median_m": 0.35,
+    "offset_p90_m": 0.79,
+    "tol_m": 1.0,
+    "recall_at_0.5m": 0.542,
+    "recall_at_2.0m": 0.887,
+    "types": {
+     "under trees": [
+      1874,
+      0.814
+     ],
+     "in shadow": [
+      3617,
+      0.774
+     ],
+     "cars or clutter": [
+      2925,
+      0.886
+     ],
+     "faint kerb": [
+      842,
+      0.618
+     ],
+     "clear kerb": [
+      16016,
+      0.797
+     ]
+    },
+    "extra_m": 5429,
+    "whole_lines": 0.765
+   },
+   "cbcheck": {
+    "reference_km": 19.73,
+    "derived_km": 22.06,
+    "recall": 0.947,
+    "precision": 0.855,
+    "offset_median_m": 0.22,
+    "offset_p90_m": 0.5,
+    "tol_m": 1.0,
+    "recall_at_0.5m": 0.852,
+    "recall_at_2.0m": 0.965,
+    "types": {
+     "under trees": [
+      6820,
+      0.928
+     ],
+     "in shadow": [
+      4336,
+      0.889
+     ],
+     "cars or clutter": [
+      5177,
+      0.954
+     ],
+     "faint kerb": [
+      1123,
+      0.881
+     ],
+     "clear kerb": [
+      28013,
+      0.966
+     ]
+    },
+    "extra_m": 2675,
+    "whole_lines": 0.904
+   },
+   "wocheck": {
+    "reference_km": 10.54,
+    "derived_km": 10.39,
+    "recall": 0.643,
+    "precision": 0.651,
+    "offset_median_m": 0.31,
+    "offset_p90_m": 0.76,
+    "tol_m": 1.0,
+    "recall_at_0.5m": 0.468,
+    "recall_at_2.0m": 0.754,
+    "types": {
+     "under trees": [
+      7217,
+      0.628
+     ],
+     "in shadow": [
+      5748,
+      0.537
+     ],
+     "cars or clutter": [
+      2335,
+      0.743
+     ],
+     "faint kerb": [
+      994,
+      0.541
+     ],
+     "clear kerb": [
+      9981,
+      0.724
+     ]
+    },
+    "extra_m": 3550,
+    "whole_lines": 0.488
+   },
+   "monavale": {
+    "reference_km": 16.4,
+    "derived_km": 21.52,
+    "recall": 0.865,
+    "precision": 0.697,
+    "offset_median_m": 0.3,
+    "offset_p90_m": 0.73,
+    "tol_m": 1.0,
+    "recall_at_0.5m": 0.654,
+    "recall_at_2.0m": 0.944,
+    "types": {
+     "under trees": [
+      6373,
+      0.761
+     ],
+     "in shadow": [
+      11507,
+      0.818
+     ],
+     "cars or clutter": [
+      4065,
+      0.931
+     ],
+     "faint kerb": [
+      863,
+      0.555
+     ],
+     "clear kerb": [
+      19569,
+      0.938
+     ]
+    },
+    "extra_m": 6754,
+    "whole_lines": 0.83
+   },
+   "newport": {
+    "reference_km": 12.54,
+    "derived_km": 18.18,
+    "recall": 0.718,
+    "precision": 0.528,
+    "offset_median_m": 0.5,
+    "offset_p90_m": 0.88,
+    "tol_m": 1.0,
+    "recall_at_0.5m": 0.369,
+    "recall_at_2.0m": 0.915,
+    "types": {
+     "under trees": [
+      5402,
+      0.597
+     ],
+     "in shadow": [
+      4519,
+      0.627
+     ],
+     "cars or clutter": [
+      2739,
+      0.815
+     ],
+     "faint kerb": [
+      1784,
+      0.47
+     ],
+     "clear kerb": [
+      13751,
+      0.834
+     ]
+    },
+    "extra_m": 7106,
+    "whole_lines": 0.505
+   },
+   "parramatta": {
+    "reference_km": 24.99,
+    "derived_km": 25.06,
+    "recall": 0.639,
+    "precision": 0.627,
+    "offset_median_m": 0.4,
+    "offset_p90_m": 0.79,
+    "tol_m": 1.0,
+    "recall_at_0.5m": 0.399,
+    "recall_at_2.0m": 0.749,
+    "types": {
+     "under trees": [
+      3395,
+      0.802
+     ],
+     "in shadow": [
+      25201,
+      0.569
+     ],
+     "cars or clutter": [
+      7148,
+      0.675
+     ],
+     "faint kerb": [
+      1993,
+      0.336
+     ],
+     "clear kerb": [
+      23301,
+      0.729
+     ]
+    },
+    "extra_m": 9418,
+    "whole_lines": 0.425
+   }
+  },
+  "train_misses": {
+   "under trees": 25542,
+   "in shadow": 32596,
+   "cars or clutter": 5029,
+   "faint kerb": 7462,
+   "clear kerb": 27093
+  },
+  "train_extra_points": 160550,
+  "artifact": "learn-40986680973-1-2",
+  "run": "40986680973",
+  "round": 1
+ },
+ "tried": [],
+ "history": [
+  {
+   "round": 1,
+   "name": "ImageNet start",
+   "val_f1": 0.735,
+   "score": 0.667
+  },
+  {
+   "round": 1,
+   "name": "ImageNet start + unbroken-line loss",
+   "val_f1": 0.714,
+   "score": 0.641
+  },
+  {
+   "round": 1,
+   "name": "ImageNet start + unbroken-line loss, bigger view",
+   "val_f1": 0.74,
+   "score": 0.671
+  }
+ ],
+ "stale": 0,
+ "status": "running"
+}
