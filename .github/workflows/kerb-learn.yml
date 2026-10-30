@@ -1,0 +1,74 @@
+# Kerb photo model that learns round after round (openfetch/tools/derive/kerblearn.py + kerbloop.py). Public repo, so runner minutes
+# are free; no secrets, ever. One run holds up to 8 rounds: the photos and council kerbs are fetched once (cached), then each round
+# (kerb-learn-round.yml) fine-tunes the best model so far on its own mistakes. A run picks up from kerb-learn/state.json on this
+# branch, so a cancelled run can be restarted without losing the best model. Log: kerb-learn/LOG.md on this branch.
+# Starts on a push that changes this file, the round file or kerbloop.py; cancel the run to stop it.
+name: kerb-learn
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/kerb-learn.yml', '.github/workflows/kerb-learn-round.yml', 'openfetch/tools/derive/kerbloop.py']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency: {group: kerb-learn, cancel-in-progress: false}
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h / | tail -1
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          key: kerbdata-v3
+          path: |
+            kp/*.jpg
+            kp/*.json
+            kp/*.geojson
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install numpy scipy shapely pillow
+          cd openfetch/tools/derive && python3 kerblearn.py data ../../../kp
+          cat ../../../kp/*_align.json
+  r1:
+    needs: data
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 1, prev: 0}
+  r2:
+    needs: r1
+    if: needs.r1.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 2, prev: 1}
+  r3:
+    needs: r2
+    if: needs.r2.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 3, prev: 2}
+  r4:
+    needs: r3
+    if: needs.r3.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 4, prev: 3}
+  r5:
+    needs: r4
+    if: needs.r4.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 5, prev: 4}
+  r6:
+    needs: r5
+    if: needs.r5.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 6, prev: 5}
+  r7:
+    needs: r6
+    if: needs.r6.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 7, prev: 6}
+  r8:
+    needs: r7
+    if: needs.r7.outputs.verdict == 'continue'
+    uses: ./.github/workflows/kerb-learn-round.yml
+    with: {slot: 8, prev: 7}
