@@ -15,3 +15,13 @@ Each round starts from the best model so far and trains on its mistakes. Check F
 - ImageNet start + unbroken-line loss, bigger view: found by cause: under trees 75% of 15.5 km; in shadow 66% of 27.5 km; cars or clutter 82% of 12.2 km; faint kerb 53% of 3.8 km; clear kerb 85% of 55.3 km. Extra lines 34.9 km. Whole kerb lines found (held-out) 59%.
 
 **Kept: ImageNet start + unbroken-line loss, bigger view (check F1 0.740). Its biggest misses on the training boxes: in shadow 16.3 km, clear kerb 13.5 km, under trees 12.8 km; the next round trains on those.**
+
+## Round 2 (started from the round 1 model (ImageNet start + unbroken-line loss, bigger view))
+
+| round | change | check F1 | Mona Vale | Newport | Parramatta | threshold | minutes |
+|---|---|---|---|---|---|---|---|
+
+
+**Nothing kept: no variant beat check F1 0.740 by 0.005; the round 1 model stays and the next round tries the next causes.**
+
+**Stopped after round 2: no results this round (jobs failed).** Best: ImageNet start + unbroken-line loss, bigger view (round 1), held-out mean found 74.1%, model: run 40986680973 artifact learn-40986680973-1-2.
