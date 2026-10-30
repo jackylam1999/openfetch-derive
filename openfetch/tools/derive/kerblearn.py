@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Kerb photo model that builds on itself round after round (replaces the settings search in kerbtune.py).
 
+GPU (Kaggle, kerb-learn/kaggle/): runs on CUDA when there is one; KERB_STEPS_PER_MIN fixes the training length in steps (minutes x
+rate, 21 = a 4-core CPU runner) so GPU rounds compare with CPU ones.
+
 Usage:
   python3 kerblearn.py data out                  (fetch every box, fit the offset of the new councils' kerbs to the photo)
   python3 kerblearn.py run out result.json [best.pt mine.npz]   (one round variant; settings in KERB_CFG)
@@ -206,6 +209,11 @@ def model(pretrained=True):
     return U()
 
 
+def DEV():
+    import torch
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 def NIN():
     return 6 if CFG.get("context") else 4
 
@@ -213,7 +221,7 @@ def NIN():
 def load(net, path):
     """Load saved weights; a model saved with fewer input layers gets the new ones at zero, so it starts out unchanged."""
     import torch
-    sd, own = torch.load(path), net.state_dict()
+    sd, own = torch.load(path, map_location="cpu"), net.state_dict()
     for k, v in sd.items():
         if v.dim() == 4 and own[k].shape[1] > v.shape[1]:
             w = torch.zeros_like(own[k]); w[:, :v.shape[1]] = v; sd[k] = w
@@ -268,9 +276,11 @@ def train(path, out, names, init, mine):
     net = model(pretrained=init is None)
     if init:
         load(net, init)
+    net = net.to(DEV())
     opt = torch.optim.AdamW(net.parameters(), CFG["lr"], weight_decay=1e-4)
     h = CFG["chip"] // 2; t0 = time.time(); step = 0; seen = {}
-    while (done := (time.time() - t0) / (CFG["minutes"] * 60)) < 1:
+    rate = float(os.environ.get("KERB_STEPS_PER_MIN") or 0)
+    while (done := step / (CFG["minutes"] * rate) if rate else (time.time() - t0) / (CFG["minutes"] * 60)) < 1:
         for g in opt.param_groups:
             g["lr"] = CFG["lr"] * min(1, done / 0.05) * 0.5 * (1 + np.cos(np.pi * done))
         xs, ys = [], []
@@ -296,9 +306,9 @@ def train(path, out, names, init, mine):
             if rng.random() < 0.5:
                 x, y = x[:, :, ::-1], y[:, :, ::-1]
             xs.append(x.copy()); ys.append(y.copy())
-        L = torch.from_numpy(np.stack(ys))
+        L = torch.from_numpy(np.stack(ys)).to(DEV())
         Y, W, S = ((L == 2) | (L == 3)).float(), (L > 0).float(), (L == 3).float()
-        lo = net(torch.from_numpy(np.stack(xs)))
+        lo = net(torch.from_numpy(np.stack(xs)).to(DEV()))
         bce = torch.nn.functional.binary_cross_entropy_with_logits(lo, Y, weight=W * (1 + CFG["pw"] * Y), reduction="sum") / W.sum()
         p = torch.sigmoid(lo) * W
         loss = bce + 1 - (2 * (p * Y).sum() + 1) / (p.sum() + (Y * W).sum() + 1)
@@ -326,11 +336,11 @@ def prob(net, rgb, inp, ins=None, tta=None):
             for c in starts:
                 if lot[r:r + t, c:c + t].all():
                     continue
-                x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), inp[r:r + t, c:c + t])[None])
+                x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), inp[r:r + t, c:c + t])[None]).to(DEV())
                 p = torch.sigmoid(net(x))
                 for d in ((2,), (3,), (2, 3)) if tta else ():
                     p += torch.sigmoid(net(x.flip(d))).flip(d)
-                P[r:r + t, c:c + t] += p[0, 0].numpy() / (4 if tta else 1) * win; C[r:r + t, c:c + t] += win
+                P[r:r + t, c:c + t] += p[0, 0].cpu().numpy() / (4 if tta else 1) * win; C[r:r + t, c:c + t] += win
     P /= np.maximum(C, 1e-6)
     P[ndimage.distance_transform_edt(lot > 0) * CELL > 0.5] = 0
     if inp.shape[-1] > 2:
@@ -479,9 +489,10 @@ def run(a):
     else:
         import shutil
         shutil.copy(init, f"{out}/model.pt")
-    net = model(False); load(net, f"{out}/model.pt"); net.eval()
+    net = model(False); load(net, f"{out}/model.pt"); net = net.to(DEV()).eval()
     ev = {"tta": evaluate(net, out, 1 - CFG["tta"])} if CFG.get("eval_tta") else {}
-    res = {"cfg": CFG, "train": info, **evaluate(net, out, CFG["tta"]), "eval": ev, "minutes": round((time.time() - t0) / 60)}
+    res = {"cfg": CFG, "train": info, **evaluate(net, out, CFG["tta"]), "eval": ev, "minutes": round((time.time() - t0) / 60),
+           "steps_per_min": float(os.environ.get("KERB_STEPS_PER_MIN") or 0), "device": DEV()}
     json.dump(res, open(res_path, "w"), indent=1)
     print("RESULT", json.dumps({k: res[k] for k in ("thresh", "val_f1", "score", "scenario_score", "site_share")}))
 
