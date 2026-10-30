@@ -23,5 +23,19 @@
    "minutes": 300
   },
   "kill": "within noise: model is at capacity"
+ },
+ {
+  "name": "dense-scene boxes",
+  "why": "method item 5: Parramatta CBD-like scenes (shadow, medians, ramps); data change, own round with a control",
+  "cfg": {},
+  "kill": "Parramatta CBD found does not rise",
+  "todo": "needs boxes added to boxes.json and a data rerun before it can run"
+ },
+ {
+  "name": "add Victoria boxes (Vicmap aerial)",
+  "why": "Jacky 30 Oct: more training data if NSW is not enough; data change, own round with a control",
+  "cfg": {},
+  "kill": "held-out NSW boxes do not move",
+  "todo": "check the Vicmap aerial licence allows training and deriving lines first; pick Vic councils with kerb data busiest first from tools/priority/TOP.md; needs a Vic photo fetcher (GDA2020 MGA 55, AERIAL_VG2020)"
  }
 ]

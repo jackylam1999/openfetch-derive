@@ -1,0 +1,401 @@
+{
+ "pw1": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw2": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw3": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw4": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw5": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw6": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw7": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "pw8": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "nb9": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "nb10": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "carlingford": {
+  "council": "parra",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "epping": {
+  "council": "parra",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "cb1": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 448,
+  "kerb_dates": [
+   "2021-03-05",
+   "2021-10-26",
+   "2021-11-12"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb2": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 405,
+  "kerb_dates": [
+   "2021-06-16",
+   "2021-10-26",
+   "2021-11-12"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb3": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 364,
+  "kerb_dates": [
+   "2021-03-05",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb4": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 350,
+  "kerb_dates": [
+   "2021-04-12",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb5": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 290,
+  "kerb_dates": [
+   "2021-04-30",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb6": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 237,
+  "kerb_dates": [
+   "2021-03-19",
+   "2021-10-26",
+   "2021-11-12"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb7": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 435,
+  "kerb_dates": [
+   "2021-03-24",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "cb8": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 249,
+  "kerb_dates": [
+   "2021-03-09",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "yagoona": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 409,
+  "kerb_dates": [
+   "2021-09-28",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "roselands": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 322,
+  "kerb_dates": [
+   "2021-03-02",
+   "2021-10-26",
+   "2021-11-12"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "bankstown": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 219,
+  "kerb_dates": [
+   "2021-06-23",
+   "2021-10-26",
+   "2021-11-12"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "nparramatta": {
+  "council": "parra",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "rydalmere": {
+  "council": "parra",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "wo1": {
+  "council": "wo",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 205,
+  "kerb_dates": [
+   "2022-09-14",
+   "2022-09-14",
+   "2022-09-14"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "wo2": {
+  "council": "wo",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 272,
+  "kerb_dates": [
+   "2022-09-14",
+   "2022-09-14",
+   "2022-09-14"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "wo3": {
+  "council": "wo",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 287,
+  "kerb_dates": [
+   "2022-09-14",
+   "2022-09-14",
+   "2022-09-14"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "milperra": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 286,
+  "kerb_dates": [
+   "2021-06-07",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "villawood": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 198,
+  "kerb_dates": [
+   "2021-07-05",
+   "2021-10-26",
+   "2021-11-11"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "nbcheck": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "cbcheck": {
+  "council": "cb",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 264,
+  "kerb_dates": [
+   "2021-06-04",
+   "2021-10-26",
+   "2021-11-12"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ },
+ "wocheck": {
+  "council": "wo",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 128,
+  "kerb_dates": [
+   "2022-09-14",
+   "2022-09-14",
+   "2024-06-14"
+  ],
+  "edited_2y_after_photo": 0.008,
+  "flag": "ok"
+ },
+ "olympicpark": {
+  "council": "parra",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "monavale": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "newport": {
+  "council": "nb",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "parramatta": {
+  "council": "parra",
+  "photo": [
+   "2022-02-16"
+  ],
+  "flag": "unknown (council publishes no dates)"
+ },
+ "paddington": {
+  "council": "wo",
+  "photo": [
+   "2021-01-22"
+  ],
+  "kerbs": 754,
+  "kerb_dates": [
+   "2022-09-14",
+   "2022-09-14",
+   "2022-09-14"
+  ],
+  "edited_2y_after_photo": 0.0,
+  "flag": "ok"
+ }
+}
