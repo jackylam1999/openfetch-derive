@@ -20,7 +20,7 @@ START = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 
          "focus": ""}
 FIRST = [("ImageNet start", START), ("ImageNet start + unbroken-line loss", {**START, "skel": 1.0}),
          ("ImageNet start + unbroken-line loss, bigger view", {**START, "skel": 1.0, "chip": 256, "batch": 7})]
-TUNE = {"minutes": 100, "lr": 3e-4, "mine": 0.4}
+TUNE = {"minutes": 150, "lr": 3e-4, "mine": 0.4}
 HOLD = ("monavale", "newport", "parramatta")
 CHECK = ("nbcheck", "cbcheck", "wocheck")
 

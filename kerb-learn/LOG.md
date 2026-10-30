@@ -55,3 +55,4 @@ _Round 4 restarted 30 Oct ~10:50Z with two changes from Jacky's review: road cen
 - learn from misses (under trees): found by cause: under trees 74% (was 73%) of 15.5 km; in shadow 67% (was 66%) of 27.5 km; cars or clutter 82% (was 82%) of 12.2 km; faint kerb 53% (was 52%) of 3.8 km; clear kerb 84% (was 84%) of 55.3 km. Extra lines 36.3 km (was 32.6 km). Whole kerb lines found (held-out) 55%.
 
 **Kept: add road and water map context (check F1 0.773, was 0.749). Its biggest misses on the training boxes: in shadow 14.6 km, clear kerb 12.7 km, under trees 12.5 km; the next round trains on those.**
+\n_30 Oct 14:25Z: 8 more training areas (Campsie, Lakemba, Punchbowl, Revesby, Padstow, Woollahra, Dee Why, Brookvale; busiest first, same three councils) and 150 min training per version from round 5._
