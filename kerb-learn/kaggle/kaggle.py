@@ -3,7 +3,7 @@
 the environment; the key is never printed or written to a file. Code is pulled from GitHub at the given commit.
 
 Usage (from the repo root):
-  python3 kerb-learn/kaggle/kaggle.py data <commit>     (CPU notebook openfetch-kerb-data: builds the photo and kerb cache once)
+  python3 kerb-learn/kaggle/kaggle.py data <commit> [com]  (CPU notebook openfetch-kerb-data[-com]: builds the photo and kerb cache once)
   python3 kerb-learn/kaggle/kaggle.py round <commit>    (GPU notebook openfetch-kerb-train: the variants kerbloop.py plan names)
   python3 kerb-learn/kaggle/kaggle.py status [data|train]
   python3 kerb-learn/kaggle/kaggle.py record            (downloads the round, kerbloop.py record, new best model to the dataset)
@@ -32,8 +32,9 @@ def push(slug, script, gpu, sources):
 
 
 def data(a):
-    s = open(f"{HERE}/data_kernel.py").read().replace("__REF__", a[0])
-    push("openfetch-kerb-data", s, False, {"dataset_sources": [], "kernel_sources": []})
+    only = a[1] if len(a) > 1 else ""  # e.g. com: a separate cache notebook for those councils
+    s = open(f"{HERE}/data_kernel.py").read().replace("__REF__", a[0]).replace("__ONLY__", only)
+    push("openfetch-kerb-data" + (f"-{only.replace(',', '-')}" if only else ""), s, False, {"dataset_sources": [], "kernel_sources": []})
 
 
 def round_(a):
@@ -43,7 +44,7 @@ def round_(a):
     s = (open(f"{HERE}/train_kernel.py").read().replace("__REF__", a[0]).replace("__ROUND__", str(st["round"]))
          .replace("__VARIANTS__", json.dumps(p["variants"])))
     push("openfetch-kerb-train", s, True, {"dataset_sources": [f"{USER}/openfetch-kerb-best"],
-                                            "kernel_sources": [f"{USER}/openfetch-kerb-data"]})
+                                            "kernel_sources": [f"{USER}/openfetch-kerb-data", f"{USER}/openfetch-kerb-data-com"]})
 
 
 def status(a):

@@ -24,6 +24,7 @@ import numpy as np
 from scipy import ndimage
 import kerbphoto as kp
 import kerbtidy
+import kerbvic
 
 _trace = kp.vectorise
 kp.vectorise = lambda mask, tr: [l for l in kerbtidy.tidy(_trace(mask, tr)) if l.length >= kp.MIN_LEN]
@@ -94,7 +95,7 @@ def data(a):
         if not os.path.exists(raw) and os.path.exists(jpg):
             np.save(raw, np.asarray(Image.open(jpg).convert("RGB")))
         if not os.path.exists(f"{out}/{nm}_meta.json"):
-            kp.fetch(nm, co, x, y, out)
+            (kerbvic.fetch if co in kerbvic.LGA_NAME else kp.fetch)(nm, co, x, y, out)
         if not os.path.exists(jpg):
             Image.fromarray(np.load(raw)).save(jpg, quality=95)
         if not os.path.exists(f"{out}/{nm}_align.json"):
@@ -104,14 +105,15 @@ def data(a):
             fs = [f for f in kp.query(LGA, b, fields="OBJECTID,lganame") if f["properties"]["lganame"] == BOXES["lga"][co]]
             json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_lga.geojson", "w"))
         rp = f"{out}/{nm}_roads.geojson"
-        if not os.path.exists(f"{out}/{nm}_water.geojson") or "functionhierarchy" not in open(rp).read(4000):
+        if co not in kerbvic.LGA_NAME and not os.path.exists(f"{out}/{nm}_water.geojson") or "functionhierarchy" not in open(rp).read(4000):
             m = json.load(open(f"{out}/{nm}_meta.json")); b = (m["x0"], m["y0"], m["x0"] + m["w"], m["y0"] + m["w"])
             for k, url in CONTEXT.items():
                 fs = kp.query(url, b, fields="OBJECTID,functionhierarchy" if k == "roads" else "OBJECTID")
                 json.dump({"type": "FeatureCollection", "features": fs}, open(f"{out}/{nm}_{k}.geojson", "w"))
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(6) as ex:
-        list(ex.map(one, TRAIN + VAL + HOLD))
+        only = os.environ.get("KERB_COUNCILS")  # e.g. "com": fetch only these councils' boxes
+        list(ex.map(one, [t for t in TRAIN + VAL + HOLD if not only or t[1] in only.split(",")]))
 
 
 def lot_side(lots, l):

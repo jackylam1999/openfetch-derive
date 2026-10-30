@@ -1,12 +1,5 @@
 [
  {
-  "name": "add Victoria and dense-scene boxes",
-  "why": "Jacky 30 Oct: train NSW and Vic together; Melbourne CBD and inner suburbs give the dense scenes NSW lacks (method item 5); data change, own round with a control",
-  "cfg": {},
-  "kill": "Parramatta CBD and the NSW held-out boxes do not move",
-  "todo": "BLOCKED 30 Oct: Vicmap Basemaps aerial is a paid subscription licence (Data Access Licence 6.3: no commercialising of any product or service derived from it; derived works count as Enhancements). Needs written permission from Vicmap (vicmap@transport.vic.gov.au) or a licence first. Then a Vic photo fetcher (VicGrid 2020 WMS, warp to MGA 55) and Vic council kerbs busiest first."
- },
- {
   "name": "flip-average at prediction",
   "why": "inference only, cheap, may sharpen offset and precision",
   "cfg": {

@@ -15,7 +15,7 @@ of the control, or MAX_ROUNDS.
 import sys, os, json, glob
 
 TARGET, MAX_ROUNDS, PLATEAU = 0.85, 10, 2
-HOLD = ("monavale", "newport", "parramatta", "paddington")
+HOLD = ("monavale", "newport", "parramatta", "paddington", "kensington")
 QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../kerb-learn/queue.json")
 
 

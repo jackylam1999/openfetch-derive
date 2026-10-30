@@ -1,12 +1,13 @@
 # Kaggle CPU notebook: fetch every box in kerb-learn/boxes.json (photo as JPEG, council kerbs, lots, LGA, roads, water) into
 # /kaggle/working/kp. Its output is the data cache the GPU notebook mounts. Pushed by kerb-learn/kaggle/kaggle.py data.
 import subprocess, glob, os
-REF = "__REF__"
+REF, ONLY = "__REF__", "__ONLY__"  # ONLY: comma list of councils, "" = all
 subprocess.run(f"git clone -q https://github.com/jackylam1999/openfetch-derive /kaggle/temp/r && cd /kaggle/temp/r && git checkout -q {REF}",
                shell=True, check=True)
 os.makedirs("/kaggle/working/kp", exist_ok=True)
 for i in range(4):  # the photo server sometimes answers 500 for a while; data() skips what is already fetched
-    r = subprocess.run("cd /kaggle/temp/r/openfetch/tools/derive && python3 kerblearn.py data /kaggle/working/kp", shell=True)
+    r = subprocess.run("cd /kaggle/temp/r/openfetch/tools/derive && python3 kerblearn.py data /kaggle/working/kp", shell=True,
+                       env={**os.environ, "KERB_COUNCILS": ONLY})
     if r.returncode == 0:
         break
     subprocess.run("sleep 120", shell=True)

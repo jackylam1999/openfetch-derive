@@ -1,16 +1,18 @@
 {
- "_about": "Kerb model boxes (kerbs-method.md R3): 1 km, lower-left corner MGA56 (EPSG 7856). role train / check (picks threshold) / hold (never trained on). gutter = metres each council's kerb lines are moved toward the lots (R4, measured 30 Oct); align = photo edge fit per box.",
+ "_about": "Kerb model boxes (kerbs-method.md R3): 1 km, lower-left corner MGA56 (EPSG 7856). role train / check (picks threshold) / hold (never trained on). gutter = metres each council's kerb lines are moved toward the lots (R4, measured 30 Oct); align = photo edge fit per box. Victorian boxes (council com) are in MGA55 (EPSG 7855), fetched by kerbvic.py.",
  "lga": {
   "nb": "NORTHERN BEACHES",
   "cb": "CANTERBURY-BANKSTOWN",
   "wo": "WOOLLAHRA",
-  "parra": "CITY OF PARRAMATTA"
+  "parra": "CITY OF PARRAMATTA",
+  "com": "MELBOURNE"
  },
  "gutter": {
   "nb": 0.0,
   "cb": 0.0,
   "wo": 0.0,
-  "parra": 0.0
+  "parra": 0.0,
+  "com": 0.0
  },
  "scenarios": {
   "dense": "dense centre: shadow, medians, multi-lane",
@@ -344,6 +346,60 @@
    "role": "hold",
    "scenario": "terraces",
    "note": "rank 160, 76% inside Woollahra (scored inside the council only)"
+  },
+  {
+   "name": "southbank",
+   "council": "com",
+   "x": 320100,
+   "y": 5811100,
+   "role": "train",
+   "scenario": "dense",
+   "note": "Southbank, Vic rank 1"
+  },
+  {
+   "name": "carlton",
+   "council": "com",
+   "x": 320500,
+   "y": 5813900,
+   "role": "train",
+   "scenario": "dense",
+   "note": "Carlton, Vic rank 2"
+  },
+  {
+   "name": "docklands",
+   "council": "com",
+   "x": 318500,
+   "y": 5812100,
+   "role": "train",
+   "scenario": "apartments",
+   "note": "Docklands, Vic rank 3"
+  },
+  {
+   "name": "northmelb",
+   "council": "com",
+   "x": 318600,
+   "y": 5813900,
+   "role": "train",
+   "scenario": "terraces",
+   "note": "North Melbourne, Vic rank 4"
+  },
+  {
+   "name": "melbcbd",
+   "council": "com",
+   "x": 320200,
+   "y": 5812400,
+   "role": "check",
+   "scenario": "dense",
+   "note": "Melbourne CBD Hoddle grid, Vic rank 5"
+  },
+  {
+   "name": "kensington",
+   "council": "com",
+   "x": 317100,
+   "y": 5814500,
+   "role": "hold",
+   "scenario": "terraces",
+   "note": "Kensington, Vic rank 11"
   }
  ]
 }
