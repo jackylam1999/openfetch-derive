@@ -48,5 +48,15 @@
    "batch": 6
   },
   "kill": "within noise of the control"
+ },
+ {
+  "name": "learn from misses (all misses, no cause)",
+  "why": "Jacky 31 Oct: the model should learn from its mistakes. v1 mined misses sorted by a photo-guessed cause (9 tries, no gain); this version feeds back every missed kerb and extra line on the training boxes, unsorted, 30% of chips",
+  "cfg": {
+   "mine": 0.3,
+   "focus": ""
+  },
+  "kill": "within noise of the control",
+  "todo": "code: run() passes mine=None; predict the best model on the training boxes (analyse keep=True) to write mine.npz, then pass it to train()"
  }
 ]
