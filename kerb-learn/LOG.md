@@ -64,3 +64,20 @@ Control: 0.746 (noise +-0.006). Changes: trace at 0.1 m 0.746 (within noise).
 Learnt: most movement in scenario 'none'; site share 27%, worst held-out F1 0.707.
 Next: second scale input (method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)).
 ```
+
+## Round 5
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.744 | 0.696 | 28% | 0.766 | 0.910 | 0.756 | 0.652 | 0.637 |
+| resnet50 encoder | 0.743 | 0.714 | 26% | 0.770 | 0.909 | 0.767 | 0.623 | 0.647 |
+| second scale input | 0.746 | 0.699 | 26% | 0.771 | 0.911 | 0.756 | 0.646 | 0.645 |
+
+Held-out (found/precise/median offset): monavale 89%/74%/0.27 m; newport 84%/69%/0.34 m; parramatta 70%/72%/0.38 m; paddington 86%/86%/0.29 m; kensington 79%/62%/0.15 m
+
+```
+Round 5. Question: does resnet50 encoder raise the scenario score?; does second scale input raise the scenario score?
+Control: 0.744 (noise +-0.006). Changes: resnet50 encoder 0.743 (within noise); second scale input 0.746 (within noise).
+Learnt: most movement in scenario 'none'; site share 28%, worst held-out F1 0.696.
+Next: queue empty, add the next change to kerb-learn/queue.json.
+```
