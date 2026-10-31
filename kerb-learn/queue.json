@@ -83,5 +83,13 @@
    "batch": 6
   },
   "kill": "within the 0.006 noise bar of the control"
+ },
+ {
+  "name": "more apartment and dense training areas",
+  "why": "plateau since round 1 on model changes; apartments 0.65 and dense 0.65 are the weakest scenarios and had 2 and 4 training boxes. Adds 4 boxes busiest first from TOP.md: Wentworth Point (NSW 28), Melrose Park (Ermington, NSW 35), South Wharf (Vic 22), West Melbourne (Vic 94); none overlaps a check or held-out box",
+  "cfg": {
+   "more": 1
+  },
+  "kill": "apartments and dense do not rise beyond noise"
  }
 ]

@@ -14,7 +14,7 @@ os.environ.setdefault("KAGGLE_API_TOKEN", os.environ.get("KAGGLE_KEY", ""))
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.join(HERE, "../.."); USER = "jackylam1999"
 STATE, LOG = f"{ROOT}/kerb-learn/state.json", f"{ROOT}/kerb-learn/LOG.md"
 LOOP = f"{ROOT}/openfetch/tools/derive/kerbloop.py"
-CACHES = ("data", "data-com", "data-villawood")  # NSW, Melbourne, and the box the first NSW cache missed
+CACHES = ("data", "data-com", "data-villawood", "data-new")  # NSW, Melbourne, and the box the first NSW cache missed
 WORK = os.environ.get("KERB_KAGGLE_WORK", "/tmp/kerb-kaggle")
 
 
