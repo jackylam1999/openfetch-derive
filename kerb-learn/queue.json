@@ -119,5 +119,14 @@
    "batch": 4
   },
   "kill": "dense does not rise beyond noise"
+ },
+ {
+  "name": "fill hidden kerb gaps along the road",
+  "why": "Jacky 31 Oct 23:35Z (road centreline): kerbs run in pairs at a steady offset from the centreline; where both ends of a gap are found (under trees, cars), join them along the path parallel to the centreline. Post-processing only, no retraining",
+  "cfg": {
+   "gapfill": 1
+  },
+  "kill": "found under trees / cars does not rise, or precise drops beyond noise",
+  "todo": "code: after tracing, for each gap under 25 m between two traced lines on the same side of one centreline at matching offsets (within 0.5 m), add the offset-centreline piece"
  }
 ]
