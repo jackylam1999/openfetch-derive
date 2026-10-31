@@ -233,7 +233,7 @@ def model(pretrained=True):
                 c1.weight.zero_(); c1.weight[:, :3] = e.conv1.weight
             s.stem = nn.Sequential(c1, e.bn1, e.relu)
             s.enc = nn.ModuleList([nn.Sequential(e.maxpool, e.layer1), e.layer2, e.layer3, e.layer4])
-            ch = [64, 64, 128, 256, 512]
+            ch = [64, 64, 128, 256, 512] if CFG["encoder"] in ("resnet18", "resnet34") else [64, 256, 512, 1024, 2048]
             s.full = blk(NIN(), 16)
             s.up = nn.ModuleList([blk(ch[4] + ch[3], 256), blk(256 + ch[2], 128), blk(128 + ch[1], 64), blk(64 + ch[0], 32),
                                   blk(32 + 16, 16)])
@@ -270,7 +270,7 @@ def wide(rgb, r, c, half, k=3):
 
 
 def norm(w):
-    return np.ascontiguousarray(((np.clip(w, 0, 255) / 255 - MEAN) / STD).transpose(2, 0, 1))
+    return np.ascontiguousarray(((np.clip(w, 0, 255) / 255 - MEAN) / STD).transpose(2, 0, 1), np.float32)
 
 
 def load(net, path):
@@ -359,7 +359,10 @@ def train(path, out, names, init, mine):
         print(f"{nm}: " + ", ".join(f"{len(v)} {k}" for k, v in data[-1][-1].items()), file=sys.stderr)
     net = model(pretrained=init is None)
     if init:
-        load(net, init)
+        try:
+            load(net, init)
+        except (RuntimeError, KeyError):  # another encoder (e.g. resnet50): the best model's layers do not fit, so start from ImageNet
+            print("init does not fit this encoder: starting from ImageNet", file=sys.stderr); net = model(pretrained=True)
     net = net.to(DEV())
     opt = torch.optim.AdamW(net.parameters(), CFG["lr"], weight_decay=1e-4)
     h = CFG["chip"] // 2; t0 = time.time(); step = 0; seen = {}

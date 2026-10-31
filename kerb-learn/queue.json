@@ -38,5 +38,15 @@
    "fine": 1
   },
   "kill": "median offset does not drop"
+ },
+ {
+  "name": "resnet50 encoder",
+  "why": "method item 7: train longer was within noise (round 2), so the ResNet-34 model is at capacity; starts from ImageNet, so 3x the steps",
+  "cfg": {
+   "encoder": "resnet50",
+   "minutes": 450,
+   "batch": 6
+  },
+  "kill": "within noise of the control"
  }
 ]

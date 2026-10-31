@@ -48,3 +48,19 @@ Control: 0.745 (noise +-0.006). Changes: train 150 min more 0.747 (within noise)
 Learnt: most movement in scenario 'none'; site share 26%, worst held-out F1 0.705.
 Next: second scale input (method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)).
 ```
+
+## Round 4
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.746 | 0.707 | 27% | 0.770 | 0.910 | 0.762 | 0.646 | 0.644 |
+| trace at 0.1 m | 0.746 | 0.699 | 28% | 0.765 | 0.910 | 0.759 | 0.655 | 0.643 |
+
+Held-out (found/precise/median offset): monavale 88%/75%/0.27 m; newport 82%/70%/0.34 m; parramatta 68%/76%/0.38 m; paddington 86%/88%/0.28 m; kensington 73%/69%/0.16 m
+
+```
+Round 4. Question: does trace at 0.1 m raise the scenario score?
+Control: 0.746 (noise +-0.006). Changes: trace at 0.1 m 0.746 (within noise).
+Learnt: most movement in scenario 'none'; site share 27%, worst held-out F1 0.707.
+Next: second scale input (method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)).
+```
