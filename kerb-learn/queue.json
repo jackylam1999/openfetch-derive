@@ -101,16 +101,7 @@
    "score_filtered": 1
   },
   "kill": "control and change on the filtered set within noise",
-  "todo": "code + data: LiDAR DEM per box (kerbs-lidar-pilot.md), height step across each 10 m piece, filtered scoring reference"
- },
- {
-  "name": "several aerial years",
-  "why": "Jacky 31 Oct 15:52Z: ~45% of misses are under cars or trees and cars move between surveys; average predictions over 2-3 NSW historic aerial dates of the same box",
-  "cfg": {
-   "years": 3
-  },
-  "kill": "under trees and cars-or-clutter found do not rise beyond noise",
-  "todo": "data: NSW historic imagery per box in the cache notebooks; code: prob() averaged over dates"
+  "todo": "code + data: LiDAR DEM per box (kerbs-lidar-pilot.md), height step across each 10 m piece, filtered scoring reference; Jacky ordering ELVIS LiDAR for 10 NSW boxes (docs/handoffs/kerbs-lidar-order.md in project files), 31 Oct 23:33Z"
  },
  {
   "name": "Satlas: train 300 min more",
