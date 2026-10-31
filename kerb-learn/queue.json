@@ -58,5 +58,16 @@
   },
   "kill": "within noise of the control",
   "todo": "code: run() passes mine=None; predict the best model on the training boxes (analyse keep=True) to write mine.npz, then pass it to train()"
+ },
+ {
+  "name": "Satlas Swin-v2-B aerial encoder",
+  "why": "Jacky 31 Oct 06:34Z (thread 'Find kerb tracing models on Hugging Face'): aerial-pretrained encoder torchgeo/swin_v2_b_naip_rgb_satlas (Apache 2.0, 1 m NAIP RGB); expect little gain since our photos are 7-10 cm",
+  "cfg": {
+   "encoder": "swin_v2_b_satlas",
+   "minutes": 450,
+   "batch": 6
+  },
+  "kill": "within the 0.006 noise bar of the control",
+  "todo": "code: model() needs a Swin encoder branch (torchvision swin_v2_b + Satlas weights via torchgeo, features at strides 4/8/16/32 with 128/256/512/1024 channels, NHWC to NCHW) and a stride-2 stem for the decoder; extra input channels (lots, roads, water) zero-initialised as for ResNet; Kaggle notebook must pip install torchgeo; probe 40 min first (R6), full run only if within noise of the control or better"
  }
 ]
