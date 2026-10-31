@@ -1,0 +1,441 @@
+{
+ "_about": "Kerb model boxes (kerbs-method.md R3): 1 km, lower-left corner MGA56 (EPSG 7856). role train / check (picks threshold) / hold (never trained on). gutter = metres each council's kerb lines are moved toward the lots (R4, measured 30 Oct); align = photo edge fit per box. Victorian boxes (council com) are in MGA55 (EPSG 7855), fetched by kerbvic.py. role train_new: extra training boxes a data round adds (CFG more=1), made role train once kept.",
+ "lga": {
+  "nb": "NORTHERN BEACHES",
+  "cb": "CANTERBURY-BANKSTOWN",
+  "wo": "WOOLLAHRA",
+  "parra": "CITY OF PARRAMATTA",
+  "com": "MELBOURNE"
+ },
+ "gutter": {
+  "nb": 0.0,
+  "cb": 0.0,
+  "wo": 0.0,
+  "parra": 0.0,
+  "com": 0.0
+ },
+ "scenarios": {
+  "dense": "dense centre: shadow, medians, multi-lane",
+  "apartments": "apartment precinct, new streets",
+  "grid": "flat suburban grid",
+  "hilly": "hilly, leafy, coastal",
+  "terraces": "dense terraces, narrow streets",
+  "industrial": "industrial, wide roads"
+ },
+ "boxes": [
+  {
+   "name": "pw1",
+   "council": "nb",
+   "x": 342000,
+   "y": 6268000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw2",
+   "council": "nb",
+   "x": 341000,
+   "y": 6269000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw3",
+   "council": "nb",
+   "x": 343000,
+   "y": 6276000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw4",
+   "council": "nb",
+   "x": 344000,
+   "y": 6277000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw5",
+   "council": "nb",
+   "x": 341000,
+   "y": 6272000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw6",
+   "council": "nb",
+   "x": 342000,
+   "y": 6271000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw7",
+   "council": "nb",
+   "x": 344000,
+   "y": 6276000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "pw8",
+   "council": "nb",
+   "x": 345000,
+   "y": 6277000,
+   "role": "train",
+   "scenario": "hilly"
+  },
+  {
+   "name": "nb9",
+   "council": "nb",
+   "x": 341000,
+   "y": 6264000,
+   "role": "train",
+   "scenario": "hilly",
+   "note": "Dee Why (rank 182)"
+  },
+  {
+   "name": "nb10",
+   "council": "nb",
+   "x": 339000,
+   "y": 6262000,
+   "role": "train",
+   "scenario": "hilly",
+   "note": "Brookvale"
+  },
+  {
+   "name": "carlingford",
+   "council": "parra",
+   "x": 318100,
+   "y": 6260900,
+   "role": "train",
+   "scenario": "hilly",
+   "note": "rank 29"
+  },
+  {
+   "name": "epping",
+   "council": "parra",
+   "x": 321400,
+   "y": 6260500,
+   "role": "train",
+   "scenario": "hilly",
+   "note": "rank 33"
+  },
+  {
+   "name": "cb1",
+   "council": "cb",
+   "x": 318000,
+   "y": 6245000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "Bankstown east"
+  },
+  {
+   "name": "cb2",
+   "council": "cb",
+   "x": 317000,
+   "y": 6246000,
+   "role": "train",
+   "scenario": "grid"
+  },
+  {
+   "name": "cb3",
+   "council": "cb",
+   "x": 326000,
+   "y": 6244000,
+   "role": "train",
+   "scenario": "grid"
+  },
+  {
+   "name": "cb4",
+   "council": "cb",
+   "x": 324000,
+   "y": 6245000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "Campsie"
+  },
+  {
+   "name": "cb5",
+   "council": "cb",
+   "x": 322000,
+   "y": 6245000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "Lakemba"
+  },
+  {
+   "name": "cb6",
+   "council": "cb",
+   "x": 320000,
+   "y": 6244000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "Punchbowl"
+  },
+  {
+   "name": "cb7",
+   "council": "cb",
+   "x": 316000,
+   "y": 6241000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "Revesby"
+  },
+  {
+   "name": "cb8",
+   "council": "cb",
+   "x": 318000,
+   "y": 6241000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "Padstow"
+  },
+  {
+   "name": "yagoona",
+   "council": "cb",
+   "x": 316000,
+   "y": 6246600,
+   "role": "train",
+   "scenario": "grid",
+   "note": "rank 76"
+  },
+  {
+   "name": "roselands",
+   "council": "cb",
+   "x": 322000,
+   "y": 6243000,
+   "role": "train",
+   "scenario": "grid",
+   "note": "rank 94"
+  },
+  {
+   "name": "bankstown",
+   "council": "cb",
+   "x": 317200,
+   "y": 6244000,
+   "role": "train",
+   "scenario": "dense",
+   "note": "Bankstown centre, rank 50"
+  },
+  {
+   "name": "nparramatta",
+   "council": "parra",
+   "x": 315100,
+   "y": 6257900,
+   "role": "train",
+   "scenario": "dense",
+   "note": "rank 73"
+  },
+  {
+   "name": "rydalmere",
+   "council": "parra",
+   "x": 318600,
+   "y": 6256400,
+   "role": "train",
+   "scenario": "apartments",
+   "note": "rank 59"
+  },
+  {
+   "name": "wo1",
+   "council": "wo",
+   "x": 338000,
+   "y": 6249000,
+   "role": "train",
+   "scenario": "terraces"
+  },
+  {
+   "name": "wo2",
+   "council": "wo",
+   "x": 337000,
+   "y": 6250000,
+   "role": "train",
+   "scenario": "terraces"
+  },
+  {
+   "name": "wo3",
+   "council": "wo",
+   "x": 337000,
+   "y": 6248000,
+   "role": "train",
+   "scenario": "terraces"
+  },
+  {
+   "name": "milperra",
+   "council": "cb",
+   "x": 313000,
+   "y": 6242300,
+   "role": "train",
+   "scenario": "industrial",
+   "note": "rank 150"
+  },
+  {
+   "name": "villawood",
+   "council": "cb",
+   "x": 313000,
+   "y": 6248000,
+   "role": "train",
+   "scenario": "industrial",
+   "note": "rank 217"
+  },
+  {
+   "name": "nbcheck",
+   "council": "nb",
+   "x": 342000,
+   "y": 6269000,
+   "role": "check",
+   "scenario": "hilly"
+  },
+  {
+   "name": "cbcheck",
+   "council": "cb",
+   "x": 320000,
+   "y": 6246000,
+   "role": "check",
+   "scenario": "grid"
+  },
+  {
+   "name": "wocheck",
+   "council": "wo",
+   "x": 339000,
+   "y": 6250000,
+   "role": "check",
+   "scenario": "terraces"
+  },
+  {
+   "name": "olympicpark",
+   "council": "parra",
+   "x": 320400,
+   "y": 6253800,
+   "role": "check",
+   "scenario": "apartments",
+   "note": "rank 213"
+  },
+  {
+   "name": "monavale",
+   "council": "nb",
+   "x": 342000,
+   "y": 6272000,
+   "role": "hold",
+   "scenario": "hilly"
+  },
+  {
+   "name": "newport",
+   "council": "nb",
+   "x": 343000,
+   "y": 6274000,
+   "role": "hold",
+   "scenario": "hilly"
+  },
+  {
+   "name": "parramatta",
+   "council": "parra",
+   "x": 315000,
+   "y": 6256000,
+   "role": "hold",
+   "scenario": "dense",
+   "note": "Parramatta CBD, rank 6"
+  },
+  {
+   "name": "paddington",
+   "council": "wo",
+   "x": 335700,
+   "y": 6248800,
+   "role": "hold",
+   "scenario": "terraces",
+   "note": "rank 160, 76% inside Woollahra (scored inside the council only)"
+  },
+  {
+   "name": "southbank",
+   "council": "com",
+   "x": 320100,
+   "y": 5811100,
+   "role": "train",
+   "scenario": "dense",
+   "note": "Southbank, Vic rank 1"
+  },
+  {
+   "name": "carlton",
+   "council": "com",
+   "x": 320500,
+   "y": 5813900,
+   "role": "train",
+   "scenario": "dense",
+   "note": "Carlton, Vic rank 2"
+  },
+  {
+   "name": "docklands",
+   "council": "com",
+   "x": 318500,
+   "y": 5812100,
+   "role": "train",
+   "scenario": "apartments",
+   "note": "Docklands, Vic rank 3"
+  },
+  {
+   "name": "northmelb",
+   "council": "com",
+   "x": 318600,
+   "y": 5813900,
+   "role": "train",
+   "scenario": "terraces",
+   "note": "North Melbourne, Vic rank 4"
+  },
+  {
+   "name": "melbcbd",
+   "council": "com",
+   "x": 320200,
+   "y": 5812400,
+   "role": "check",
+   "scenario": "dense",
+   "note": "Melbourne CBD Hoddle grid, Vic rank 5"
+  },
+  {
+   "name": "kensington",
+   "council": "com",
+   "x": 317100,
+   "y": 5814500,
+   "role": "hold",
+   "scenario": "terraces",
+   "note": "Kensington, Vic rank 11"
+  },
+  {
+   "name": "wentworthpt",
+   "council": "parra",
+   "x": 321500,
+   "y": 6254600,
+   "role": "train_new",
+   "scenario": "apartments",
+   "note": "Wentworth Point, rank 28 (data round, 31 Oct)"
+  },
+  {
+   "name": "melrose",
+   "council": "parra",
+   "x": 321100,
+   "y": 6256200,
+   "role": "train_new",
+   "scenario": "apartments",
+   "note": "Melrose Park / Ermington, rank 35"
+  },
+  {
+   "name": "southwharf",
+   "council": "com",
+   "x": 319100,
+   "y": 5811100,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "South Wharf, Vic rank 22"
+  },
+  {
+   "name": "westmelb",
+   "council": "com",
+   "x": 318200,
+   "y": 5813000,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "West Melbourne, Vic rank 94"
+  }
+ ]
+}

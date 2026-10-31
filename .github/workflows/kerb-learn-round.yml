@@ -1,0 +1,106 @@
+# One round of the learning kerb photo model (called by kerb-learn.yml). plan: kerbloop.py picks up to 5 variants and names the best
+# model so far; variant: each fine-tunes that model on its own free runner (kerblearn.py run) and uploads its model, its mistakes
+# on the training boxes and its scores; decide: keeps the variant only if it beats the best on the check boxes, writes what the round
+# learnt to kerb-learn/LOG.md + state.json on this branch and says continue or stop.
+name: kerb-learn-round
+on:
+  workflow_call:
+    inputs:
+      slot: {type: number, required: true}
+      prev: {type: number, required: true}
+    outputs:
+      verdict: {value: '${{ jobs.decide.outputs.verdict }}'}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      variants: ${{ steps.plan.outputs.variants }}
+      best_run: ${{ steps.plan.outputs.best_run }}
+      best_artifact: ${{ steps.plan.outputs.best_artifact }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ github.ref_name }}'}
+      - if: inputs.slot > 1
+        uses: actions/download-artifact@v4
+        with: {name: 'kerb-learn-state-${{ inputs.prev }}', path: kerb-learn}
+      - run: git checkout -- kerb-learn/queue.json kerb-learn/boxes.json
+      - id: plan
+        run: |
+          p=$(python3 openfetch/tools/derive/kerbloop.py plan kerb-learn/state.json)
+          echo "$p"
+          echo "variants=$(echo "$p" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["variants"]))')" >> "$GITHUB_OUTPUT"
+          echo "best_run=$(echo "$p" | python3 -c 'import json,sys; print(json.load(sys.stdin)["best_run"])')" >> "$GITHUB_OUTPUT"
+          echo "best_artifact=$(echo "$p" | python3 -c 'import json,sys; print(json.load(sys.stdin)["best_artifact"])')" >> "$GITHUB_OUTPUT"
+  variant:
+    needs: plan
+    if: needs.plan.outputs.variants != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        v: ${{ fromJSON(needs.plan.outputs.variants) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h / | tail -1
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/cache/restore@v4
+        with:
+          key: kerbdata-v4
+          fail-on-cache-miss: true
+          path: |
+            kp/*.jpg
+            kp/*.json
+            kp/*.geojson
+      - if: needs.plan.outputs.best_artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.plan.outputs.best_artifact }}
+          path: best
+          run-id: ${{ needs.plan.outputs.best_run }}
+          github-token: ${{ github.token }}
+      - run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install numpy scipy shapely scikit-image rasterio affine pillow matplotlib
+      - run: |
+          mkdir -p res
+          echo '{"name": "${{ matrix.v.name }}", "artifact": "learn-${{ github.run_id }}-${{ inputs.slot }}-${{ matrix.v.id }}", "run": "${{ github.run_id }}"}' > res/name.json
+          cd openfetch/tools/derive && python3 kerblearn.py run ../../../kp ../../../res/result.json ../../../best/model.pt 2> ../../../res/run.log
+        env:
+          KERB_CFG: ${{ matrix.v.cfg_json }}
+      - if: always()
+        run: |
+          tail -n 30 res/run.log || true
+          th=$(python3 -c 'import json; print(json.load(open("res/result.json"))["thresh"])' 2>/dev/null) && for n in monavale newport parramatta paddington nbcheck cbcheck wocheck olympicpark; do cp "kp/${n}_${th}.png" res/ || true; done
+          cp kp/model.pt kp/mine.npz res/ || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: 'learn-${{ github.run_id }}-${{ inputs.slot }}-${{ matrix.v.id }}', path: res, if-no-files-found: warn}
+  decide:
+    needs: [plan, variant]
+    if: always() && !cancelled() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      verdict: ${{ steps.rec.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ github.ref_name }}'}
+      - if: inputs.slot > 1
+        uses: actions/download-artifact@v4
+        with: {name: 'kerb-learn-state-${{ inputs.prev }}', path: kerb-learn}
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'learn-${{ github.run_id }}-${{ inputs.slot }}-*', path: results}
+      - id: rec
+        run: |
+          mkdir -p kerb-learn
+          v=$(python3 openfetch/tools/derive/kerbloop.py record kerb-learn/state.json kerb-learn/LOG.md results)
+          echo "$v"; echo "verdict=$v" >> "$GITHUB_OUTPUT"
+          tail -n 12 kerb-learn/LOG.md
+      - uses: actions/upload-artifact@v4
+        with: {name: 'kerb-learn-state-${{ inputs.slot }}', path: kerb-learn}
+      - run: |
+          git config user.name "kerb-learn" && git config user.email "actions@users.noreply.github.com"
+          cp -r kerb-learn /tmp/kl
+          git fetch -q origin "$GITHUB_REF_NAME" && git checkout -q -f -B learn "origin/$GITHUB_REF_NAME"
+          mkdir -p kerb-learn && cp /tmp/kl/* kerb-learn/ && git add kerb-learn && git commit -q -m "kerb-learn: round $(python3 -c 'import json; print(json.load(open("kerb-learn/state.json"))["round"])') (${{ steps.rec.outputs.verdict }})" && git push -q origin "learn:$GITHUB_REF_NAME" || echo "log push failed (state is in the kerb-learn-state artifact)"

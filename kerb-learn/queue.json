@@ -1,0 +1,115 @@
+[
+ {
+  "name": "flip-average at prediction",
+  "why": "inference only; trained exactly like the control (same seed), so only the flips differ",
+  "cfg": {
+   "tta": 1
+  },
+  "kill": "F1 below control"
+ },
+ {
+  "name": "scale and colour jitter",
+  "why": "held-out gap and shadow",
+  "cfg": {
+   "jitter": 1
+  },
+  "kill": "Parramatta CBD and wocheck do not move"
+ },
+ {
+  "name": "train 150 min more",
+  "why": "under-trained or at capacity?",
+  "cfg": {
+   "minutes": 300
+  },
+  "kill": "within noise: model is at capacity"
+ },
+ {
+  "name": "second scale input",
+  "why": "method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)",
+  "cfg": {
+   "scale2": 1
+  },
+  "kill": "dense and shadow found do not rise"
+ },
+ {
+  "name": "trace at 0.1 m",
+  "why": "round 2: signed offset about 0 on every council (no gutter shift to fix), yet median distance 0.27-0.37 m; lines are traced on 0.2 m blocks",
+  "cfg": {
+   "fine": 1
+  },
+  "kill": "median offset does not drop"
+ },
+ {
+  "name": "resnet50 encoder",
+  "why": "method item 7: train longer was within noise (round 2), so the ResNet-34 model is at capacity; starts from ImageNet, so 3x the steps",
+  "cfg": {
+   "encoder": "resnet50",
+   "minutes": 450,
+   "batch": 6
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "learn from misses (all misses, no cause)",
+  "why": "Jacky 31 Oct: the model should learn from its mistakes. v1 mined misses sorted by a photo-guessed cause (9 tries, no gain); this version feeds back every missed kerb and extra line on the training boxes, unsorted, 30% of chips",
+  "cfg": {
+   "mine": 0.3,
+   "focus": ""
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "clDice line-continuity loss",
+  "why": "Jacky 31 Oct 'do what is best': a soft-skeleton clDice term (Shit et al. CVPR 2021, used for road extraction) on top of the current skeleton-recall term, so kerbs are traced as whole lines, not dashes; targets found and whole lines",
+  "cfg": {
+   "cldice": 0.5
+  },
+  "kill": "whole lines and found do not rise beyond noise"
+ },
+ {
+  "name": "drop council lines with no photo edge",
+  "why": "Jacky 31 Oct: council kerb segments that do not sit on a visible kerb edge (old, moved or wrongly drawn) teach and score the model wrong; targets precise and offset; training labels only (council pieces of 10 m with under half the box median photo edge), scoring reference unchanged so it stays comparable with the control",
+  "cfg": {
+   "labelcheck": 1
+  },
+  "kill": "precise and offset do not move beyond noise"
+ },
+ {
+  "name": "Satlas Swin-v2-B aerial encoder",
+  "why": "Jacky 31 Oct 06:34Z (thread 'Find kerb tracing models on Hugging Face'): aerial-pretrained encoder torchgeo/swin_v2_b_naip_rgb_satlas (Apache 2.0, 1 m NAIP RGB); expect little gain since our photos are 7-10 cm",
+  "cfg": {
+   "encoder": "swin_v2_b_satlas",
+   "minutes": 450,
+   "batch": 6
+  },
+  "kill": "within the 0.006 noise bar of the control"
+ },
+ {
+  "name": "more apartment and dense training areas",
+  "why": "plateau since round 1 on model changes; apartments 0.65 and dense 0.65 are the weakest scenarios and had 2 and 4 training boxes. Adds 4 boxes busiest first from TOP.md: Wentworth Point (NSW 28), Melrose Park (Ermington, NSW 35), South Wharf (Vic 22), West Melbourne (Vic 94); none overlaps a check or held-out box",
+  "cfg": {
+   "more": 1
+  },
+  "kill": "apartments and dense do not rise beyond noise"
+ },
+ {
+  "name": "two-judge label cleaning (LiDAR step + photo edge)",
+  "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Keep a council kerb piece only where a LiDAR height step (~15 cm) and a photo edge agree; train and score on agreed lines, and score the control on the same filtered set",
+  "cfg": {
+   "labelcheck": 1,
+   "lidarcheck": 0.15,
+   "score_filtered": 1
+  },
+  "kill": "control and change on the filtered set within noise",
+  "todo": "code + data: LiDAR DEM per box (kerbs-lidar-pilot.md), height step across each 10 m piece, filtered scoring reference"
+ },
+ {
+  "name": "several aerial years",
+  "why": "Jacky 31 Oct 15:52Z: ~45% of misses are under cars or trees and cars move between surveys; average predictions over 2-3 NSW historic aerial dates of the same box",
+  "cfg": {
+   "years": 3
+  },
+  "kill": "under trees and cars-or-clutter found do not rise beyond noise",
+  "todo": "data: NSW historic imagery per box in the cache notebooks; code: prob() averaged over dates"
+ }
+]
