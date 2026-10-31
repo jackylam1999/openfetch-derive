@@ -692,8 +692,8 @@
   "resnet50 encoder",
   "second scale input"
  ],
- "stale": 2,
- "status": "stopped: plateau (2 rounds within noise of the control)",
+ "stale": 0,
+ "status": "running",
  "min_gain": 0.006,
  "takeaways": [
   "Round 3. Question: does train 150 min more raise the scenario score?\nControl: 0.745 (noise +-0.006). Changes: train 150 min more 0.747 (within noise).\nLearnt: most movement in scenario 'none'; site share 26%, worst held-out F1 0.705.\nNext: second scale input (method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)).",

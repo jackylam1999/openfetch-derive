@@ -56,8 +56,7 @@
    "mine": 0.3,
    "focus": ""
   },
-  "kill": "within noise of the control",
-  "todo": "code: run() passes mine=None; predict the best model on the training boxes (analyse keep=True) to write mine.npz, then pass it to train()"
+  "kill": "within noise of the control"
  },
  {
   "name": "clDice line-continuity loss",
@@ -65,8 +64,7 @@
   "cfg": {
    "cldice": 0.5
   },
-  "kill": "whole lines and found do not rise beyond noise",
-  "todo": "code: soft-skeleton (iterated min/max pooling) of prediction and label, clDice = 2*Tprec*Tsens/(Tprec+Tsens) added to the loss with weight CFG['cldice']"
+  "kill": "whole lines and found do not rise beyond noise"
  },
  {
   "name": "drop council lines with no photo edge",

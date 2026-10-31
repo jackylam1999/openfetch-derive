@@ -342,19 +342,92 @@ def pools(nm, lab, road, mine):
 
 def pick(rng, data):
     u, mi = rng.random(), CFG["mine"]
-    kind = ("focus" if rng.random() < 0.6 else "mistakes") if u < mi else ("kerb" if u < mi + (1 - mi) * 0.6 else "street")
+    kind = ("focus" if CFG["focus"] and rng.random() < 0.6 else "mistakes") if u < mi else ("kerb" if u < mi + (1 - mi) * 0.6 else "street")
     ok = [d for d in data if len(d[-1].get(kind, ()))]
     if not ok:
         kind, ok = "kerb", [d for d in data if len(d[-1]["kerb"])]
     return ok[rng.integers(len(ok))], kind
 
 
+def _mine(job):
+    out, nm, pp, tr, th = job
+    m, tr, rgb, lot, lab, road = labels(out, nm)
+    kp.vec(out, nm, np.load(pp), tr, th); os.remove(pp)
+    _, ms, fp = analyse(out, nm, lab, rgb, tr, lab.shape[0], keep=True)
+    os.remove(f"{out}/{nm}_derived.geojson")
+    return nm, ms, fp
+
+
+def mine(out, init, th):
+    """CFG["mine"] (queue: learn from all misses): the best model draws every training box at its threshold; each council kerb point
+    it missed and each extra line point becomes a place training chips are cut from (no sorting by cause, unlike v1)."""
+    import multiprocessing as mp
+    net = model(False); load(net, init); net = net.to(DEV()).eval(); res, jobs = {}, []
+    with mp.get_context("fork").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+        for nm, *_ in TRAIN:
+            m, tr, rgb, lot, lab, road = labels(out, nm)
+            P = prob(net, rgb, context(out, nm, lot), inside(out, nm, lab.shape[0], tr))
+            pp = f"{out}/_M_{nm}.npy"; np.save(pp, P); del P
+            jobs.append(pool.apply_async(_mine, ((out, nm, pp, tr, th),)))
+        for j in jobs:
+            nm, ms, fp = j.get(); res[f"{nm}_miss"], res[f"{nm}_fp"] = ms, fp
+            print(f"mine {nm}: {len(ms)} missed, {len(fp)} extra", file=sys.stderr, flush=True)
+    del net
+    return res
+
+
+def checked(out, nm, lab, rgb, tr):
+    """CFG["labelcheck"] (queue: drop council lines with no photo edge): council kerb pieces (10 m) whose photo edge strength (max
+    within 0.4 m of the line) is under CFG["labelcheck"] x 0.5 of the box median are not trained on (labels within 1.5 m set to 0).
+    Training only: the scoring reference is unchanged, so scores stay comparable with the control."""
+    def make():
+        import rasterio.features as rf
+        from shapely.geometry import shape
+        from shapely.ops import substring
+        g = ndimage.gaussian_filter(np.asarray(rgb, np.float32).mean(-1), 1.5)
+        G = ndimage.maximum_filter(np.hypot(ndimage.sobel(g, 0), ndimage.sobel(g, 1)), 9); del g
+        inv = ~tr; ps, sv = [], []
+        for f in json.load(open(f"{out}/{nm}_kerbs.geojson"))["features"]:
+            l = shape(f["geometry"])
+            for p in getattr(l, "geoms", [l]):
+                for a in np.arange(0, p.length, 10.0):
+                    q = substring(p, a, min(a + 10, p.length))
+                    if q.length < 2:
+                        continue
+                    xy = np.array([q.interpolate(t).coords[0] for t in np.arange(0, q.length, 0.5)])
+                    c, r = inv * (xy[:, 0], xy[:, 1]); ok = (r >= 0) & (c >= 0) & (r < G.shape[0] - 1) & (c < G.shape[1] - 1)
+                    if ok.sum() >= 3 and lab[r[ok].astype(int), c[ok].astype(int)].any():
+                        ps.append(q); sv.append(float(ndimage.map_coordinates(G, [r[ok], c[ok]], order=1).mean()))
+        del G
+        sv = np.array(sv); cut = np.median(sv) * 0.5 * CFG["labelcheck"] if len(sv) else 0
+        bad = [p.buffer(1.5) for p, v in zip(ps, sv) if v < cut]
+        drop = rf.rasterize(((b, 1) for b in bad), out_shape=lab.shape, transform=tr, dtype=np.uint8) if bad else np.zeros(lab.shape, np.uint8)
+        return [drop, np.array([len(bad), len(ps), sum(p.length for p, v in zip(ps, sv) if v < cut), sum(p.length for p in ps)])]
+    drop, st = cached(out, nm, "chk", make)
+    print(f"labelcheck {nm}: dropped {int(st[0])} of {int(st[1])} pieces, {st[2] / max(st[3], 1):.1%} of length", file=sys.stderr)
+    lab = lab.copy(); lab[drop > 0] = 0
+    return lab, round(float(st[2] / max(st[3], 1)), 4)
+
+
+def soft_skel(x, it=8):
+    """Soft skeleton by iterated min/max pooling (clDice, Shit et al. CVPR 2021)."""
+    import torch.nn.functional as F
+    ero = lambda t: -F.max_pool2d(-t, 3, 1, 1)
+    opn = lambda t: F.max_pool2d(ero(t), 3, 1, 1)
+    sk = F.relu(x - opn(x))
+    for _ in range(it):
+        x = ero(x); d = F.relu(x - opn(x)); sk = sk + F.relu(d - sk * d)
+    return sk
+
+
 def train(path, out, names, init, mine):
     import torch
     torch.set_num_threads(os.cpu_count())
-    seed = CFG["seed"] or int(time.time()); rng = np.random.default_rng(seed); torch.manual_seed(seed); data = []
+    seed = CFG["seed"] or int(time.time()); rng = np.random.default_rng(seed); torch.manual_seed(seed); data = []; dropped = {}
     for nm in names:
         m, tr, rgb, lot, lab, road = labels(out, nm)
+        if CFG.get("labelcheck"):
+            lab, sh = checked(out, nm, lab, rgb, tr); dropped[nm] = sh
         data.append((np.asarray(rgb), context(out, nm, lot), lab, pools(nm, lab, road, mine)))
         print(f"{nm}: " + ", ".join(f"{len(v)} {k}" for k, v in data[-1][-1].items()), file=sys.stderr)
     net = model(pretrained=init is None)
@@ -407,12 +480,16 @@ def train(path, out, names, init, mine):
         loss = bce + 1 - (2 * (p * Y).sum() + 1) / (p.sum() + (Y * W).sum() + 1)
         if CFG["skel"]:
             loss = loss + CFG["skel"] * (1 - ((p * S).sum() + 1) / (S.sum() + 1))
+        if CFG.get("cldice"):
+            sp, sy = soft_skel(p), soft_skel(Y * W)
+            tp, ts = ((sp * Y).sum() + 1) / (sp.sum() + 1), ((sy * p).sum() + 1) / (sy.sum() + 1)
+            loss = loss + CFG["cldice"] * (1 - 2 * tp * ts / (tp + ts))
         opt.zero_grad(); loss.backward(); opt.step()
         if step % 100 == 0:
             print(f"step {step} loss {loss.item():.3f} ({time.time() - t0:.0f} s)", file=sys.stderr, flush=True)
         step += 1
     torch.save(net.state_dict(), path)
-    return {"steps": step, "chips": seen}, {nm: d[:3] for nm, d in zip(names, data)}
+    return {"steps": step, "chips": seen, **({"dropped": dropped} if dropped else {})}, {nm: d[:3] for nm, d in zip(names, data)}
 
 
 def prob(net, rgb, inp, ins=None, tta=None):
@@ -611,7 +688,8 @@ def run(a):
         reference(out, nm)
     t0 = time.time(); info = {"steps": 0}
     if CFG["minutes"]:
-        info = train(f"{out}/model.pt", out, [t[0] for t in TRAIN], init, None)[0]
+        mn = mine(out, init, CFG.get("mine_th", 0.7)) if CFG["mine"] and init else None
+        info = train(f"{out}/model.pt", out, [t[0] for t in TRAIN], init, mn)[0]
     else:
         import shutil
         shutil.copy(init, f"{out}/model.pt")
