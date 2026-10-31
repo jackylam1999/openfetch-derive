@@ -48,7 +48,7 @@ TYPES = ("under trees", "in shadow", "cars or clutter", "faint kerb", "clear ker
 CFG = {"encoder": "resnet34", "minutes": 150, "chip": 192, "batch": 12, "lr": 1e-3, "pw": 4.0, "skel": 0.0, "mine": 0.0,
        "focus": "", "seed": 0, "tta": 0, "jitter": 0, **json.loads(os.environ.get("KERB_CFG") or "{}")}
 kp.CFG.update(CFG)
-kp.THRESHS = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8)  # round 0 picked 0.6, the old top end, so the range is widened
+kp.THRESHS = (0.4, 0.5, 0.6, 0.7, 0.8, 0.9)  # rounds 0 and 1 picked the top end (0.6, then 0.8), so the range is widened
 MEAN, STD = np.array([0.485, 0.456, 0.406], np.float32), np.array([0.229, 0.224, 0.225], np.float32)
 CELL, NEAR, POS, IGN, TOL = kp.CELL, kp.NEAR, 0.3, 0.6, 1.0
 
@@ -451,8 +451,9 @@ def scale(out, nm, on, tr):
     return np.asarray(C)[cKDTree(P).query(xy)[1]]
 
 
-def analyse(out, nm, lab, rgb, tr, n, keep=False):
-    """Found share per probable cause and road type, 250 m site tiles passing the bar, extra line length."""
+def analyse(out, nm, lab, rgb, tr, n, keep=False, lot=None):
+    """Found share per probable cause and road type, 250 m site tiles passing the bar, extra line length. With lot: the signed
+    offset (R4), median metres the drawn line sits toward the lots from the council line (+) or toward the road (-)."""
     import rasterio.features as rf
     from shapely.geometry import shape
     fs = json.load(open(f"{out}/{nm}_derived.geojson"))["features"]
@@ -477,6 +478,12 @@ def analyse(out, nm, lab, rgb, tr, n, keep=False):
                      for i in range(len(SCALES))}
     fp = np.argwhere((D > 0) & core & (lab == 4))[::5]
     res["extra_m"] = round(len(fp) * 5 * CELL)
+    if lot is not None and hit.any():
+        _, ind = ndimage.distance_transform_edt(D == 0, return_indices=True)
+        dl = ndimage.distance_transform_edt(lot == 0).astype(np.float32) * CELL
+        p = on[hit]; q2 = ind[:, p[:, 0], p[:, 1]]; del ind
+        sg = np.sign(dl[p[:, 0], p[:, 1]] - dl[q2[0], q2[1]]) * dD[p[:, 0], p[:, 1]]
+        res["signed_offset_m"] = round(float(np.median(sg)), 3)
     if keep:
         return res, np.column_stack([on[~hit], ty[~hit]]).astype(np.int32), fp.astype(np.int32)
     return res, None, None
@@ -520,7 +527,7 @@ def _final(job):
     out, nm, th, s = job
     m, tr, rgb, lot, lab, road = labels(out, nm)
     os.replace(f"{out}/{nm}_derived_{th}.geojson", f"{out}/{nm}_derived.geojson")
-    an = analyse(out, nm, lab, rgb, tr, lab.shape[0])[0]
+    an = analyse(out, nm, lab, rgb, tr, lab.shape[0], lot=lot)[0]
     os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
     return nm, {**s, **an, "whole_lines": whole(out, nm, th), "f1": round(f1(s), 3), "scenario": SCEN[nm],
                 "role": "hold" if nm in dict(h[:2] for h in HOLD) else "check"}

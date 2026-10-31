@@ -15,3 +15,20 @@ Held-out (found/precise/median offset): monavale 88%/70%/0.28 m; newport 84%/67%
 ```
 Round 0. Question: how much does the score move when nothing changes? Three seeds: 0.719, 0.725, 0.721. Noise floor 0.006; a change must beat the control by 0.006 from now on.
 ```
+
+## Round 2
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.738 | 0.703 | 26% | 0.756 | 0.908 | 0.755 | 0.641 | 0.629 |
+| flip-average at prediction | 0.745 | 0.718 | 27% | 0.763 | 0.910 | 0.766 | 0.644 | 0.641 |
+| scale and colour jitter | 0.731 | 0.665 | 26% | 0.752 | 0.907 | 0.736 | 0.644 | 0.616 |
+
+Held-out (found/precise/median offset): monavale 87%/74%/0.27 m; newport 81%/70%/0.33 m; parramatta 69%/75%/0.37 m; paddington 86%/88%/0.29 m; kensington 73%/71%/0.17 m
+
+```
+Round 2. Question: does flip-average at prediction raise the scenario score?; does scale and colour jitter raise the scenario score?
+Control: 0.738 (noise +-0.006). Changes: flip-average at prediction 0.745 (kept); scale and colour jitter 0.731 (dropped).
+Learnt: most movement in scenario 'dense'; site share 27%, worst held-out F1 0.718.
+Next: train 150 min more (under-trained or at capacity?).
+```
