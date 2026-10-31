@@ -111,5 +111,22 @@
   },
   "kill": "under trees and cars-or-clutter found do not rise beyond noise",
   "todo": "data: NSW historic imagery per box in the cache notebooks; code: prob() averaged over dates"
+ },
+ {
+  "name": "Satlas: train 300 min more",
+  "why": "the Satlas model gained again as the control (0.757 to 0.761) when trained on: likely under-trained, unlike ResNet-34 (round 2 capacity)",
+  "cfg": {
+   "minutes": 450
+  },
+  "kill": "within noise: at capacity"
+ },
+ {
+  "name": "Satlas: bigger view (384 px chips)",
+  "why": "a transformer uses wider context; dense centres (0.66, worst with apartments) need medians and shadow context; the second-scale view did not help ResNet-34",
+  "cfg": {
+   "chip": 384,
+   "batch": 4
+  },
+  "kill": "dense does not rise beyond noise"
  }
 ]

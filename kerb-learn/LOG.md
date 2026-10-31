@@ -115,3 +115,19 @@ Control: 0.746 (noise +-0.006). Changes: Satlas Swin-v2-B aerial encoder 0.757 (
 Learnt: most movement in scenario 'terraces'; site share 28%, worst held-out F1 0.715.
 Next: more apartment and dense training areas (plateau since round 1 on model changes; apartments 0.65 and dense 0.65 are the weakest scenarios and had 2 and 4 training boxes. Adds 4 boxes busiest first from TOP.md: Wentworth Point (NSW 28), Melrose Park (Ermington, NSW 35), South Wharf (Vic 22), West Melbourne (Vic 94); none overlaps a check or held-out box).
 ```
+
+## Round 8
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.761 | 0.717 | 30% | 0.768 | 0.912 | 0.786 | 0.679 | 0.661 |
+| more apartment and dense training areas | 0.763 | 0.712 | 31% | 0.759 | 0.910 | 0.787 | 0.710 | 0.648 |
+
+Held-out (found/precise/median offset): monavale 88%/76%/0.28 m; newport 82%/70%/0.34 m; parramatta 67%/77%/0.33 m; paddington 85%/87%/0.27 m; kensington 80%/70%/0.12 m
+
+```
+Round 8. Question: does more apartment and dense training areas raise the scenario score?
+Control: 0.761 (noise +-0.006). Changes: more apartment and dense training areas 0.763 (within noise).
+Learnt: most movement in scenario 'none'; site share 30%, worst held-out F1 0.717.
+Next: queue empty, add the next change to kerb-learn/queue.json.
+```
