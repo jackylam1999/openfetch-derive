@@ -81,3 +81,20 @@ Control: 0.744 (noise +-0.006). Changes: resnet50 encoder 0.743 (within noise); 
 Learnt: most movement in scenario 'none'; site share 28%, worst held-out F1 0.696.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 6
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| clDice line-continuity loss | 0.747 | 0.688 | 26% | 0.775 | 0.911 | 0.754 | 0.648 | 0.645 |
+| control | 0.748 | 0.704 | 26% | 0.773 | 0.912 | 0.759 | 0.645 | 0.649 |
+| learn from misses (all misses, no cause) | 0.745 | 0.712 | 26% | 0.782 | 0.914 | 0.765 | 0.624 | 0.641 |
+
+Held-out (found/precise/median offset): monavale 88%/76%/0.27 m; newport 82%/70%/0.34 m; parramatta 68%/75%/0.38 m; paddington 86%/88%/0.28 m; kensington 76%/66%/0.15 m
+
+```
+Round 6. Question: does clDice line-continuity loss raise the scenario score?; does learn from misses (all misses, no cause) raise the scenario score?
+Control: 0.748 (noise +-0.006). Changes: clDice line-continuity loss 0.747 (within noise); learn from misses (all misses, no cause) 0.745 (within noise).
+Learnt: most movement in scenario 'none'; site share 26%, worst held-out F1 0.704.
+Next: queue empty, add the next change to kerb-learn/queue.json.
+```

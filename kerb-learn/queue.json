@@ -68,12 +68,11 @@
  },
  {
   "name": "drop council lines with no photo edge",
-  "why": "Jacky 31 Oct: council kerb segments that do not sit on a visible kerb edge (old, moved or wrongly drawn) teach and score the model wrong; targets precise and offset",
+  "why": "Jacky 31 Oct: council kerb segments that do not sit on a visible kerb edge (old, moved or wrongly drawn) teach and score the model wrong; targets precise and offset; training labels only (council pieces of 10 m with under half the box median photo edge), scoring reference unchanged so it stays comparable with the control",
   "cfg": {
    "labelcheck": 1
   },
-  "kill": "precise and offset do not move beyond noise",
-  "todo": "code: per council segment, mean photo edge strength along it (as in align()) vs the box median; segments under a cut are set to 0 (not scored, not trained) in labels(); report the dropped share per box; note it changes the scoring reference, so also score the control on the filtered reference"
+  "kill": "precise and offset do not move beyond noise"
  },
  {
   "name": "Satlas Swin-v2-B aerial encoder",
@@ -83,7 +82,6 @@
    "minutes": 450,
    "batch": 6
   },
-  "kill": "within the 0.006 noise bar of the control",
-  "todo": "code: model() needs a Swin encoder branch (torchvision swin_v2_b + Satlas weights via torchgeo, features at strides 4/8/16/32 with 128/256/512/1024 channels, NHWC to NCHW) and a stride-2 stem for the decoder; extra input channels (lots, roads, water) zero-initialised as for ResNet; Kaggle notebook must pip install torchgeo; probe 40 min first (R6), full run only if within noise of the control or better"
+  "kill": "within the 0.006 noise bar of the control"
  }
 ]
