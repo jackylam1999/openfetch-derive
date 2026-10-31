@@ -22,5 +22,22 @@
    "minutes": 300
   },
   "kill": "within noise: model is at capacity"
+ },
+ {
+  "name": "second scale input",
+  "why": "method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)",
+  "cfg": {
+   "scale2": 1
+  },
+  "kill": "dense and shadow found do not rise"
+ },
+ {
+  "name": "reference alignment (gutter)",
+  "why": "method item 1 / R4: move each council's lines onto the kerb face by its measured signed offset (round 2 control), offset bar is 0.3 m",
+  "cfg": {
+   "gutter": 1
+  },
+  "kill": "median offset does not move on any box",
+  "todo": "set boxes.json gutter per council from round 2 signed_offset_m first"
  }
 ]

@@ -159,7 +159,7 @@ def reference(out, nm):
     k0, k = f"{out}/{nm}_kerbs0.geojson", f"{out}/{nm}_kerbs.geojson"
     if not os.path.exists(k0):
         os.replace(k, k0)
-    fc = json.load(open(k0)); d = BOXES["gutter"].get(CO[nm], 0)
+    fc = json.load(open(k0)); d = BOXES["gutter"].get(CO[nm], 0) if CFG.get("gutter") else 0  # a queue item switches it on
     if d:
         lots = STRtree([shape(f["geometry"]) for f in json.load(open(f"{out}/{nm}_lots.geojson"))["features"]])
         for f in fc["features"]:
@@ -243,7 +243,20 @@ def DEV():
 
 
 def NIN():
-    return 6 if CFG.get("context") else 4
+    return (6 if CFG.get("context") else 4) + (3 if CFG.get("scale2") else 0)
+
+
+def wide(rgb, r, c, half, k=3):
+    """CFG["scale2"] (method item 6): the photo around the same centre, k times wider and k times coarser (0.3 m cells), so the
+    model sees the street around a chip (shadow, medians). Outside the photo is black."""
+    n = rgb.shape[0]; a = k * half; out = np.zeros((2 * a, 2 * a, 3), np.float32)
+    r0, r1, c0, c1 = max(r - a, 0), min(r + a, n), max(c - a, 0), min(c + a, n)
+    out[r0 - (r - a):r1 - (r - a), c0 - (c - a):c1 - (c - a)] = rgb[r0:r1, c0:c1]
+    return out.reshape(2 * half, k, 2 * half, k, 3).mean((1, 3))
+
+
+def norm(w):
+    return np.ascontiguousarray(((np.clip(w, 0, 255) / 255 - MEAN) / STD).transpose(2, 0, 1))
 
 
 def load(net, path):
@@ -351,13 +364,19 @@ def train(path, out, names, init, mine):
             r, c = int(np.clip(r, hz, lab.shape[0] - hz)), int(np.clip(c, hz, lab.shape[1] - hz))
             sl = (slice(r - hz, r + hz), slice(c - hz, c + hz))
             lo, hi, off = (0.65, 1.35, 40) if CFG["jitter"] else (0.75, 1.25, 25)
-            img = rgb[sl].astype(np.float32) * rng.uniform(lo, hi, 3) + rng.uniform(-off, off)
+            g, o = rng.uniform(lo, hi, 3), rng.uniform(-off, off)
+            img = rgb[sl].astype(np.float32) * g + o
+            wd = wide(rgb, r, c, hz) * g + o if CFG.get("scale2") else None
             ip, lb = inp[sl], lab[sl]
             if hz != h:
                 f = h / hz
                 img = ndimage.zoom(img, (f, f, 1), order=1)[:2 * h, :2 * h]
                 ip, lb = ndimage.zoom(ip, (f, f, 1), order=0)[:2 * h, :2 * h], ndimage.zoom(lb, f, order=0)[:2 * h, :2 * h]
+                if wd is not None:
+                    wd = ndimage.zoom(wd, (f, f, 1), order=1)[:2 * h, :2 * h]
             x, y = stack(np.clip(img, 0, 255), ip), lb[None]
+            if wd is not None:
+                x = np.concatenate([x, norm(wd)])
             k = int(rng.integers(4))
             x, y = np.rot90(x, k, (1, 2)), np.rot90(y, k, (1, 2))
             if rng.random() < 0.5:
@@ -393,7 +412,10 @@ def prob(net, rgb, inp, ins=None, tta=None):
             for c in starts:
                 if lot[r:r + t, c:c + t].all():
                     continue
-                x = torch.from_numpy(stack(np.asarray(rgb[r:r + t, c:c + t]), inp[r:r + t, c:c + t])[None]).to(DEV())
+                x = stack(np.asarray(rgb[r:r + t, c:c + t]), inp[r:r + t, c:c + t])
+                if CFG.get("scale2"):
+                    x = np.concatenate([x, norm(wide(rgb, r + t // 2, c + t // 2, t // 2))])
+                x = torch.from_numpy(x[None]).to(DEV())
                 p = torch.sigmoid(net(x))
                 for d in ((2,), (3,), (2, 3)) if tta else ():
                     p += torch.sigmoid(net(x.flip(d))).flip(d)
