@@ -28,6 +28,20 @@ import kerbvic
 
 _trace = kp.vectorise
 kp.vectorise = lambda mask, tr: [l for l in kerbtidy.tidy(_trace(mask, tr)) if l.length >= kp.MIN_LEN]
+_vec = kp.vec
+
+
+def _fine_vec(out, nm, P, tr, th):
+    """CFG["fine"]: trace the lines on the 0.1 m cells instead of 0.2 m blocks (round 2: the drawn lines sit on the council lines
+    on average, signed offset about 0, yet the median distance is 0.27-0.37 m, so the spread, not a shift, misses the 0.3 m bar)."""
+    from shapely.geometry import mapping
+    from skimage.morphology import remove_small_objects
+    ls = kp.vectorise(remove_small_objects(P >= th, 80), tr)  # 80 cells of 0.1 m = the 20 blocks of 0.2 m used before
+    feats = [{"type": "Feature", "geometry": mapping(l), "properties": {"length": round(l.length, 1)}} for l in ls]
+    json.dump({"type": "FeatureCollection", "features": feats}, open(f"{out}/{nm}_derived.geojson", "w"))
+
+
+kp.vec = lambda *a: (_fine_vec if CFG.get("fine") else _vec)(*a)
 
 kp.COUNCILS.update({
     "cb": ("https://services2.arcgis.com/Ax17MufLaTdpFneh/arcgis/rest/services/Kerb_Condition_1_5/FeatureServer/0/query",
