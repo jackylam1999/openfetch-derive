@@ -60,6 +60,24 @@
   "todo": "code: run() passes mine=None; predict the best model on the training boxes (analyse keep=True) to write mine.npz, then pass it to train()"
  },
  {
+  "name": "clDice line-continuity loss",
+  "why": "Jacky 31 Oct 'do what is best': a soft-skeleton clDice term (Shit et al. CVPR 2021, used for road extraction) on top of the current skeleton-recall term, so kerbs are traced as whole lines, not dashes; targets found and whole lines",
+  "cfg": {
+   "cldice": 0.5
+  },
+  "kill": "whole lines and found do not rise beyond noise",
+  "todo": "code: soft-skeleton (iterated min/max pooling) of prediction and label, clDice = 2*Tprec*Tsens/(Tprec+Tsens) added to the loss with weight CFG['cldice']"
+ },
+ {
+  "name": "drop council lines with no photo edge",
+  "why": "Jacky 31 Oct: council kerb segments that do not sit on a visible kerb edge (old, moved or wrongly drawn) teach and score the model wrong; targets precise and offset",
+  "cfg": {
+   "labelcheck": 1
+  },
+  "kill": "precise and offset do not move beyond noise",
+  "todo": "code: per council segment, mean photo edge strength along it (as in align()) vs the box median; segments under a cut are set to 0 (not scored, not trained) in labels(); report the dropped share per box; note it changes the scoring reference, so also score the control on the filtered reference"
+ },
+ {
   "name": "Satlas Swin-v2-B aerial encoder",
   "why": "Jacky 31 Oct 06:34Z (thread 'Find kerb tracing models on Hugging Face'): aerial-pretrained encoder torchgeo/swin_v2_b_naip_rgb_satlas (Apache 2.0, 1 m NAIP RGB); expect little gain since our photos are 7-10 cm",
   "cfg": {
