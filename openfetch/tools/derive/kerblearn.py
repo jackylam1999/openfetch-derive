@@ -227,6 +227,9 @@ def model(pretrained=True):
     class U(nn.Module):
         def __init__(s):
             super().__init__()
+            s.swin = CFG["encoder"].startswith("swin")
+            if s.swin:
+                return swin(s, pretrained, blk)
             e = getattr(torchvision.models, CFG["encoder"])(weights="IMAGENET1K_V1" if pretrained else None, progress=False)
             c1 = nn.Conv2d(NIN(), 64, 7, 2, 3, bias=False)
             with torch.no_grad():
@@ -241,14 +244,43 @@ def model(pretrained=True):
 
         def forward(s, x):
             f = [s.full(x), s.stem(x)]
-            for e in s.enc:
-                f.append(e(f[-1]))
+            if s.swin:
+                m, d = torch.tensor(MEAN, device=x.device)[:, None, None], torch.tensor(STD, device=x.device)[:, None, None]
+                y = torch.cat([x[:, :3] * d + m, x[:, 3:]], 1)  # Satlas weights expect photo values 0-1, not ImageNet-normalised
+                for e in s.enc:
+                    y = e(y); f.append(y.permute(0, 3, 1, 2))
+            else:
+                for e in s.enc:
+                    f.append(e(f[-1]))
             y = f.pop()
             for u in s.up:
                 k = f.pop()
                 y = u(torch.cat([nn.functional.interpolate(y, size=k.shape[-2:], mode="bilinear", align_corners=False), k], 1))
             return s.out(y)
     return U()
+
+
+SATLAS = "https://huggingface.co/torchgeo/swin_v2_b_naip_rgb_satlas/resolve/main/swin_v2_b_naip_rgb_satlas-685f45bd.pth"
+
+
+def swin(s, pretrained, blk):
+    """CFG["encoder"] "swin_v2_b_satlas" (queue: Satlas aerial encoder): torchvision Swin-v2-B with Satlas NAIP RGB weights (Apache
+    2.0, torchgeo), features at strides 4/8/16/32 (128/256/512/1024 channels, NHWC); a small stride-2 conv stem feeds the decoder's
+    half-scale skip. Extra input layers (lots, roads, water) start at zero in the patch embedding, as for ResNet."""
+    import torch, torch.nn as nn, torchvision
+    e = torchvision.models.swin_v2_b()
+    if pretrained:
+        e.load_state_dict(torch.hub.load_state_dict_from_url(SATLAS, map_location="cpu", progress=False))
+    pe = e.features[0][0]; c = nn.Conv2d(NIN(), pe.out_channels, pe.kernel_size, pe.stride)
+    with torch.no_grad():
+        c.weight.zero_(); c.weight[:, :3] = pe.weight; c.bias.copy_(pe.bias)
+    e.features[0][0] = c
+    s.stem = nn.Sequential(nn.Conv2d(NIN(), 64, 3, 2, 1, bias=False), nn.BatchNorm2d(64), nn.ReLU(inplace=True))
+    s.enc = nn.ModuleList([e.features[0:2], e.features[2:4], e.features[4:6], e.features[6:8]])
+    ch = [64, 128, 256, 512, 1024]
+    s.full = blk(NIN(), 16)
+    s.up = nn.ModuleList([blk(ch[4] + ch[3], 256), blk(256 + ch[2], 128), blk(128 + ch[1], 64), blk(64 + ch[0], 32), blk(32 + 16, 16)])
+    s.out = nn.Conv2d(16, 1, 1)
 
 
 def DEV():
