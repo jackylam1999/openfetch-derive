@@ -98,3 +98,20 @@ Control: 0.748 (noise +-0.006). Changes: clDice line-continuity loss 0.747 (with
 Learnt: most movement in scenario 'none'; site share 26%, worst held-out F1 0.704.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 7
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| Satlas Swin-v2-B aerial encoder | 0.757 | 0.715 | 28% | 0.769 | 0.913 | 0.787 | 0.654 | 0.662 |
+| control | 0.746 | 0.696 | 28% | 0.770 | 0.911 | 0.757 | 0.643 | 0.647 |
+| drop council lines with no photo edge | 0.747 | 0.714 | 28% | 0.774 | 0.911 | 0.762 | 0.645 | 0.641 |
+
+Held-out (found/precise/median offset): monavale 88%/74%/0.28 m; newport 83%/71%/0.34 m; parramatta 68%/75%/0.33 m; paddington 86%/88%/0.27 m; kensington 80%/69%/0.12 m
+
+```
+Round 7. Question: does Satlas Swin-v2-B aerial encoder raise the scenario score?; does drop council lines with no photo edge raise the scenario score?
+Control: 0.746 (noise +-0.006). Changes: Satlas Swin-v2-B aerial encoder 0.757 (kept); drop council lines with no photo edge 0.747 (within noise).
+Learnt: most movement in scenario 'terraces'; site share 28%, worst held-out F1 0.715.
+Next: more apartment and dense training areas (plateau since round 1 on model changes; apartments 0.65 and dense 0.65 are the weakest scenarios and had 2 and 4 training boxes. Adds 4 boxes busiest first from TOP.md: Wentworth Point (NSW 28), Melrose Park (Ermington, NSW 35), South Wharf (Vic 22), West Melbourne (Vic 94); none overlaps a check or held-out box).
+```
