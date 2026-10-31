@@ -91,5 +91,25 @@
    "more": 1
   },
   "kill": "apartments and dense do not rise beyond noise"
+ },
+ {
+  "name": "two-judge label cleaning (LiDAR step + photo edge)",
+  "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Keep a council kerb piece only where a LiDAR height step (~15 cm) and a photo edge agree; train and score on agreed lines, and score the control on the same filtered set",
+  "cfg": {
+   "labelcheck": 1,
+   "lidarcheck": 0.15,
+   "score_filtered": 1
+  },
+  "kill": "control and change on the filtered set within noise",
+  "todo": "code + data: LiDAR DEM per box (kerbs-lidar-pilot.md), height step across each 10 m piece, filtered scoring reference"
+ },
+ {
+  "name": "several aerial years",
+  "why": "Jacky 31 Oct 15:52Z: ~45% of misses are under cars or trees and cars move between surveys; average predictions over 2-3 NSW historic aerial dates of the same box",
+  "cfg": {
+   "years": 3
+  },
+  "kill": "under trees and cars-or-clutter found do not rise beyond noise",
+  "todo": "data: NSW historic imagery per box in the cache notebooks; code: prob() averaged over dates"
  }
 ]
