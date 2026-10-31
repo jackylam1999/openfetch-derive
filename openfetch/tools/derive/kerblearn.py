@@ -52,7 +52,7 @@ kp.COUNCILS.update({
 BOXES = json.load(open(os.environ.get("KERB_BOXES") or os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                                      "../../../kerb-learn/boxes.json")))
 ROLE = lambda r: [(b["name"], b["council"], b["x"], b["y"]) for b in BOXES["boxes"] if b["role"] == r]
-TRAIN, VAL, HOLD = ROLE("train"), ROLE("check"), ROLE("hold")
+TRAIN, VAL, HOLD, NEW = ROLE("train"), ROLE("check"), ROLE("hold"), ROLE("train_new")
 SCEN = {b["name"]: b["scenario"] for b in BOXES["boxes"]}
 CO = {b["name"]: b["council"] for b in BOXES["boxes"]}
 SIX = "https://portal.spatial.nsw.gov.au/server/rest/services/"
@@ -147,7 +147,7 @@ def data(a):
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(6) as ex:
         only = os.environ.get("KERB_COUNCILS")  # e.g. "com" or "villawood": fetch only these councils' or boxes' data
-        list(ex.map(one, [t for t in TRAIN + VAL + HOLD if not only or {t[0], t[1]} & set(only.split(","))]))
+        list(ex.map(one, [t for t in TRAIN + NEW + VAL + HOLD if not only or {t[0], t[1]} & set(only.split(","))]))
 
 
 def lot_side(lots, l):
@@ -716,12 +716,13 @@ def run(a):
     out, res_path = a[0], a[1]
     init = a[2] if len(a) > 2 and os.path.exists(a[2]) else None
     data([out])
-    for nm, *_ in TRAIN + VAL + HOLD:
+    tn = [t[0] for t in TRAIN + (NEW if CFG.get("more") else [])]  # CFG["more"]: data round, also train on the train_new boxes
+    for nm in tn + [v[0] for v in VAL + HOLD]:
         reference(out, nm)
     t0 = time.time(); info = {"steps": 0}
     if CFG["minutes"]:
         mn = mine(out, init, CFG.get("mine_th", 0.7)) if CFG["mine"] and init else None
-        info = train(f"{out}/model.pt", out, [t[0] for t in TRAIN], init, mn)[0]
+        info = train(f"{out}/model.pt", out, tn, init, mn)[0]
     else:
         import shutil
         shutil.copy(init, f"{out}/model.pt")

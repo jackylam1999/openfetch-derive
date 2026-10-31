@@ -1,5 +1,5 @@
 {
- "_about": "Kerb model boxes (kerbs-method.md R3): 1 km, lower-left corner MGA56 (EPSG 7856). role train / check (picks threshold) / hold (never trained on). gutter = metres each council's kerb lines are moved toward the lots (R4, measured 30 Oct); align = photo edge fit per box. Victorian boxes (council com) are in MGA55 (EPSG 7855), fetched by kerbvic.py.",
+ "_about": "Kerb model boxes (kerbs-method.md R3): 1 km, lower-left corner MGA56 (EPSG 7856). role train / check (picks threshold) / hold (never trained on). gutter = metres each council's kerb lines are moved toward the lots (R4, measured 30 Oct); align = photo edge fit per box. Victorian boxes (council com) are in MGA55 (EPSG 7855), fetched by kerbvic.py. role train_new: extra training boxes a data round adds (CFG more=1), made role train once kept.",
  "lga": {
   "nb": "NORTHERN BEACHES",
   "cb": "CANTERBURY-BANKSTOWN",
@@ -400,6 +400,42 @@
    "role": "hold",
    "scenario": "terraces",
    "note": "Kensington, Vic rank 11"
+  },
+  {
+   "name": "wentworthpt",
+   "council": "parra",
+   "x": 321500,
+   "y": 6254600,
+   "role": "train_new",
+   "scenario": "apartments",
+   "note": "Wentworth Point, rank 28 (data round, 31 Oct)"
+  },
+  {
+   "name": "melrose",
+   "council": "parra",
+   "x": 321100,
+   "y": 6256200,
+   "role": "train_new",
+   "scenario": "apartments",
+   "note": "Melrose Park / Ermington, rank 35"
+  },
+  {
+   "name": "southwharf",
+   "council": "com",
+   "x": 319100,
+   "y": 5811100,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "South Wharf, Vic rank 22"
+  },
+  {
+   "name": "westmelb",
+   "council": "com",
+   "x": 318200,
+   "y": 5813000,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "West Melbourne, Vic rank 94"
   }
  ]
 }
