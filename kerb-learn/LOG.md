@@ -210,3 +210,28 @@ Control: 0.754 (noise +-0.006). Changes: LiDAR + aerial, photo blanked on half t
 Learnt: most movement in scenario 'apartments'; site share 34%, worst held-out F1 0.730.
 Next: two-judge label cleaning (LiDAR step + photo edge) (Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible).
 ```
+
+## Round 12
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes | 0.776 | 0.720 | 38% | 0.773 | 0.913 | 0.802 | 0.710 | 0.682 |
+| LiDAR + aerial, photo blanked on 3/4 of the chips | 0.772 | 0.729 | 32% | 0.788 | 0.914 | 0.807 | 0.664 | 0.686 |
+| control | 0.774 | 0.735 | 35% | 0.785 | 0.914 | 0.811 | 0.669 | 0.689 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes | 0.801 | 0.766 | 0% | 0.769 | 0.913 | 0.839 | 0.716 | 0.766 |
+| LiDAR + aerial, photo blanked on 3/4 of the chips | 0.796 | 0.766 | 0% | 0.788 | 0.914 | 0.847 | 0.664 | 0.766 |
+| control | 0.797 | 0.768 | 0% | 0.782 | 0.914 | 0.847 | 0.675 | 0.768 |
+
+Held-out (found/precise/median offset): monavale 90%/77%/0.27 m; newport 86%/72%/0.32 m; parramatta 72%/82%/0.29 m; paddington 87%/90%/0.28 m; kensington 82%/66%/0.12 m
+
+```
+Round 12. Question: does LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes raise the scenario score?; does LiDAR + aerial, photo blanked on 3/4 of the chips raise the scenario score?
+Control: 0.774 (noise +-0.006). Changes: LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes 0.801 vs control 0.797 on LiDAR boxes (within noise); LiDAR + aerial, photo blanked on 3/4 of the chips 0.796 vs control 0.797 on LiDAR boxes (within noise).
+Learnt: most movement in scenario 'none'; site share 35%, worst held-out F1 0.735.
+Next: queue empty, add the next change to kerb-learn/queue.json.
+```
