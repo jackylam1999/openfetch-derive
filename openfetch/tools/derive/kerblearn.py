@@ -515,6 +515,22 @@ def steps(dem, xy0, ps, G=0.25, d=0.75):
     return out
 
 
+def occlude(rng, x, lab, lidar):
+    """CFG["occlude"] = patches per chip: car- and tree-sized rectangles (2-8 m at 0.1 m cells) blanked in the photo and the LiDAR
+    layers, half of them centred on a kerb, while the kerb label stays whole, so the model learns to carry a kerb line through what
+    hides it (masked-input training, research thread "Research filling in hidden kerbs", 1 Nov 2026). Road and lot context stay."""
+    x = x.copy(); n = x.shape[1]; kr = np.argwhere((lab == 2) | (lab == 3))
+    li = list(range(x.shape[0] - 3, x.shape[0])) if lidar else []  # LiDAR layers set to "no LiDAR here" (-0.5 after stack())
+    for _ in range(int(CFG["occlude"])):
+        a, b = rng.integers(20, 81, 2)
+        r, c = kr[rng.integers(len(kr))] if len(kr) and rng.random() < 0.5 else rng.integers(0, n, 2)
+        r0, c0 = max(0, r - a // 2), max(0, c - b // 2)
+        x[:3, r0:r0 + a, c0:c0 + b] = 0
+        if li:
+            x[li, r0:r0 + a, c0:c0 + b] = -0.5
+    return x
+
+
 def soft_skel(x, it=8):
     """Soft skeleton by iterated min/max pooling (clDice, Shit et al. CVPR 2021)."""
     import torch.nn.functional as F
@@ -576,6 +592,8 @@ def train(path, out, names, init, mine):
             x, y = stack(np.clip(img, 0, 255), ip), lb[None]
             if CFG.get("pdrop") and li is not None and rng.random() < CFG["pdrop"]:  # round 10: LiDAR + aerial ignored the LiDAR
                 x[:3] = 0  # layers (they start at zero); blanking the photo on some chips makes the model learn them
+            if CFG.get("occlude"):  # Jacky 1 Nov: guess kerbs hidden by cars and trees from the line around them
+                x = occlude(rng, x, y[0], CFG.get("lidar"))
             if wd is not None:
                 x = np.concatenate([x, norm(wd)])
             k = int(rng.integers(4))

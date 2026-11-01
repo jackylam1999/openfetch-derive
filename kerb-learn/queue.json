@@ -187,6 +187,22 @@
   "kill": "within noise of the control"
  },
  {
+  "name": "hide car- and tree-sized patches (3 per chip), keep the kerb label",
+  "why": "Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole)",
+  "cfg": {
+   "occlude": 3
+  },
+  "kill": "recall and worst held-out do not rise"
+ },
+ {
+  "name": "hide car- and tree-sized patches (6 per chip), keep the kerb label",
+  "why": "same, heavier: is more hiding better?",
+  "cfg": {
+   "occlude": 6
+  },
+  "kill": "within noise of 3 per chip"
+ },
+ {
   "name": "fill hidden kerb gaps along the road",
   "why": "Jacky 31 Oct 23:35Z (road centreline): kerbs run in pairs at a steady offset from the centreline; where both ends of a gap are found (under trees, cars), join them along the path parallel to the centreline. Post-processing only, no retraining",
   "cfg": {
