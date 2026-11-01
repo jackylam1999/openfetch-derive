@@ -449,6 +449,8 @@ def steps(dem, xy0, ps, G=0.25, d=0.75):
     """Median height step (m) across each line piece: ground 0.75 m either side of the line on the LiDAR grid (lidar_kernel.py,
     0.25 m cells, lower-left corner xy0, north up). None where the grid has no ground points there."""
     n = dem.shape[0]; out = []
+    m = np.isfinite(dem); w = ndimage.gaussian_filter(m.astype(np.float32), 1.5)  # ground is 1-6 points/m2: fill 0.25 m gaps
+    dem = ndimage.gaussian_filter(np.where(m, dem, 0).astype(np.float32), 1.5) / np.maximum(w, 1e-6); dem[w < 0.05] = np.nan
     for q in ps:
         v = []
         for t in np.arange(0.5, q.length - 0.5, 1.0):
