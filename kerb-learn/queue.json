@@ -154,6 +154,22 @@
   "kill": "dense does not rise beyond noise"
  },
  {
+  "name": "LiDAR + aerial, photo blanked on 3/4 of the chips",
+  "why": "round 11: blanking half the chips made the model use LiDAR (0.798 vs 0.776 unblanked); does more blanking help further?",
+  "cfg": {
+   "pdrop": 0.75
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes",
+  "why": "apartments is the weakest scenario (Olympic Park 0.68, misses kerbs); only Rydalmere trains apartments with LiDAR",
+  "cfg": {
+   "more": 1
+  },
+  "kill": "apartments does not rise"
+ },
+ {
   "name": "fill hidden kerb gaps along the road",
   "why": "Jacky 31 Oct 23:35Z (road centreline): kerbs run in pairs at a steady offset from the centreline; where both ends of a gap are found (under trees, cars), join them along the path parallel to the centreline. Post-processing only, no retraining",
   "cfg": {

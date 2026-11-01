@@ -185,3 +185,28 @@ Scenario score 0.758 vs LiDAR only 0.780: worse, F1 lower on all 8 LiDAR boxes (
 Cleaning dropped ~half the pieces but only ~8% of length (3-15% per box): it mostly removed short pieces the model needed. Dropped.
 hilly 0.734, grid 0.870, terraces 0.819, apartments 0.621, dense 0.748.
 Next on the PC: LiDAR only + the two train_new apartment boxes with LiDAR (Melrose Park, Wentworth Point; kerb-learn/pc/side-lidar-more.json).
+
+## Round 11
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| LiDAR + aerial, photo blanked on half the chips | 0.774 | 0.730 | 34% | 0.783 | 0.913 | 0.809 | 0.678 | 0.685 |
+| LiDAR + aerial, photo blanked on half the chips, 300 min | 0.772 | 0.738 | 32% | 0.793 | 0.914 | 0.812 | 0.657 | 0.684 |
+| control | 0.754 | 0.713 | 28% | 0.775 | 0.913 | 0.781 | 0.642 | 0.657 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| LiDAR + aerial, photo blanked on half the chips | 0.798 | 0.768 | 0% | 0.783 | 0.913 | 0.848 | 0.678 | 0.768 |
+| LiDAR + aerial, photo blanked on half the chips, 300 min | 0.795 | 0.761 | 0% | 0.793 | 0.914 | 0.849 | 0.657 | 0.761 |
+| control | 0.771 | 0.713 | 0% | 0.772 | 0.912 | 0.805 | 0.651 | 0.713 |
+
+Held-out (found/precise/median offset): monavale 90%/76%/0.27 m; newport 86%/73%/0.31 m; parramatta 73%/81%/0.3 m; paddington 86%/89%/0.28 m; kensington 82%/66%/0.12 m
+
+```
+Round 11. Question: does LiDAR + aerial, photo blanked on half the chips raise the scenario score?; does LiDAR + aerial, photo blanked on half the chips, 300 min raise the scenario score?
+Control: 0.754 (noise +-0.006). Changes: LiDAR + aerial, photo blanked on half the chips 0.798 vs control 0.771 on LiDAR boxes (kept); LiDAR + aerial, photo blanked on half the chips, 300 min 0.795 vs control 0.771 on LiDAR boxes (kept).
+Learnt: most movement in scenario 'apartments'; site share 34%, worst held-out F1 0.730.
+Next: two-judge label cleaning (LiDAR step + photo edge) (Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible).
+```
