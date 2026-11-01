@@ -56,7 +56,7 @@ def table(f, rs):
             "---|" * len(rs[0]["scenarios"]) + "\n")
     for r in rs:
         f.write(f"| {r['name']} | {r['scenario_score']:.3f} | {r['worst_hold']:.3f} | {r['site_share']:.0%} | " +
-                " | ".join(f"{v:.3f}" for v in r["scenarios"].values()) + " |\n")
+                " | ".join(f"{r['scenarios'][k]:.3f}" if k in r["scenarios"] else "-" for k in rs[0]["scenarios"]) + " |\n")
 
 
 def row(r):
@@ -82,10 +82,14 @@ def record(a):
                 f"Noise floor {max(sc) - min(sc):.3f}; a change must beat the control by {st['min_gain']} from now on.")
     else:
         ctl = next(r for r in res if r["name"] == "control"); ch = [r for r in res if r is not ctl]
-        kept = [r for r in ch if r["scenario_score"] > ctl["scenario_score"] + st["min_gain"] and r["worst_hold"] >= ctl["worst_hold"] - st["min_gain"]]
+        on = lambda r, x: x.get("lidar") if r["cfg"].get("lidar") and x.get("lidar") else x  # LiDAR variants: judged on the LiDAR boxes
+        wins = lambda r: on(r, r)["scenario_score"] > on(r, ctl)["scenario_score"] + st["min_gain"] and on(r, r)["worst_hold"] >= on(r, ctl)["worst_hold"] - st["min_gain"]
+        won = [r for r in ch if wins(r)]
+        kept = [r for r in won if r["cfg"].get("lidar") != 2]  # LiDAR only cannot draw boxes without LiDAR: a finding, never the model
         top = best(kept + [ctl])
         q = queue({**st, "done": st["done"] + [r["name"] for r in ch]})
-        verdicts = "; ".join(f"{r['name']} {r['scenario_score']:.3f} ({'kept' if r in kept else 'within noise' if r['scenario_score'] > ctl['scenario_score'] - st['min_gain'] else 'dropped'})" for r in ch)
+        verdicts = "; ".join(f"{r['name']} {on(r, r)['scenario_score']:.3f} vs control {on(r, ctl)['scenario_score']:.3f}"
+                             f"{' on LiDAR boxes' if on(r, r) is not r else ''} ({'kept' if r in kept else 'better, not usable alone' if r in won else 'within noise' if on(r, r)['scenario_score'] > on(r, ctl)['scenario_score'] - st['min_gain'] else 'dropped'})" for r in ch)
         moved = max(top["scenarios"], key=lambda k: top["scenarios"][k] - ctl["scenarios"][k]) if top is not ctl else "none"
         take = (f"Round {st['round']}. Question: " + "; ".join(f"does {r['name']} raise the scenario score?" for r in ch) +
                 f"\nControl: {ctl['scenario_score']:.3f} (noise +-{st['min_gain']}). Changes: {verdicts}." +
@@ -99,6 +103,9 @@ def record(a):
             f.write("# Kerb photo model: log (method v2)\n\nScenario score = mean over scenarios of the mean box F1 (found and precise within 1 m). "
                     "Site share = share of 250 m tiles with 85%+ found and median offset 0.3 m or less.\n")
         f.write(f"\n## Round {st['round']}\n\n"); table(f, res)
+        lr = [{**r["lidar"], "name": r["name"], "site_share": 0} for r in res if r.get("lidar")]
+        if lr:
+            f.write("\nOn the boxes with LiDAR only (" + ", ".join(lr[0]["boxes"]) + "; 250 m sites not counted):\n\n"); table(f, lr)
         f.write("\nHeld-out (found/precise/median offset): " + row(top) + "\n\n```\n" + take + "\n```\n")
     st["best"] = {k: top.get(k) for k in ("name", "cfg", "thresh", "scenario_score", "worst_hold", "site_share", "scenarios", "boxes", "artifact", "run")}
     st["best"]["round"] = st["round"]

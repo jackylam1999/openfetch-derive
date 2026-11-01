@@ -93,6 +93,22 @@
   "kill": "apartments and dense do not rise beyond noise"
  },
  {
+  "name": "LiDAR + aerial",
+  "why": "Jacky 1 Nov: 'lidar is a must'. Adds 3 LiDAR layers (ground minus 3 m median, slope, has-LiDAR) beside the photo; judged on the boxes with LiDAR against the aerial-only control",
+  "cfg": {
+   "lidar": 1
+  },
+  "kill": "within noise of the control on the LiDAR boxes"
+ },
+ {
+  "name": "LiDAR only",
+  "why": "Jacky 1 Nov: does LiDAR alone find kerbs? Photo blanked, trained and scored on LiDAR boxes only; a finding, never the model (cannot draw boxes without LiDAR)",
+  "cfg": {
+   "lidar": 2
+  },
+  "kill": "below the control on the LiDAR boxes"
+ },
+ {
   "name": "two-judge label cleaning (LiDAR step + photo edge)",
   "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible",
   "cfg": {

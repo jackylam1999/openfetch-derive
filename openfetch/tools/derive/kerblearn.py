@@ -218,6 +218,43 @@ def _context(out, nm, lot):
     return np.stack([lot, rd, burn("water", False)], -1)
 
 
+def lidar(out, nm, n):
+    """CFG["lidar"] (Jacky 1 Nov 2026: "lidar is a must"): three LiDAR input layers on the photo grid, from the ground grid
+    lidar_kernel.py makes ({nm}_dem.npy, 0.25 m cells, mean ground height, NaN where no point, box corner BX[nm], 1 km): ground
+    height minus its 3 m local median (+-0.5 m, kerb steps stand out), slope (0-2 m/m) and a has-LiDAR layer. 0.1 m cells, uint8,
+    kept on disk (memory-mapped) so 40 boxes fit in memory. None when the box has no LiDAR (NSW Spatial Services CC BY 4.0;
+    Vic LiDAR is CC BY-NC, so Vic boxes never have one)."""
+    p = f"{out}/{nm}_dem.npy"
+    if not os.path.exists(p):
+        return None
+    import hashlib
+    key = hashlib.md5(open(p, "rb").read(1 << 20)).hexdigest()[:8] + str(os.path.getsize(p))
+    c = f"{out}/_cache/{nm}_lid_{key}.npy"
+    if not os.path.exists(c):
+        G = 0.25; d = np.load(p).astype(np.float32); g = d.shape[0]
+        m = np.isfinite(d); w = ndimage.gaussian_filter(m.astype(np.float32), 1.5)
+        z = ndimage.gaussian_filter(np.where(m, d, 0), 1.5) / np.maximum(w, 1e-6); ok = w >= 0.05
+        z = z[tuple(ndimage.distance_transform_edt(~ok, return_distances=False, return_indices=True))] if ok.any() else z
+        rel = np.clip(z - ndimage.median_filter(z, 13), -0.5, 0.5)
+        sl = np.clip(np.hypot(*np.gradient(z, G)), 0, 2)
+        f = np.stack([(rel + 0.5) * 250, sl * 125, ok * 1.0], -1).astype(np.float32)
+        k = int(round(G / CELL * g)); o = (n - k) // 2  # the photo grid has a 50 m margin round the 1 km box
+        os.makedirs(f"{out}/_cache", exist_ok=True); a = np.lib.format.open_memmap(c + ".tmp.npy", "w+", np.uint8, (n, n, 3))
+        for i in range(3):
+            a[o:o + k, o:o + k, i] = np.clip(np.rint(ndimage.zoom(f[..., i], k / g, order=1 if i < 2 else 0)[:k, :k]), 0, 255)
+        a.flush(); del a; os.replace(c + ".tmp.npy", c)
+    return np.load(c, mmap_mode="r")
+
+
+def inputs(out, nm, lot):
+    """Model input besides the photo for drawing a whole box: context(), plus the LiDAR layers with CFG["lidar"] (zero where none)."""
+    ctx = context(out, nm, lot)
+    if not CFG.get("lidar"):
+        return ctx
+    li = lidar(out, nm, lot.shape[0])
+    return np.concatenate([ctx, np.zeros(lot.shape + (3,), np.uint8) if li is None else np.asarray(li)], -1)
+
+
 def model(pretrained=True):
     import torch, torch.nn as nn, torchvision
 
@@ -290,7 +327,7 @@ def DEV():
 
 
 def NIN():
-    return (6 if CFG.get("context") else 4) + (3 if CFG.get("scale2") else 0)
+    return (6 if CFG.get("context") else 4) + (3 if CFG.get("scale2") else 0) + (3 if CFG.get("lidar") else 0)
 
 
 def wide(rgb, r, c, half, k=3):
@@ -317,8 +354,10 @@ def load(net, path):
 
 
 def stack(rgb, inp):
-    sc = np.array([1, 1 / 250, 1], np.float32)[:inp.shape[-1]]
-    x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, inp.astype(np.float32) * sc - 0.5], -1)
+    sc = [1, 1 / 250, 1][:3 if CFG.get("context") else 1] + ([1 / 250, 1 / 250, 1] if CFG.get("lidar") else [])
+    x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, inp.astype(np.float32) * np.array(sc, np.float32) - 0.5], -1)
+    if CFG.get("lidar") == 2:  # LiDAR only: the photo is blanked
+        x[..., :3] = 0
     return np.ascontiguousarray(x.transpose(2, 0, 1))
 
 
@@ -399,7 +438,7 @@ def mine(out, init, th):
     with mp.get_context("fork").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
         for nm, *_ in TRAIN:
             m, tr, rgb, lot, lab, road = labels(out, nm)
-            P = prob(net, rgb, context(out, nm, lot), inside(out, nm, lab.shape[0], tr))
+            P = prob(net, rgb, inputs(out, nm, lot), inside(out, nm, lab.shape[0], tr))
             pp = f"{out}/_M_{nm}.npy"; np.save(pp, P); del P
             jobs.append(pool.apply_async(_mine, ((out, nm, pp, tr, th),)))
         for j in jobs:
@@ -488,7 +527,8 @@ def train(path, out, names, init, mine):
         m, tr, rgb, lot, lab, road = labels(out, nm)
         if CFG.get("labelcheck"):
             lab, sh = checked(out, nm, lab, rgb, tr); dropped[nm] = sh
-        data.append((np.asarray(rgb), context(out, nm, lot), lab, pools(nm, lab, road, mine)))
+        data.append((np.asarray(rgb), context(out, nm, lot), lab, lidar(out, nm, lab.shape[0]) if CFG.get("lidar") else None,
+                     pools(nm, lab, road, mine)))
         print(f"{nm}: " + ", ".join(f"{len(v)} {k}" for k, v in data[-1][-1].items()), file=sys.stderr)
     net = model(pretrained=init is None)
     if init:
@@ -505,7 +545,7 @@ def train(path, out, names, init, mine):
             g["lr"] = CFG["lr"] * min(1, done / 0.05) * 0.5 * (1 + np.cos(np.pi * done))
         xs, ys = [], []
         for _ in range(CFG["batch"]):
-            (rgb, inp, lab, pl), kind = pick(rng, data)
+            (rgb, inp, lab, li, pl), kind = pick(rng, data)
             seen[kind] = seen.get(kind, 0) + 1
             cs = pl[kind] if len(pl.get(kind, ())) else pl["kerb"]
             z = rng.uniform(0.8, 1.25) if CFG["jitter"] else 1.0
@@ -518,6 +558,8 @@ def train(path, out, names, init, mine):
             img = rgb[sl].astype(np.float32) * g + o
             wd = wide(rgb, r, c, hz) * g + o if CFG.get("scale2") else None
             ip, lb = inp[sl], lab[sl]
+            if CFG.get("lidar"):
+                ip = np.concatenate([ip, np.zeros(ip.shape[:2] + (3,), np.uint8) if li is None else np.asarray(li[sl])], -1)
             if hz != h:
                 f = h / hz
                 img = ndimage.zoom(img, (f, f, 1), order=1)[:2 * h, :2 * h]
@@ -576,7 +618,7 @@ def prob(net, rgb, inp, ins=None, tta=None):
                 P[r:r + t, c:c + t] += p[0, 0].cpu().numpy() / (4 if tta else 1) * win; C[r:r + t, c:c + t] += win
     P /= np.maximum(C, 1e-6)
     P[ndimage.distance_transform_edt(lot > 0) * CELL > 0.5] = 0
-    if inp.shape[-1] > 2:
+    if CFG.get("context"):
         P[inp[..., 2] > 0] = 0
     if ins is not None:
         P[~ins] = 0
@@ -716,26 +758,45 @@ def evaluate(net, out, tta):
     variant spent about 90 minutes here one box after another, 30 Oct 2026)."""
     import multiprocessing as mp
     sc, boxes, by, jobs = {}, {}, {}, []
+    has = lambda b: os.path.exists(f"{out}/{b[0]}_dem.npy")
+    val, hold = ([b for b in B if has(b)] for B in (VAL, HOLD)) if CFG.get("lidar") == 2 else (VAL, HOLD)  # LiDAR only: no input elsewhere
     with mp.get_context("fork").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
-        for nm, *_ in VAL + HOLD:
+        for nm, *_ in val + hold:
             m, tr, rgb, lot, lab, road = labels(out, nm)
-            P = prob(net, rgb, context(out, nm, lot), inside(out, nm, lab.shape[0], tr), tta)
+            P = prob(net, rgb, inputs(out, nm, lot), inside(out, nm, lab.shape[0], tr), tta)
             pp = f"{out}/_P_{nm}.npy"; np.save(pp, P); del P
             jobs.append(pool.apply_async(_thresholds, ((out, nm, pp, tr),)))
         for j in jobs:
             nm, s = j.get()
             for th, v in s.items():
                 sc.setdefault(th, {})[nm] = v
-        th = max(kp.THRESHS, key=lambda t: np.mean([f1(sc[t][v[0]]) for v in VAL]))
-        boxes = dict(pool.map(_final, [(out, nm, th, sc[th][nm]) for nm, *_ in VAL + HOLD]))
+        th = max(kp.THRESHS, key=lambda t: np.mean([f1(sc[t][v[0]]) for v in val]))
+        boxes = dict(pool.map(_final, [(out, nm, th, sc[th][nm]) for nm, *_ in val + hold]))
     for nm, b in boxes.items():
         by.setdefault(SCEN[nm], []).append(b["f1"])
     t = [sum(b["tiles"][i] for b in boxes.values()) for i in (0, 1)]
     mean = lambda v: round(float(np.mean(v)), 3)
-    return {"thresh": th, "val_f1": mean([boxes[v[0]]["f1"] for v in VAL]), "score": mean([boxes[v[0]]["f1"] for v in HOLD]),
-            "mean_recall": mean([boxes[v[0]].get("recall", 0) for v in HOLD]),
+    return {"thresh": th, "val_f1": mean([boxes[v[0]]["f1"] for v in val]), "score": mean([boxes[v[0]]["f1"] for v in hold]),
+            "mean_recall": mean([boxes[v[0]].get("recall", 0) for v in hold]),
             "scenario_score": mean([np.mean(v) for v in by.values()]), "scenarios": {k: mean(v) for k, v in by.items()},
-            "worst_hold": min(boxes[v[0]]["f1"] for v in HOLD), "site_share": round(t[0] / max(t[1], 1), 3), "boxes": boxes}
+            "worst_hold": min(boxes[v[0]]["f1"] for v in hold), "site_share": round(t[0] / max(t[1], 1), 3), "boxes": boxes,
+            **lidar_block(sc, [b for b in VAL if has(b)], [b for b in HOLD if has(b)])}
+
+
+def lidar_block(sc, val, hold):
+    """The same score on the boxes that have LiDAR only, with the threshold their check boxes pick: the fair ground on which the
+    LiDAR variants and the aerial-only control are compared (1 Nov 2026)."""
+    if not hold:
+        return {}
+    v = val or hold; mean = lambda x: round(float(np.mean(x)), 3); by = {}
+    th = max(kp.THRESHS, key=lambda t: np.mean([f1(sc[t][b[0]]) for b in v]))
+    bx = {b[0]: {"f1": round(f1(sc[th][b[0]]), 3), "recall": sc[th][b[0]].get("recall", 0), "precision": sc[th][b[0]].get("precision", 0),
+                 "offset_median_m": sc[th][b[0]].get("offset_median_m"), "scenario": SCEN[b[0]], "role": "check" if b in val else "hold"}
+          for b in val + hold}
+    for nm, b in bx.items():
+        by.setdefault(b["scenario"], []).append(b["f1"])
+    return {"lidar": {"thresh": th, "scenario_score": mean([np.mean(x) for x in by.values()]), "scenarios": {k: mean(x) for k, x in by.items()},
+                      "worst_hold": min(bx[b[0]]["f1"] for b in hold), "boxes": bx}}
 
 
 def run(a):
@@ -745,6 +806,8 @@ def run(a):
     init = a[2] if len(a) > 2 and os.path.exists(a[2]) else None
     data([out])
     tn = [t[0] for t in TRAIN + (NEW if CFG.get("more") else [])]  # CFG["more"]: data round, also train on the train_new boxes
+    if CFG.get("lidar") == 2:  # LiDAR only: train where there is LiDAR
+        tn = [t for t in tn if os.path.exists(f"{out}/{t}_dem.npy")]
     for nm in tn + [v[0] for v in VAL + HOLD]:
         reference(out, nm)
     t0 = time.time(); info = {"steps": 0}
