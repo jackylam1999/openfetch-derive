@@ -235,3 +235,28 @@ Control: 0.774 (noise +-0.006). Changes: LiDAR + aerial + Melrose Park and Wentw
 Learnt: most movement in scenario 'none'; site share 35%, worst held-out F1 0.735.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 13
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| apartment boxes + kerb pixels weighted 6 | 0.778 | 0.719 | 36% | 0.772 | 0.913 | 0.803 | 0.723 | 0.677 |
+| control | 0.776 | 0.739 | 36% | 0.790 | 0.915 | 0.814 | 0.672 | 0.689 |
+| kerb pixels weighted 6 | 0.774 | 0.746 | 32% | 0.789 | 0.915 | 0.813 | 0.665 | 0.689 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| apartment boxes + kerb pixels weighted 6 | 0.804 | 0.766 | 0% | 0.772 | 0.913 | 0.845 | 0.723 | 0.766 |
+| control | 0.802 | 0.774 | 0% | 0.786 | 0.915 | 0.849 | 0.685 | 0.774 |
+| kerb pixels weighted 6 | 0.798 | 0.766 | 0% | 0.779 | 0.914 | 0.847 | 0.686 | 0.766 |
+
+Held-out (found/precise/median offset): monavale 90%/78%/0.27 m; newport 86%/73%/0.32 m; parramatta 73%/83%/0.28 m; paddington 86%/90%/0.28 m; kensington 82%/67%/0.11 m
+
+```
+Round 13. Question: does apartment boxes + kerb pixels weighted 6 raise the scenario score?; does kerb pixels weighted 6 raise the scenario score?
+Control: 0.776 (noise +-0.006). Changes: apartment boxes + kerb pixels weighted 6 0.804 vs control 0.802 on LiDAR boxes (within noise); kerb pixels weighted 6 0.798 vs control 0.802 on LiDAR boxes (within noise).
+Learnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.739.
+Next: hide car- and tree-sized patches (3 per chip), keep the kerb label (Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole)).
+```
