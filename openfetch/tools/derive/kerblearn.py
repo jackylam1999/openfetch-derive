@@ -430,12 +430,19 @@ def _mine(job):
     return nm, ms, fp
 
 
+def _pool():
+    """CPU workers: fork where there is one (Linux, Kaggle); Windows (Jacky's PC) only has spawn, where each worker loads its own
+    copy of the modules, so fewer of them (1 Nov 2026: evaluation crashed on the PC with no fork)."""
+    import multiprocessing as mp
+    n = max(1, (os.cpu_count() or 2) - 1)
+    return mp.get_context("fork").Pool(n) if "fork" in mp.get_all_start_methods() else mp.get_context("spawn").Pool(min(n, 6))
+
+
 def mine(out, init, th):
     """CFG["mine"] (queue: learn from all misses): the best model draws every training box at its threshold; each council kerb point
     it missed and each extra line point becomes a place training chips are cut from (no sorting by cause, unlike v1)."""
-    import multiprocessing as mp
     net = model(False); load(net, init); net = net.to(DEV()).eval(); res, jobs = {}, []
-    with mp.get_context("fork").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+    with _pool() as pool:
         for nm, *_ in TRAIN:
             m, tr, rgb, lot, lab, road = labels(out, nm)
             P = prob(net, rgb, inputs(out, nm, lot), inside(out, nm, lab.shape[0], tr))
@@ -758,11 +765,10 @@ def evaluate(net, out, tta):
     by cause and road type, whole lines, 250 m site tiles. Scenario score = mean over scenarios of the mean box F1 (R5).
     The GPU makes each box's kerb probability while CPU workers turn the previous boxes into lines and score them (a round 0
     variant spent about 90 minutes here one box after another, 30 Oct 2026)."""
-    import multiprocessing as mp
     sc, boxes, by, jobs = {}, {}, {}, []
     has = lambda b: os.path.exists(f"{out}/{b[0]}_dem.npy")
     val, hold = ([b for b in B if has(b)] for B in (VAL, HOLD)) if CFG.get("lidar") == 2 else (VAL, HOLD)  # LiDAR only: no input elsewhere
-    with mp.get_context("fork").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+    with _pool() as pool:
         for nm, *_ in val + hold:
             m, tr, rgb, lot, lab, road = labels(out, nm)
             P = prob(net, rgb, inputs(out, nm, lot), inside(out, nm, lab.shape[0], tr), tta)
