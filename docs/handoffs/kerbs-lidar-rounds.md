@@ -1,30 +1,51 @@
-# Handover: kerb training, LiDAR rounds (1 Nov 2026 ~03:00Z)
-From thread "Continue kerb training rounds 5 to 8" (ran out of follow-up rounds). Read AGENTS.md, docs/handoffs/kerbs-method.md,
-then `python3 openfetch/tools/derive/kerbloop.py brief kerb-learn/state.json`.
+# Handover: kerb training with LiDAR (1 Nov 2026 ~09:30Z)
+From thread "Train kerb model with LiDAR". Read AGENTS.md (project files), docs/handoffs/kerbs-method.md (project files), then
+`python3 openfetch/tools/derive/kerbloop.py brief kerb-learn/state.json`.
+
+## Goal (Jacky)
+Kerb lines good enough to ship (found >= 85%, offset <= 0.3 m, precise >= 70% on every held-out box), busiest areas first
+(tools/priority/TOP.md). Jacky 1 Nov: "lidar is a must"; 09:19Z: **if aerial gives no clear advantage, move to LiDAR only and keep
+training on it.**
 
 ## State
-- Code + state: openfetch-derive branch claude/project-thread-84nnno (PR #4). Kaggle driver kerb-learn/kaggle/kaggle.py
-  (round / status / record / data / lidar). KAGGLE_KEY env var; plain `kaggle` CLI needs `export KAGGLE_API_TOKEN="$KAGGLE_KEY"`.
-- Best model 0.761 scenario score (Satlas Swin-v2-B encoder, kept round 6 log numbering 7; first gain since round 1).
-  Not kept (all within the 0.006 noise bar): learn from all misses 0.745, clDice 0.747, photo-edge label check 0.747,
-  4 new apartment/dense boxes 0.763 vs 0.761 (apartments +0.03, dense -0.01). Several aerial years: skipped (Jacky).
-- RUNNING (pushed ~22:41Z 31 Oct, kernel v9): control vs "Satlas: train 300 min more" vs "Satlas: bigger view (384 px)".
-  Next step: `kaggle.py status train`, then `kaggle.py record`, commit state.json + LOG.md.
-- GPU quota: ~30 h/week, ~19 h used by 31 Oct night; resets Sat 00:00 UTC.
+- Code + state: openfetch-derive branch claude/project-thread-icjanz (PR #5). Kaggle driver kerb-learn/kaggle/kaggle.py
+  (round / status / record / data / lidar); `pip install kaggle`; KAGGLE_KEY env var (kaggle.py maps it to KAGGLE_API_TOKEN).
+- LiDAR: all 40 NSW boxes (train, check, held-out) have 0.25 m ground grids ({box}_dem.npy) in the output of Kaggle notebook
+  openfetch-kerb-lidar (17 ELVIS zips, kerb-learn/lidar_links.json; links expire ~2-3 Nov, the grids are kept by Kaggle).
+  Surveys Sydney202005/202006 and Sydney/Penrith201906 (ELVIS "newest per tile"). NSW CC BY 4.0, credit Spatial Services.
+  Vic boxes have none yet: Jacky 1 Nov OK'd Vic LiDAR (CC BY-NC) while the site is free; order Vic ELVIS for the com boxes
+  (southbank, carlton, docklands, northmelb, melbcbd, kensington, southwharf, westmelb) and confirm top-30 Vic suburbs are covered.
+- Ordering ELVIS: Remote Control on Jacky's PC (folder G:\My Drive\OpenFetch (Claude)); the Order click is refused by the PC's
+  permission check until Jacky writes in the thread in his own words to place the orders ("Place it urself" worked). Links go to
+  his Gmail; he pastes them. Then add to lidar_links.json, commit, `kaggle.py lidar <commit>` (processes all links again).
+- Code (kerblearn.py): CFG lidar=1 adds 3 input layers (ground minus 3 m median, slope, has-LiDAR; lidar()); lidar=2 = LiDAR only
+  (photo blanked, trains/scores LiDAR boxes only); pdrop = share of LiDAR chips with the photo blanked. result.json has a "lidar"
+  block = score on LiDAR boxes with its own threshold; kerbloop.py judges LiDAR variants on it and NEVER promotes lidar=2
+  (change that rule in record() if the switch to LiDAR only is made).
 
-## LiDAR (Jacky 1 Nov 02:53Z: "lidar is a must ... lidar or mix of lidar and aerial, let's try it")
-- ELVIS NSW orders (9 zips, links in kerb-learn/lidar_links.json, expire ~2 Nov) were turned into 0.25 m ground grids by Kaggle
-  notebook openfetch-kerb-lidar (kerb-learn/kaggle/lidar_kernel.py): {box}_dem.npy for bankstown, cb1, cb2, yagoona, nparramatta,
-  rydalmere, wentworthpt, melrose, carlingford, epping, wo1, wo3, plus partial parramatta, olympicpark, paddington. Ground density
-  only 1-6 points/m2 (2019 surveys ~1.5-2, 2020 ~4.5-5.5); steps() smooths gaps (sigma 1.5 cells).
-- Queued (kerb-learn/queue.json, ready): "two-judge label cleaning": training pieces need photo edge AND a >=7.5 cm ground step
-  (boxes without LiDAR: photo judge only). Scoring reference unchanged (check/held-out boxes lack LiDAR).
-- To do for Jacky's ask (LiDAR alone, LiDAR + aerial, vs aerial-only control, one change per round, per-scenario scores):
-  1. Order LiDAR for every other NSW box (pw1-8, nb9-10, cb3-8, roselands, milperra, villawood, wo2, nbcheck, cbcheck, wocheck,
-     olympicpark, monavale, newport, parramatta, paddington): Remote Control on Jacky's PC, ELVIS email orders to his Gmail
-     (bucket is Requester Pays, no direct download), newest survey, skip 2013 1.56 pts/m2 surveys. He pastes links; rerun
-     `kaggle.py lidar <commit>` after adding links. Vic LiDAR is CC BY-NC: Vic boxes stay aerial-only.
-  2. Code: LiDAR input channels (ground height minus 3 m local median, and gradient magnitude, resampled to 0.1 m, plus a
-     has-LiDAR mask; zero where none) via context(); variant A "LiDAR + aerial" (extra channels), variant B "LiDAR only"
-     (RGB zeroed). Score on NSW boxes that have LiDAR; report per scenario next to the control.
-- Also queued (todo, needs code): "fill hidden kerb gaps along the road" (Jacky's centreline idea, post-processing).
+## Results
+- Round 9: Satlas train 300 min more 0.759, bigger view 0.757, control 0.759: photo model plateaued.
+- Round 10 (LiDAR, on 8 LiDAR check/held-out boxes, F1): control 0.772, LiDAR + aerial 0.776, LiDAR only 0.780.
+  LiDAR only: Parramatta CBD 0.71 -> 0.79 (precise 74 -> 85%), terraces 0.81 -> 0.84, wocheck 0.76 -> 0.81, Newport 0.76 -> 0.79;
+  weaker: apartments/Olympic Park 0.67 -> 0.62, nbcheck 0.74 -> 0.68, flat grid 0.91 -> 0.90; offsets ~equal (0.26-0.40 m).
+  LiDAR + aerial barely moved: new layers start at zero, the photo already explains the labels, model ignored LiDAR.
+- RUNNING round 11 (pushed ~09:15Z, kernel v11): control vs "LiDAR + aerial, photo blanked on half the chips" vs same at 300 min.
+  Check: `kaggle.py status train`; when COMPLETE: `kaggle.py record`, commit state.json + LOG.md, per-box numbers from
+  /tmp/kerb-kaggle/out/*/result.json "lidar" block. A scheduled check fires ~14:15Z in the old thread.
+
+## Decide next (Jacky's rule)
+- If round 11's LiDAR + aerial does not beat round 10's LiDAR only (0.780) by more than the noise (0.006): make LiDAR only the main
+  model (allow lidar=2 as best in kerbloop record, base cfg lidar=2) and keep training it; first target the apartments weak spot
+  (Olympic Park: more apartment boxes with LiDAR, busiest first: Wentworth Point, Melrose Park, Rydalmere already have it).
+- Aerial fallback for streets built after the LiDAR survey (2019-2020; busiest areas Waterloo, Zetland, Parramatta change fastest):
+  draw from the aerial model where photo (2022+) and LiDAR disagree or LiDAR is older than the street. Told Jacky; not built.
+- Top NSW suburbs (Sydney, Waterloo, Zetland, Erskineville, Alexandria, Parramatta, Randwick, Marrickville, Haymarket, Chatswood)
+  sit in the 2019-2020 Sydney surveys (not individually checked on ELVIS).
+
+## Open questions for Jacky
+- Newer NSW LiDAR: none on ELVIS after 2020 for these areas; Spatial Services flies a CityMapper-2 since 2024. Offered to draft an
+  email asking for post-2020 Sydney/Parramatta captures and ELVIS dates; awaiting his yes.
+- GPU while Kaggle resets (30 h/week, resets Sat 00:00 UTC; nearly used up after rounds 9-11): offered (1) Jacky's PC GPU via
+  Remote Control if NVIDIA >= 8 GB (check `nvidia-smi` first), (2) Colab Pro ~A$15/month, (3) GitHub free CPU (1-2 days a round).
+  Awaiting his pick.
+- Queued after the LiDAR rounds: two-judge label cleaning (kerb-learn/queue.json); "fill hidden kerb gaps along the road" (todo).
