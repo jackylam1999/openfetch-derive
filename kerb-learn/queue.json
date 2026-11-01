@@ -170,6 +170,23 @@
   "kill": "apartments does not rise"
  },
  {
+  "name": "apartment boxes + kerb pixels weighted 6",
+  "why": "round 12: apartment boxes raised apartments 0.675 -> 0.716 (overall within noise); Olympic Park still misses kerbs (recall 0.61 at precision 0.88), so weight kerb pixels more to trade precision for recall",
+  "cfg": {
+   "more": 1,
+   "pw": 6.0
+  },
+  "kill": "apartments and worst held-out do not rise"
+ },
+ {
+  "name": "kerb pixels weighted 6",
+  "why": "recall is the weak side on apartments and dense (Parramatta recall 0.73); separates the weight effect from the apartment boxes",
+  "cfg": {
+   "pw": 6.0
+  },
+  "kill": "within noise of the control"
+ },
+ {
   "name": "fill hidden kerb gaps along the road",
   "why": "Jacky 31 Oct 23:35Z (road centreline): kerbs run in pairs at a steady offset from the centreline; where both ends of a gap are found (under trees, cars), join them along the path parallel to the centreline. Post-processing only, no retraining",
   "cfg": {
