@@ -148,3 +148,28 @@ Control: 0.759 (noise +-0.006). Changes: Satlas: bigger view (384 px chips) 0.75
 Learnt: most movement in scenario 'none'; site share 29%, worst held-out F1 0.713.
 Next: LiDAR + aerial (Jacky 1 Nov: 'lidar is a must'. Adds 3 LiDAR layers (ground minus 3 m median, slope, has-LiDAR) beside the photo; judged on the boxes with LiDAR against the aerial-only control).
 ```
+
+## Round 10
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| LiDAR + aerial | 0.760 | 0.722 | 28% | 0.775 | 0.911 | 0.789 | 0.658 | 0.666 |
+| LiDAR only | 0.780 | 0.785 | 29% | 0.763 | 0.900 | 0.836 | 0.616 | 0.785 |
+| control | 0.756 | 0.709 | 29% | 0.771 | 0.913 | 0.782 | 0.658 | 0.657 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| LiDAR + aerial | 0.776 | 0.719 | 0% | 0.771 | 0.911 | 0.813 | 0.668 | 0.719 |
+| LiDAR only | 0.780 | 0.785 | 0% | 0.763 | 0.900 | 0.836 | 0.616 | 0.785 |
+| control | 0.772 | 0.709 | 0% | 0.767 | 0.912 | 0.805 | 0.665 | 0.709 |
+
+Held-out (found/precise/median offset): monavale 88%/76%/0.28 m; newport 83%/70%/0.34 m; parramatta 67%/76%/0.32 m; paddington 85%/86%/0.27 m; kensington 79%/69%/0.12 m
+
+```
+Round 10. Question: does LiDAR + aerial raise the scenario score?; does LiDAR only raise the scenario score?
+Control: 0.756 (noise +-0.006). Changes: LiDAR + aerial 0.776 vs control 0.772 on LiDAR boxes (within noise); LiDAR only 0.780 vs control 0.772 on LiDAR boxes (better, not usable alone).
+Learnt: most movement in scenario 'none'; site share 29%, worst held-out F1 0.709.
+Next: two-judge label cleaning (LiDAR step + photo edge) (Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible).
+```

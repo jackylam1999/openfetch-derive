@@ -567,6 +567,8 @@ def train(path, out, names, init, mine):
                 if wd is not None:
                     wd = ndimage.zoom(wd, (f, f, 1), order=1)[:2 * h, :2 * h]
             x, y = stack(np.clip(img, 0, 255), ip), lb[None]
+            if CFG.get("pdrop") and li is not None and rng.random() < CFG["pdrop"]:  # round 10: LiDAR + aerial ignored the LiDAR
+                x[:3] = 0  # layers (they start at zero); blanking the photo on some chips makes the model learn them
             if wd is not None:
                 x = np.concatenate([x, norm(wd)])
             k = int(rng.integers(4))

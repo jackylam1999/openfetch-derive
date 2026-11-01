@@ -109,6 +109,25 @@
   "kill": "below the control on the LiDAR boxes"
  },
  {
+  "name": "LiDAR + aerial, photo blanked on half the chips",
+  "why": "round 10: LiDAR only beat the control on LiDAR boxes (0.780 vs 0.772; Parramatta CBD F1 0.71 -> 0.79) but LiDAR + aerial barely moved (0.776): the new layers start at zero and the photo already explains the labels, so the model never learned them. Blanking the photo on 50% of LiDAR chips forces it to",
+  "cfg": {
+   "lidar": 1,
+   "pdrop": 0.5
+  },
+  "kill": "within noise of the control on the LiDAR boxes"
+ },
+ {
+  "name": "LiDAR + aerial, photo blanked on half the chips, 300 min",
+  "why": "same, trained twice as long: tells whether learning the LiDAR layers needs more steps",
+  "cfg": {
+   "lidar": 1,
+   "pdrop": 0.5,
+   "minutes": 300
+  },
+  "kill": "within noise of the 150 min version"
+ },
+ {
   "name": "two-judge label cleaning (LiDAR step + photo edge)",
   "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible",
   "cfg": {
