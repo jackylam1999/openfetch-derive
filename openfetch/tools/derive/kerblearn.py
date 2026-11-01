@@ -55,6 +55,7 @@ ROLE = lambda r: [(b["name"], b["council"], b["x"], b["y"]) for b in BOXES["boxe
 TRAIN, VAL, HOLD, NEW = ROLE("train"), ROLE("check"), ROLE("hold"), ROLE("train_new")
 SCEN = {b["name"]: b["scenario"] for b in BOXES["boxes"]}
 CO = {b["name"]: b["council"] for b in BOXES["boxes"]}
+BX = {b["name"]: (b["x"], b["y"]) for b in BOXES["boxes"]}
 SIX = "https://portal.spatial.nsw.gov.au/server/rest/services/"
 LGA = SIX + "NSW_Administrative_Boundaries_Theme_multiCRS/FeatureServer/8/query"
 CONTEXT = {"roads": SIX + "NSW_Transport_Theme_multiCRS/FeatureServer/5/query", "water": SIX + "NSW_Water_Theme_multiCRS/FeatureServer/6/query"}
@@ -433,12 +434,37 @@ def checked(out, nm, lab, rgb, tr):
         del G
         sv = np.array(sv); cut = np.median(sv) * 0.5 * CFG["labelcheck"] if len(sv) else 0
         bad = [p.buffer(1.5) for p, v in zip(ps, sv) if v < cut]
+        if CFG.get("lidarcheck") and os.path.exists(f"{out}/{nm}_dem.npy"):  # second judge: a LiDAR height step across the line
+            st = steps(np.load(f"{out}/{nm}_dem.npy"), BX[nm], ps)
+            bad += [p.buffer(1.5) for p, v, h in zip(ps, sv, st) if v >= cut and h is not None and h < CFG["lidarcheck"] / 2]
         drop = rf.rasterize(((b, 1) for b in bad), out_shape=lab.shape, transform=tr, dtype=np.uint8) if bad else np.zeros(lab.shape, np.uint8)
         return [drop, np.array([len(bad), len(ps), sum(p.length for p, v in zip(ps, sv) if v < cut), sum(p.length for p in ps)])]
-    drop, st = cached(out, nm, "chk", make)
+    drop, st = cached(out, nm, "chkL" if CFG.get("lidarcheck") else "chk", make)
     print(f"labelcheck {nm}: dropped {int(st[0])} of {int(st[1])} pieces, {st[2] / max(st[3], 1):.1%} of length", file=sys.stderr)
     lab = lab.copy(); lab[drop > 0] = 0
     return lab, round(float(st[2] / max(st[3], 1)), 4)
+
+
+def steps(dem, xy0, ps, G=0.25, d=0.75):
+    """Median height step (m) across each line piece: ground 0.75 m either side of the line on the LiDAR grid (lidar_kernel.py,
+    0.25 m cells, lower-left corner xy0, north up). None where the grid has no ground points there."""
+    n = dem.shape[0]; out = []
+    for q in ps:
+        v = []
+        for t in np.arange(0.5, q.length - 0.5, 1.0):
+            a, b, p = q.interpolate(t - 0.5), q.interpolate(t + 0.5), q.interpolate(t)
+            dx, dy = b.x - a.x, b.y - a.y; k = np.hypot(dx, dy)
+            if not k:
+                continue
+            z = []
+            for s in (1, -1):
+                X, Y = p.x - s * dy / k * d, p.y + s * dx / k * d
+                c, r = int((X - xy0[0]) / G), n - 1 - int((Y - xy0[1]) / G)
+                z.append(dem[r, c] if 0 <= r < n and 0 <= c < n else np.nan)
+            v.append(abs(z[0] - z[1]))
+        v = np.array(v, float); v = v[np.isfinite(v)]
+        out.append(float(np.median(v)) if len(v) >= 3 else None)
+    return out
 
 
 def soft_skel(x, it=8):

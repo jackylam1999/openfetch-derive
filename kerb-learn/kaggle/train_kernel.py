@@ -8,6 +8,8 @@ srcs = {os.path.dirname(m) for m in glob.glob("/kaggle/input/**/kp/*_meta.json",
 best = glob.glob("/kaggle/input/**/model.pt", recursive=True)[0]
 for src in srcs:
     shutil.copytree(src, "/kaggle/temp/kp", dirs_exist_ok=True)
+for d in glob.glob("/kaggle/input/**/lidar/*_dem.npy", recursive=True):  # LiDAR ground grids (lidar_kernel.py)
+    shutil.copy(d, "/kaggle/temp/kp")
 sh("nvidia-smi --query-gpu=name --format=csv,noheader; df -h /kaggle/temp | tail -1")
 D = "/kaggle/temp/r/openfetch/tools/derive"
 for v in VARIANTS:

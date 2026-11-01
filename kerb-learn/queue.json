@@ -94,14 +94,12 @@
  },
  {
   "name": "two-judge label cleaning (LiDAR step + photo edge)",
-  "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Keep a council kerb piece only where a LiDAR height step (~15 cm) and a photo edge agree; train and score on agreed lines, and score the control on the same filtered set",
+  "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible",
   "cfg": {
    "labelcheck": 1,
-   "lidarcheck": 0.15,
-   "score_filtered": 1
+   "lidarcheck": 0.15
   },
-  "kill": "control and change on the filtered set within noise",
-  "todo": "code + data: LiDAR DEM per box (kerbs-lidar-pilot.md), height step across each 10 m piece, filtered scoring reference; Jacky ordering ELVIS LiDAR for 10 NSW boxes (docs/handoffs/kerbs-lidar-order.md in project files), 31 Oct 23:33Z"
+  "kill": "within noise of the control"
  },
  {
   "name": "Satlas: train 300 min more",
