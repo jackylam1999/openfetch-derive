@@ -432,10 +432,10 @@ def _mine(job):
 
 def _pool():
     """CPU workers: fork where there is one (Linux, Kaggle); Windows (Jacky's PC) only has spawn, where each worker loads its own
-    copy of the modules, so fewer of them (1 Nov 2026: evaluation crashed on the PC with no fork)."""
+    copy of the modules, so fewer of them (1 Nov 2026: evaluation crashed on the PC with no fork; 6 workers ran out of memory once)."""
     import multiprocessing as mp
     n = max(1, (os.cpu_count() or 2) - 1)
-    return mp.get_context("fork").Pool(n) if "fork" in mp.get_all_start_methods() else mp.get_context("spawn").Pool(min(n, 6))
+    return mp.get_context("fork").Pool(n) if "fork" in mp.get_all_start_methods() else mp.get_context("spawn").Pool(min(n, 4))
 
 
 def mine(out, init, th):
