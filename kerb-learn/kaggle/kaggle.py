@@ -49,6 +49,12 @@ def round_(a):
                                             "kernel_sources": [f"{USER}/openfetch-kerb-{k}" for k in CACHES]})
 
 
+def lidar(a):
+    L = json.load(open(f"{ROOT}/kerb-learn/lidar_links.json"))["links"]
+    s = open(f"{HERE}/lidar_kernel.py").read().replace("__REF__", a[0]).replace("__LINKS__", json.dumps(L))
+    push("openfetch-kerb-lidar", s, False, {"dataset_sources": [], "kernel_sources": []})
+
+
 def status(a):
     r = kg("kernels", "status", f"{USER}/openfetch-kerb-{a[0] if a else 'train'}"); print((r.stdout + r.stderr).strip())
 
@@ -69,4 +75,4 @@ def record(a):
 
 
 if __name__ == "__main__":
-    {"data": data, "round": round_, "status": status, "record": record}[sys.argv[1]](sys.argv[2:])
+    {"data": data, "lidar": lidar, "round": round_, "status": status, "record": record}[sys.argv[1]](sys.argv[2:])
