@@ -173,3 +173,9 @@ Control: 0.756 (noise +-0.006). Changes: LiDAR + aerial 0.776 vs control 0.772 o
 Learnt: most movement in scenario 'none'; site share 29%, worst held-out F1 0.709.
 Next: two-judge label cleaning (LiDAR step + photo edge) (Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible).
 ```
+
+## PC side run 1 Nov (Jacky's RTX 3070): LiDAR only, 300 min (6,300 steps)
+On the 8 LiDAR boxes: scenario score 0.782 (round 10 LiDAR only at 150 min: 0.780) -> within noise, training longer does not help.
+hilly 0.762, grid 0.899, terraces 0.839, apartments 0.630, dense 0.779; worst held-out 0.779; thresh 0.6.
+olympicpark misses kerbs (recall 0.50, precision 0.86); nbcheck draws extras (precision 0.63, offset 0.41 m).
+Next on the PC: LiDAR only + two-judge label cleaning (kerb-learn/pc/side-lidar-2judge.json).
