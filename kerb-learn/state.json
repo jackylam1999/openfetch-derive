@@ -1,5 +1,5 @@
 {
- "round": 8,
+ "round": 9,
  "best": {
   "name": "control",
   "cfg": {
@@ -18,27 +18,27 @@
    "context": 1
   },
   "thresh": 0.8,
-  "scenario_score": 0.761,
-  "worst_hold": 0.717,
-  "site_share": 0.304,
+  "scenario_score": 0.759,
+  "worst_hold": 0.713,
+  "site_share": 0.291,
   "scenarios": {
-   "hilly": 0.768,
-   "grid": 0.912,
-   "terraces": 0.786,
-   "apartments": 0.679,
-   "dense": 0.661
+   "hilly": 0.774,
+   "grid": 0.913,
+   "terraces": 0.787,
+   "apartments": 0.666,
+   "dense": 0.657
   },
   "boxes": {
    "nbcheck": {
     "reference_km": 10.08,
-    "derived_km": 12.25,
-    "recall": 0.796,
-    "precision": 0.676,
-    "offset_median_m": 0.35,
-    "offset_p90_m": 0.77,
+    "derived_km": 11.86,
+    "recall": 0.795,
+    "precision": 0.697,
+    "offset_median_m": 0.36,
+    "offset_p90_m": 0.78,
     "tol_m": 1.0,
     "recall_at_0.5m": 0.539,
-    "recall_at_2.0m": 0.883,
+    "recall_at_2.0m": 0.88,
     "tiles": [
      1,
      15
@@ -46,11 +46,11 @@
     "types": {
      "under trees": [
       1894,
-      0.786
+      0.772
      ],
      "in shadow": [
       3606,
-      0.775
+      0.795
      ],
      "cars or clutter": [
       2920,
@@ -58,7 +58,7 @@
      ],
      "faint kerb": [
       833,
-      0.623
+      0.629
      ],
      "clear kerb": [
       16021,
@@ -68,38 +68,38 @@
     "scales": {
      "main roads": [
       4764,
-      0.538
+      0.536
      ],
      "collector roads": [
       5531,
-      0.755
+      0.756
      ],
      "local streets": [
       14751,
-      0.891
+      0.895
      ],
      "lanes and access": [
       228,
-      0.978
+      0.974
      ]
     },
-    "extra_m": 4428,
+    "extra_m": 3960,
     "signed_offset_m": 0.0,
     "whole_lines": 0.779,
-    "f1": 0.731,
+    "f1": 0.743,
     "scenario": "hilly",
     "role": "check"
    },
    "cbcheck": {
     "reference_km": 19.73,
-    "derived_km": 21.72,
-    "recall": 0.956,
-    "precision": 0.871,
+    "derived_km": 21.71,
+    "recall": 0.957,
+    "precision": 0.872,
     "offset_median_m": 0.17,
     "offset_p90_m": 0.41,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.903,
-    "recall_at_2.0m": 0.967,
+    "recall_at_0.5m": 0.905,
+    "recall_at_2.0m": 0.968,
     "tiles": [
      15,
      16
@@ -111,29 +111,29 @@
      ],
      "in shadow": [
       4345,
-      0.902
+      0.897
      ],
      "cars or clutter": [
       5181,
-      0.954
+      0.956
      ],
      "faint kerb": [
       1081,
-      0.895
+      0.9
      ],
      "clear kerb": [
       27887,
-      0.972
+      0.974
      ]
     },
     "scales": {
      "main roads": [
       195,
-      0.528
+      0.585
      ],
      "collector roads": [
       6767,
-      0.922
+      0.926
      ],
      "local streets": [
       36690,
@@ -141,26 +141,26 @@
      ],
      "lanes and access": [
       1817,
-      0.602
+      0.586
      ]
     },
-    "extra_m": 2413,
+    "extra_m": 2390,
     "signed_offset_m": -0.1,
-    "whole_lines": 0.904,
-    "f1": 0.912,
+    "whole_lines": 0.908,
+    "f1": 0.913,
     "scenario": "grid",
     "role": "check"
    },
    "wocheck": {
     "reference_km": 10.54,
-    "derived_km": 8.39,
-    "recall": 0.683,
-    "precision": 0.852,
+    "derived_km": 8.48,
+    "recall": 0.686,
+    "precision": 0.846,
     "offset_median_m": 0.33,
-    "offset_p90_m": 0.72,
+    "offset_p90_m": 0.73,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.488,
-    "recall_at_2.0m": 0.758,
+    "recall_at_0.5m": 0.497,
+    "recall_at_2.0m": 0.769,
     "tiles": [
      1,
      14
@@ -168,7 +168,7 @@
     "types": {
      "under trees": [
       7331,
-      0.686
+      0.701
      ],
      "in shadow": [
       5768,
@@ -176,52 +176,52 @@
      ],
      "cars or clutter": [
       2301,
-      0.722
+      0.736
      ],
      "faint kerb": [
       1067,
-      0.672
+      0.668
      ],
      "clear kerb": [
       9653,
-      0.735
+      0.738
      ]
     },
     "scales": {
      "main roads": [
       5223,
-      0.809
+      0.836
      ],
      "collector roads": [
       5942,
-      0.917
+      0.914
      ],
      "local streets": [
       14817,
-      0.561
+      0.563
      ],
      "lanes and access": [
       138,
       0.174
      ]
     },
-    "extra_m": 1388,
+    "extra_m": 1462,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.528,
+    "whole_lines": 0.504,
     "f1": 0.758,
     "scenario": "terraces",
     "role": "check"
    },
    "olympicpark": {
     "reference_km": 10.13,
-    "derived_km": 6.24,
-    "recall": 0.552,
-    "precision": 0.883,
-    "offset_median_m": 0.28,
-    "offset_p90_m": 0.64,
+    "derived_km": 6.38,
+    "recall": 0.545,
+    "precision": 0.857,
+    "offset_median_m": 0.29,
+    "offset_p90_m": 0.68,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.425,
-    "recall_at_2.0m": 0.594,
+    "recall_at_0.5m": 0.412,
+    "recall_at_2.0m": 0.591,
     "tiles": [
      1,
      9
@@ -229,11 +229,11 @@
     "types": {
      "under trees": [
       3399,
-      0.588
+      0.593
      ],
      "in shadow": [
       7421,
-      0.496
+      0.506
      ],
      "cars or clutter": [
       242,
@@ -241,11 +241,11 @@
      ],
      "faint kerb": [
       2841,
-      0.624
+      0.575
      ],
      "clear kerb": [
       12706,
-      0.557
+      0.549
      ]
     },
     "scales": {
@@ -255,34 +255,34 @@
      ],
      "collector roads": [
       17088,
-      0.487
+      0.468
      ],
      "local streets": [
       9001,
-      0.676
+      0.693
      ],
      "lanes and access": [
       520,
-      0.512
+      0.56
      ]
     },
-    "extra_m": 712,
+    "extra_m": 936,
     "signed_offset_m": -0.1,
-    "whole_lines": 0.456,
-    "f1": 0.679,
+    "whole_lines": 0.476,
+    "f1": 0.666,
     "scenario": "apartments",
     "role": "check"
    },
    "melbcbd": {
     "reference_km": 87.21,
-    "derived_km": 53.09,
-    "recall": 0.677,
+    "derived_km": 52.31,
+    "recall": 0.669,
     "precision": 0.547,
-    "offset_median_m": 0.22,
+    "offset_median_m": 0.23,
     "offset_p90_m": 0.76,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.441,
-    "recall_at_2.0m": 0.863,
+    "recall_at_0.5m": 0.434,
+    "recall_at_2.0m": 0.861,
     "tiles": [
      0,
      16
@@ -290,19 +290,19 @@
     "types": {
      "under trees": [
       41872,
-      0.563
+      0.575
      ],
      "in shadow": [
       64097,
-      0.663
+      0.642
      ],
      "cars or clutter": [
       50817,
-      0.785
+      0.762
      ],
      "faint kerb": [
       5863,
-      0.626
+      0.616
      ],
      "clear kerb": [
       49845,
@@ -316,34 +316,34 @@
      ],
      "collector roads": [
       80453,
-      0.678
+      0.677
      ],
      "local streets": [
       127562,
-      0.714
+      0.698
      ],
      "lanes and access": [
       4479,
-      0.607
+      0.6
      ]
     },
-    "extra_m": 29000,
+    "extra_m": 28533,
     "signed_offset_m": -0.1,
-    "whole_lines": 0.432,
-    "f1": 0.605,
+    "whole_lines": 0.418,
+    "f1": 0.602,
     "scenario": "dense",
     "role": "check"
    },
    "monavale": {
     "reference_km": 16.4,
-    "derived_km": 20.16,
-    "recall": 0.881,
-    "precision": 0.755,
+    "derived_km": 19.97,
+    "recall": 0.878,
+    "precision": 0.761,
     "offset_median_m": 0.28,
     "offset_p90_m": 0.69,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.699,
-    "recall_at_2.0m": 0.939,
+    "recall_at_0.5m": 0.696,
+    "recall_at_2.0m": 0.943,
     "tiles": [
      11,
      16
@@ -351,11 +351,11 @@
     "types": {
      "under trees": [
       6431,
-      0.782
+      0.78
      ],
      "in shadow": [
       11463,
-      0.837
+      0.833
      ],
      "cars or clutter": [
       4074,
@@ -363,17 +363,17 @@
      ],
      "faint kerb": [
       857,
-      0.594
+      0.573
      ],
      "clear kerb": [
       19552,
-      0.949
+      0.947
      ]
     },
     "scales": {
      "main roads": [
       7845,
-      0.791
+      0.789
      ],
      "collector roads": [
       0,
@@ -381,30 +381,30 @@
      ],
      "local streets": [
       34198,
-      0.906
+      0.903
      ],
      "lanes and access": [
       334,
-      0.793
+      0.832
      ]
     },
-    "extra_m": 5436,
+    "extra_m": 5345,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.839,
-    "f1": 0.813,
+    "whole_lines": 0.848,
+    "f1": 0.815,
     "scenario": "hilly",
     "role": "hold"
    },
    "newport": {
     "reference_km": 12.56,
-    "derived_km": 15.74,
-    "recall": 0.824,
-    "precision": 0.703,
+    "derived_km": 15.77,
+    "recall": 0.831,
+    "precision": 0.705,
     "offset_median_m": 0.34,
-    "offset_p90_m": 0.78,
+    "offset_p90_m": 0.79,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.583,
-    "recall_at_2.0m": 0.924,
+    "recall_at_0.5m": 0.587,
+    "recall_at_2.0m": 0.931,
     "tiles": [
      3,
      16
@@ -412,60 +412,60 @@
     "types": {
      "under trees": [
       4877,
-      0.689
+      0.708
      ],
      "in shadow": [
       4562,
-      0.711
+      0.715
      ],
      "cars or clutter": [
       2773,
-      0.927
+      0.93
      ],
      "faint kerb": [
       1324,
-      0.565
+      0.578
      ],
      "clear kerb": [
       14700,
-      0.918
+      0.922
      ]
     },
     "scales": {
      "main roads": [
       2173,
-      0.995
+      0.997
      ],
      "collector roads": [
       4083,
-      0.928
+      0.927
      ],
      "local streets": [
       21945,
-      0.795
+      0.804
      ],
      "lanes and access": [
       35,
-      0.514
+      0.486
      ]
     },
-    "extra_m": 4952,
+    "extra_m": 4908,
     "signed_offset_m": 0.1,
-    "whole_lines": 0.707,
-    "f1": 0.759,
+    "whole_lines": 0.739,
+    "f1": 0.763,
     "scenario": "hilly",
     "role": "hold"
    },
    "parramatta": {
     "reference_km": 24.99,
-    "derived_km": 21.61,
-    "recall": 0.671,
-    "precision": 0.769,
-    "offset_median_m": 0.33,
+    "derived_km": 21.65,
+    "recall": 0.669,
+    "precision": 0.764,
+    "offset_median_m": 0.32,
     "offset_p90_m": 0.65,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.514,
-    "recall_at_2.0m": 0.733,
+    "recall_at_0.5m": 0.513,
+    "recall_at_2.0m": 0.734,
     "tiles": [
      1,
      16
@@ -473,80 +473,80 @@
     "types": {
      "under trees": [
       3486,
-      0.823
+      0.818
      ],
      "in shadow": [
       25338,
-      0.652
+      0.643
      ],
      "cars or clutter": [
       7065,
-      0.706
+      0.711
      ],
      "faint kerb": [
       1762,
-      0.254
+      0.245
      ],
      "clear kerb": [
       23390,
-      0.694
+      0.701
      ]
     },
     "scales": {
      "main roads": [
       2790,
-      0.871
+      0.866
      ],
      "collector roads": [
       18097,
-      0.716
+      0.715
      ],
      "local streets": [
       33898,
-      0.684
+      0.685
      ],
      "lanes and access": [
       6256,
-      0.398
+      0.39
      ]
     },
-    "extra_m": 5333,
-    "signed_offset_m": 0.283,
-    "whole_lines": 0.486,
-    "f1": 0.717,
+    "extra_m": 5460,
+    "signed_offset_m": 0.224,
+    "whole_lines": 0.475,
+    "f1": 0.713,
     "scenario": "dense",
     "role": "hold"
    },
    "paddington": {
     "reference_km": 35.48,
-    "derived_km": 34.03,
-    "recall": 0.847,
-    "precision": 0.866,
+    "derived_km": 33.83,
+    "recall": 0.845,
+    "precision": 0.869,
     "offset_median_m": 0.27,
     "offset_p90_m": 0.67,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.659,
-    "recall_at_2.0m": 0.931,
+    "recall_at_0.5m": 0.656,
+    "recall_at_2.0m": 0.93,
     "tiles": [
-     8,
+     6,
      14
     ],
     "types": {
      "under trees": [
       20208,
-      0.75
+      0.752
      ],
      "in shadow": [
       23075,
-      0.867
+      0.861
      ],
      "cars or clutter": [
       9886,
-      0.898
+      0.896
      ],
      "faint kerb": [
       2208,
-      0.819
+      0.828
      ],
      "clear kerb": [
       35934,
@@ -556,38 +556,38 @@
     "scales": {
      "main roads": [
       2423,
-      0.961
+      0.95
      ],
      "collector roads": [
       10496,
-      0.764
+      0.765
      ],
      "local streets": [
       57398,
-      0.859
+      0.86
      ],
      "lanes and access": [
       20994,
-      0.882
+      0.877
      ]
     },
-    "extra_m": 5286,
+    "extra_m": 5114,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.74,
-    "f1": 0.856,
+    "whole_lines": 0.743,
+    "f1": 0.857,
     "scenario": "terraces",
     "role": "hold"
    },
    "kensington": {
     "reference_km": 80.21,
-    "derived_km": 45.29,
-    "recall": 0.796,
-    "precision": 0.697,
+    "derived_km": 44.75,
+    "recall": 0.794,
+    "precision": 0.702,
     "offset_median_m": 0.12,
-    "offset_p90_m": 0.6,
+    "offset_p90_m": 0.59,
     "tol_m": 1.0,
     "recall_at_0.5m": 0.647,
-    "recall_at_2.0m": 0.89,
+    "recall_at_2.0m": 0.887,
     "tiles": [
      4,
      16
@@ -595,23 +595,23 @@
     "types": {
      "under trees": [
       48563,
-      0.73
+      0.726
      ],
      "in shadow": [
       25377,
-      0.777
+      0.78
      ],
      "cars or clutter": [
       48284,
-      0.837
+      0.825
      ],
      "faint kerb": [
       2264,
-      0.862
+      0.871
      ],
      "clear kerb": [
       72409,
-      0.844
+      0.846
      ]
     },
     "scales": {
@@ -621,28 +621,28 @@
      ],
      "collector roads": [
       19082,
-      0.794
+      0.786
      ],
      "local streets": [
       172065,
-      0.817
+      0.815
      ],
      "lanes and access": [
       5750,
-      0.495
+      0.497
      ]
     },
-    "extra_m": 15998,
-    "signed_offset_m": 0.0,
-    "whole_lines": 0.553,
-    "f1": 0.743,
+    "extra_m": 15586,
+    "signed_offset_m": -0.1,
+    "whole_lines": 0.565,
+    "f1": 0.745,
     "scenario": "terraces",
     "role": "hold"
    }
   },
-  "artifact": "kaggle-7-0",
+  "artifact": "kaggle-8-0",
   "run": "kaggle",
-  "round": 8
+  "round": 9
  },
  "history": [
   {
@@ -705,6 +705,14 @@
     "control": 0.761,
     "more apartment and dense training areas": 0.763
    }
+  },
+  {
+   "round": 9,
+   "scores": {
+    "Satlas: bigger view (384 px chips)": 0.757,
+    "Satlas: train 300 min more": 0.759,
+    "control": 0.759
+   }
   }
  ],
  "done": [
@@ -718,16 +726,19 @@
   "learn from misses (all misses, no cause)",
   "Satlas Swin-v2-B aerial encoder",
   "drop council lines with no photo edge",
-  "more apartment and dense training areas"
+  "more apartment and dense training areas",
+  "Satlas: bigger view (384 px chips)",
+  "Satlas: train 300 min more"
  ],
- "stale": 1,
+ "stale": 0,
  "status": "running",
  "min_gain": 0.006,
  "takeaways": [
-  "Round 6. Question: does clDice line-continuity loss raise the scenario score?; does learn from misses (all misses, no cause) raise the scenario score?\nControl: 0.748 (noise +-0.006). Changes: clDice line-continuity loss 0.747 (within noise); learn from misses (all misses, no cause) 0.745 (within noise).\nLearnt: most movement in scenario 'none'; site share 26%, worst held-out F1 0.704.\nNext: queue empty, add the next change to kerb-learn/queue.json.",
   "Round 7. Question: does Satlas Swin-v2-B aerial encoder raise the scenario score?; does drop council lines with no photo edge raise the scenario score?\nControl: 0.746 (noise +-0.006). Changes: Satlas Swin-v2-B aerial encoder 0.757 (kept); drop council lines with no photo edge 0.747 (within noise).\nLearnt: most movement in scenario 'terraces'; site share 28%, worst held-out F1 0.715.\nNext: more apartment and dense training areas (plateau since round 1 on model changes; apartments 0.65 and dense 0.65 are the weakest scenarios and had 2 and 4 training boxes. Adds 4 boxes busiest first from TOP.md: Wentworth Point (NSW 28), Melrose Park (Ermington, NSW 35), South Wharf (Vic 22), West Melbourne (Vic 94); none overlaps a check or held-out box).",
-  "Round 8. Question: does more apartment and dense training areas raise the scenario score?\nControl: 0.761 (noise +-0.006). Changes: more apartment and dense training areas 0.763 (within noise).\nLearnt: most movement in scenario 'none'; site share 30%, worst held-out F1 0.717.\nNext: queue empty, add the next change to kerb-learn/queue.json."
+  "Round 8. Question: does more apartment and dense training areas raise the scenario score?\nControl: 0.761 (noise +-0.006). Changes: more apartment and dense training areas 0.763 (within noise).\nLearnt: most movement in scenario 'none'; site share 30%, worst held-out F1 0.717.\nNext: queue empty, add the next change to kerb-learn/queue.json.",
+  "Round 9. Question: does Satlas: bigger view (384 px chips) raise the scenario score?; does Satlas: train 300 min more raise the scenario score?\nControl: 0.759 (noise +-0.006). Changes: Satlas: bigger view (384 px chips) 0.757 vs control 0.759 (within noise); Satlas: train 300 min more 0.759 vs control 0.759 (within noise).\nLearnt: most movement in scenario 'none'; site share 29%, worst held-out F1 0.713.\nNext: LiDAR + aerial (Jacky 1 Nov: 'lidar is a must'. Adds 3 LiDAR layers (ground minus 3 m median, slope, has-LiDAR) beside the photo; judged on the boxes with LiDAR against the aerial-only control)."
  ],
  "v1": "rounds 1-4 of the old loop are in LOG.md and git history (c: b3da6a0)",
- "note_round4": "scale2 crashed (float64 input), so only one change was tested; plateau stop undone by hand, stale kept at 1"
+ "note_round4": "scale2 crashed (float64 input), so only one change was tested; plateau stop undone by hand, stale kept at 1",
+ "note_lidar": "1 Nov 2026: plateau after round 9 on aerial-only changes; Jacky asked for LiDAR (lidar is a must), so the loop continues with LiDAR rounds"
 }

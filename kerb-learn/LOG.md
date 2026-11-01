@@ -131,3 +131,20 @@ Control: 0.761 (noise +-0.006). Changes: more apartment and dense training areas
 Learnt: most movement in scenario 'none'; site share 30%, worst held-out F1 0.717.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 9
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| Satlas: bigger view (384 px chips) | 0.757 | 0.706 | 30% | 0.765 | 0.911 | 0.786 | 0.675 | 0.649 |
+| Satlas: train 300 min more | 0.759 | 0.713 | 32% | 0.778 | 0.915 | 0.793 | 0.644 | 0.666 |
+| control | 0.759 | 0.713 | 29% | 0.774 | 0.913 | 0.787 | 0.666 | 0.657 |
+
+Held-out (found/precise/median offset): monavale 88%/76%/0.28 m; newport 83%/70%/0.34 m; parramatta 67%/76%/0.32 m; paddington 84%/87%/0.27 m; kensington 79%/70%/0.12 m
+
+```
+Round 9. Question: does Satlas: bigger view (384 px chips) raise the scenario score?; does Satlas: train 300 min more raise the scenario score?
+Control: 0.759 (noise +-0.006). Changes: Satlas: bigger view (384 px chips) 0.757 vs control 0.759 (within noise); Satlas: train 300 min more 0.759 vs control 0.759 (within noise).
+Learnt: most movement in scenario 'none'; site share 29%, worst held-out F1 0.713.
+Next: LiDAR + aerial (Jacky 1 Nov: 'lidar is a must'. Adds 3 LiDAR layers (ground minus 3 m median, slope, has-LiDAR) beside the photo; judged on the boxes with LiDAR against the aerial-only control).
+```
