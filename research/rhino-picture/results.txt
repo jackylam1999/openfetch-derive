@@ -1,0 +1,85 @@
+rhino3dm Picture test, 2026-11-01
+Library: rhino3dm 8.17.0 (npm) on Node 24.19.0. Checked in Rhino 8.16.25042.13001.
+
+RESULT: WORKED
+rhino3dm wrote real Pictures by reusing a template object's attributes. No fallback
+(step 4) was needed.
+
+  template-min.3dm   12,451 bytes  v7, 1 object, 1 material, no embedded file
+                                   texture aerial_photo.jpg
+                                   marker UUID at offsets 7439 and 7455
+  template-min.b64.txt             base64 of the above (under the 20 KB limit)
+  test-out.3dm       22,663 bytes  v7, 2 Pictures, 2 materials, 2 embedded JPGs
+                                   marker UUID at offsets 8616, 8632, 13101, 13117
+  test-out-wireframe.png, test-out-shaded.png    Rhino 8 Top view captures
+  test-out-check.log, test-out-dump.txt          Rhino 8 report for that same check
+  run.cjs                          the full script that built both files
+
+Marker bytes searched for: F7 0F 46 3F 89 92 C0 4F BF 66 7D 7B 7D C6 58 BF
+
+Rhino 8 check of test-out.3dm, alone in an empty folder with the JPGs out of reach:
+  - Both objects: BrepObject, "picture surface", IsPictureFrame=True, PlaneSurface,
+    material source = object, material index 0 and 1
+  - Bounding boxes 320000,5812000 to 320400,5812400 and 320400,5812000 to 320800,5812400
+  - Rhino extracted both JPGs from the file to test-out_embedded_files at their exact
+    sizes (12,246 and 12,211 bytes) and pointed the textures there
+  - Wireframe and Shaded both draw both images, upright and side by side
+  - Display mode names confirmed in the log; both PNGs viewed by eye
+
+COPY-PASTE JS (run.cjs has the full version)
+
+  const rhino = await rhino3dm();
+  const t = rhino.File3dm.fromByteArray(templateBytes);   // template-min.3dm
+  const tObj = t.objects().get(0);
+  const out = new rhino.File3dm();
+
+  // once per tile
+  const ef = rhino.EmbeddedFile.fromByteArray(jpgBytes);  // Uint8Array
+  ef.fileName = jpgName;                                  // e.g. aerial_photo_r1c1.jpg
+  out.embeddedFiles().add(ef);
+
+  const mat = new rhino.Material();
+  mat.name = 'aerial_r1c1';
+  mat.setBitmapTextureFilename(jpgName);                  // must equal ef.fileName
+  const matIndex = out.materials().count;
+  out.materials().add(mat);
+
+  const g = tObj.geometry().duplicate();
+  const x = new rhino.Transform(1);                       // template is 100 x 100 at origin
+  x.m00 = widthMetres / 100;  x.m11 = heightMetres / 100;
+  x.m03 = cornerX;            x.m13 = cornerY;
+  g.transform(x);
+
+  const a = tObj.attributes();
+  a.name = 'aerial r1c1';
+  a.materialIndex = matIndex;
+  a.materialSource = rhino.ObjectMaterialSource.MaterialFromObject;
+  out.objects().add(g, a);
+
+  // after all tiles
+  const o = new rhino.File3dmWriteOptions();
+  o.version = 7;
+  o.saveUserData = true;
+  const bytes = out.toByteArrayOptions(o);
+
+GOTCHAS FOUND
+  - setBitmapTextureFilename returns false even though it works. The filename read back
+    correctly and the texture resolved, so don't treat false as failure.
+  - PlaneSurface has no usable constructor and Transform.scale is uniform only. Use the
+    template Brep with Transform m00/m11/m03/m13 as above. Non-uniform scale gave the
+    right bbox in a 400 x 300 probe, but that probe was not written to a file or opened
+    in Rhino.
+  - ObjectAttributes.id is read-only. Adding the same attributes twice is safe in the
+    same file: the first object kept the template's id (6DA72738-...) and the second
+    was given a new id. Every export's first Picture will therefore share that id.
+  - Embedded file names are stored bare, with no path. They match the texture filename.
+  - TEST TRAP: if the JPGs sit anywhere Rhino searches, including a subfolder beside the
+    .3dm, Rhino uses them instead of the embedded copy. My first run passed that way and
+    proved nothing. Test embedding with the .3dm alone in an empty folder.
+
+NOT TESTED
+  - Running in a browser. This was Node with the same package and wasm.
+  - Opening in Rhino 7. Rhino 7.4 was tried, never reached the script and was stopped
+    after 70 seconds, so this is unknown rather than failed. The cause was not found.
+  - Real aerial sizes or many tiles. The JPGs here were 12 KB, 512 px test gradients.
+  - saveUserData=false. It was set true here and the default was not checked.
