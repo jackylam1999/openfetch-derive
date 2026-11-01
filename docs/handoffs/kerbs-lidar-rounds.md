@@ -23,6 +23,12 @@ training on it.**
   block = score on LiDAR boxes with its own threshold; kerbloop.py judges LiDAR variants on it and NEVER promotes lidar=2
   (change that rule in record() if the switch to LiDAR only is made).
 
+## FIRST NEXT STEP (Jacky 1 Nov 09:27Z: "Yea you can use my pc but I don't know what to set up")
+Train on Jacky's PC while Kaggle resets. Jacky does nothing: start Remote Control on G:\My Drive\OpenFetch (Claude), run
+`nvidia-smi` (NVIDIA, >= 8 GB?), then install everything yourself (Python, CUDA PyTorch, the kerblearn.py requirements),
+copy the data caches (Kaggle outputs openfetch-kerb-data*, -lidar, dataset openfetch-kerb-best) to a local folder off Google
+Drive, and run the next round there with the same steps-per-minute (21). No suitable GPU: tell Jacky, offer Colab Pro.
+
 ## Results
 - Round 9: Satlas train 300 min more 0.759, bigger view 0.757, control 0.759: photo model plateaued.
 - Round 10 (LiDAR, on 8 LiDAR check/held-out boxes, F1): control 0.772, LiDAR + aerial 0.776, LiDAR only 0.780.
@@ -45,7 +51,7 @@ training on it.**
 ## Open questions for Jacky
 - Newer NSW LiDAR: none on ELVIS after 2020 for these areas; Spatial Services flies a CityMapper-2 since 2024. Offered to draft an
   email asking for post-2020 Sydney/Parramatta captures and ELVIS dates; awaiting his yes.
-- GPU while Kaggle resets (30 h/week, resets Sat 00:00 UTC; nearly used up after rounds 9-11): offered (1) Jacky's PC GPU via
+- (answered: use Jacky's PC, see first next step) GPU while Kaggle resets (30 h/week, resets Sat 00:00 UTC; nearly used up after rounds 9-11): offered (1) Jacky's PC GPU via
   Remote Control if NVIDIA >= 8 GB (check `nvidia-smi` first), (2) Colab Pro ~A$15/month, (3) GitHub free CPU (1-2 days a round).
   Awaiting his pick.
 - Queued after the LiDAR rounds: two-judge label cleaning (kerb-learn/queue.json); "fill hidden kerb gaps along the road" (todo).
