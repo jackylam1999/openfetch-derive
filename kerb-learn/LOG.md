@@ -179,3 +179,9 @@ On the 8 LiDAR boxes: scenario score 0.782 (round 10 LiDAR only at 150 min: 0.78
 hilly 0.762, grid 0.899, terraces 0.839, apartments 0.630, dense 0.779; worst held-out 0.779; thresh 0.6.
 olympicpark misses kerbs (recall 0.50, precision 0.86); nbcheck draws extras (precision 0.63, offset 0.41 m).
 Next on the PC: LiDAR only + two-judge label cleaning (kerb-learn/pc/side-lidar-2judge.json).
+
+## PC side run 1 Nov: LiDAR only + two-judge label cleaning (photo edge + LiDAR step), 150 min
+Scenario score 0.758 vs LiDAR only 0.780: worse, F1 lower on all 8 LiDAR boxes (by 0.006-0.053), offsets worse on all 8, threshold fell 0.6 -> 0.4.
+Cleaning dropped ~half the pieces but only ~8% of length (3-15% per box): it mostly removed short pieces the model needed. Dropped.
+hilly 0.734, grid 0.870, terraces 0.819, apartments 0.621, dense 0.748.
+Next on the PC: LiDAR only + the two train_new apartment boxes with LiDAR (Melrose Park, Wentworth Point; kerb-learn/pc/side-lidar-more.json).
