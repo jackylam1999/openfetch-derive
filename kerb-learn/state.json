@@ -17,7 +17,8 @@
    "jitter": 0,
    "context": 1,
    "lidar": 1,
-   "pdrop": 0.5
+   "pdrop": 0.5,
+   "more": 1
   },
   "thresh": 0.8,
   "scenario_score": 0.776,
@@ -774,12 +775,13 @@
   "kerb pixels weighted 6"
  ],
  "stale": 2,
- "status": "stopped: plateau (2 rounds within noise of the control)",
+ "status": "running",
  "min_gain": 0.006,
  "takeaways": [
   "1 Nov PC side runs: LiDAR only 300 min 0.782 vs 0.780 (longer no help); two-judge label cleaning on LiDAR only 0.758 (worse on all 8 LiDAR boxes), dropped. Round 11: LiDAR + aerial with photo blanked on half the chips 0.798 on LiDAR boxes beats LiDAR only 0.780 by 3x noise: aerial kept.",
   "Round 12. Question: does LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes raise the scenario score?; does LiDAR + aerial, photo blanked on 3/4 of the chips raise the scenario score?\nControl: 0.774 (noise +-0.006). Changes: LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes 0.801 vs control 0.797 on LiDAR boxes (within noise); LiDAR + aerial, photo blanked on 3/4 of the chips 0.796 vs control 0.797 on LiDAR boxes (within noise).\nLearnt: most movement in scenario 'none'; site share 35%, worst held-out F1 0.735.\nNext: queue empty, add the next change to kerb-learn/queue.json.",
-  "Round 13. Question: does apartment boxes + kerb pixels weighted 6 raise the scenario score?; does kerb pixels weighted 6 raise the scenario score?\nControl: 0.776 (noise +-0.006). Changes: apartment boxes + kerb pixels weighted 6 0.804 vs control 0.802 on LiDAR boxes (within noise); kerb pixels weighted 6 0.798 vs control 0.802 on LiDAR boxes (within noise).\nLearnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.739.\nNext: hide car- and tree-sized patches (3 per chip), keep the kerb label (Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole))."
+  "Round 13. Question: does apartment boxes + kerb pixels weighted 6 raise the scenario score?; does kerb pixels weighted 6 raise the scenario score?\nControl: 0.776 (noise +-0.006). Changes: apartment boxes + kerb pixels weighted 6 0.804 vs control 0.802 on LiDAR boxes (within noise); kerb pixels weighted 6 0.798 vs control 0.802 on LiDAR boxes (within noise).\nLearnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.739.\nNext: hide car- and tree-sized patches (3 per chip), keep the kerb label (Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole)).",
+  "Rounds 12-13 (PC): apartment boxes (Melrose Park, Wentworth Point) lifted apartments 0.675->0.716 and 0.685->0.723, repeated twice, overall within noise; added to the base config by hand (worst scenario first). Kerb weight 6 and hiding the photo on 3/4 of chips: no gain."
  ],
  "v1": "rounds 1-4 of the old loop are in LOG.md and git history (c: b3da6a0)",
  "note_round4": "scale2 crashed (float64 input), so only one change was tested; plateau stop undone by hand, stale kept at 1",
