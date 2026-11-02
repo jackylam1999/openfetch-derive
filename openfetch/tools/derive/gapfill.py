@@ -11,6 +11,9 @@ Before squaring, each trace is cut along the NSW cadastre lot lines (lots.py): i
 the trace joins 2-3 of them into one blob. Where no house lot holds the trace (no cadastre there, or one big lot with several
 houses on it), the LiDAR splits it instead: along ground points inside the trace and roof height steps of a storey or more,
 when that leaves 2 or more roofs of 40 m2. A finished gap that still covers 2 or more house lots (100-2000 m2) is dropped.
+High-rise (2 Nov 2026, Chatswood P-0098): a trace taller than HIGH_RISE is not traced at all (the trace joins towers into
+one blob and lot lines cut it into strips; OSM draws towers well), and every finished gap gets its own heights from the
+LiDAR inside it, never the whole trace's, so a strip beside a tower cannot take the tower's height.
 """
 import sys, json
 import numpy as np
@@ -64,6 +67,8 @@ def by_lots(d):
     return parts
 
 
+HIGH_RISE = 25.0  # m roof above ground: over this the trace is a tower block, not a house (same cap as the app, src/regions/nsw/roofs.js)
+HKEYS = ("n_roof", "n_ground", "density", "area_m2", "eave", "ridge", "roof_mean", "ground", "h_max", "h_eave", "h_mean")
 CELL, STEP, MIN_PART = 0.5, 2.5, 40  # m grid; m roof height jump (a storey) that parts two roofs; m2 smallest roof kept apart
 
 
@@ -124,7 +129,9 @@ def house_lot(g):
 
 
 # each lot's piece of a trace is judged on its own: a loose community house on one lot blocks only that piece
-work = [(f, p) for f in T for p in by_lots(shape(f["geometry"]))]
+low = [f for f in T if (f["properties"].get("h_max") or 0) <= HIGH_RISE]
+n_high = len(T) - len(low)
+work = [(f, p) for f in low for p in by_lots(shape(f["geometry"]))]
 n_lidar = 0
 if LAZ:  # pieces on no house lot that could hold 2+ houses: split by the LiDAR
     todo = [i for i, (f, p) in enumerate(work) if p.area >= 2 * MIN_PART + 20 and not house_lot(p)]
@@ -163,7 +170,30 @@ for f, t in work:
                 continue
             gap_geoms.append(g)
             gap.append({"type": "Feature", "geometry": mapping(g), "properties": dict(f["properties"], kind="traced gap", **({"replaces": replaces} if replaces else {}))})
+n_tall_piece = 0
+if gap:  # each gap's own heights: the trace's h_max belongs to the whole blob, not to a piece of it
+    if LAZ:
+        import roofs
+        b = unary_union(gap_geoms).bounds
+        P = roofs.to_gda2020(roofs.read_points(LAZ, [b[0] - 5, b[1] - 5, b[2] + 5, b[3] + 5]))
+        if roofs.roof_density(P) < roofs.DENSE_ROOF:
+            roofs.own_buildings(P)  # thin LiDAR: same roof test as the trace
+        rows = roofs.heights(P, gap_geoms, CELL)
+    else:
+        rows = [None] * len(gap)
+    keep = []
+    for g, ft, r in zip(gap_geoms, gap, rows):
+        pr = ft["properties"]
+        whole = abs(g.area - (pr.get("area_m2") or 0)) <= 0.1 * g.area  # no LAZ: only an uncut trace keeps its heights
+        if r is not None or not whole:
+            for k in HKEYS:
+                pr.pop(k, None)
+            pr.update({k: r[k] for k in HKEYS if r and k in r})
+        if (pr.get("h_max") or 0) > HIGH_RISE:  # a piece of a tower block
+            n_tall_piece += 1; continue
+        keep.append(ft)
+    gap = keep
 for f in S:
     f["properties"]["kind"] = "community shape moved onto LiDAR"
 json.dump({"type": "FeatureCollection", "features": S + gap}, open(out, "w"))
-print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR)", file=sys.stderr)
+print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)

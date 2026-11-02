@@ -184,7 +184,7 @@ def main():
     lots = [g for g in outlines(P("lots.geojson")) if HOUSE_LOT[0] <= g.area <= HOUSE_LOT[1]]
     lt = STRtree(lots) if lots else None
     span = sum(1 for g in gaps if sum(1 for i in (lt.query(g) if lt else []) if lots[i].intersection(g).area >= max(15, 0.1 * g.area)) >= 2)
-    m = re.search(r"\((\d+) lots; (\d+) gaps over 2\+ house lots dropped; (\d+) traces split by the LiDAR\)", gf)
+    m = re.search(r"\((\d+) lots; (\d+) gaps over 2\+ house lots dropped; (\d+) traces split by the LiDAR", gf)
     gates.append(("FAIL", "one house lot per traced gap", span == 0,
                   f"{span} traced gaps cover 2+ house lots ({HOUSE_LOT[0]}-{HOUSE_LOT[1]} m2); "
                   + (f"{m.group(1)} cadastre lots, {m.group(2)} gaps dropped for joining lots, {m.group(3)} traces off-lot split by LiDAR" if m else "")

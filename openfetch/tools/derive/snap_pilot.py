@@ -2,6 +2,7 @@
 # Move each community footprint (shape unchanged) onto the LiDAR building mask: best shift within +-W m (W=5), 0.25 m steps.
 # 5 m, not 3: on steep Pittwater slopes Microsoft shapes sit 3-5 m off their roofs (27 Oct 2026).
 W=5
+HIGH_RISE=25.0  # m: over this a shape is a tower block (same cap as gapfill.py and the app)
 import sys, json, numpy as np, laspy, glob, math
 from shapely.geometry import shape, mapping
 from shapely.affinity import translate
@@ -107,6 +108,15 @@ for i,g in enumerate(G):
     ring=g2.buffer(4).difference(g2.buffer(1)); zg=inside(ring,gx,gy,gz)
     p={}
     if len(zb)>=10 and len(zg)>=5: p={'h_max':round(float(np.percentile(zb,98)-np.median(zg)),2),'h_mean':round(float(zb.mean()-np.median(zg)),2)}
+    if p.get('h_max',0)>HIGH_RISE:
+        # a tower (Chatswood 2 Nov 2026, P-0098): heights only on a shape big enough to be a tower itself (a small or thin
+        # shape beside a tower, like a 19 m2 1.6 m wide part, would take the tower's roof), read 1.5 m inside its walls so a
+        # taller neighbour's edge does not set its height
+        p={'high_rise':True}; core=g2.buffer(-1.5)
+        if g2.area>=100 and not g2.buffer(-2.5).is_empty:
+            zb=inside(core,bx,by,bz)
+            if len(zb)>=10 and len(zg)>=5:
+                p.update({'h_max':round(float(np.percentile(zb,98)-np.median(zg)),2),'h_mean':round(float(zb.mean()-np.median(zg)),2)})
     p['shift_m']=round(shifts[-1],2); p['fit']=round(fit,2)
     if shared: p['shared_walls']=True
     res.append({'type':'Feature','geometry':mapping(g2),'properties':p})
