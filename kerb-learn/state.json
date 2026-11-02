@@ -1,5 +1,5 @@
 {
- "round": 13,
+ "round": 14,
  "best": {
   "name": "control",
   "cfg": {
@@ -17,31 +17,30 @@
    "jitter": 0,
    "context": 1,
    "lidar": 1,
-   "pdrop": 0.5,
-   "more": 1
+   "pdrop": 0.5
   },
-  "thresh": 0.8,
-  "scenario_score": 0.776,
-  "worst_hold": 0.739,
-  "site_share": 0.365,
+  "thresh": 0.9,
+  "scenario_score": 0.772,
+  "worst_hold": 0.743,
+  "site_share": 0.331,
   "scenarios": {
-   "hilly": 0.79,
+   "hilly": 0.794,
    "grid": 0.915,
-   "terraces": 0.814,
-   "apartments": 0.672,
-   "dense": 0.689
+   "terraces": 0.811,
+   "apartments": 0.652,
+   "dense": 0.687
   },
   "boxes": {
    "nbcheck": {
     "reference_km": 10.08,
-    "derived_km": 11.58,
-    "recall": 0.788,
-    "precision": 0.708,
-    "offset_median_m": 0.36,
-    "offset_p90_m": 0.77,
+    "derived_km": 11.16,
+    "recall": 0.772,
+    "precision": 0.72,
+    "offset_median_m": 0.37,
+    "offset_p90_m": 0.79,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.54,
-    "recall_at_2.0m": 0.874,
+    "recall_at_0.5m": 0.522,
+    "recall_at_2.0m": 0.855,
     "tiles": [
      1,
      15
@@ -49,60 +48,60 @@
     "types": {
      "under trees": [
       1894,
-      0.793
+      0.777
      ],
      "in shadow": [
       3606,
-      0.776
+      0.761
      ],
      "cars or clutter": [
       2920,
-      0.887
+      0.883
      ],
      "faint kerb": [
       833,
-      0.591
+      0.573
      ],
      "clear kerb": [
       16021,
-      0.781
+      0.763
      ]
     },
     "scales": {
      "main roads": [
       4764,
-      0.534
+      0.535
      ],
      "collector roads": [
       5531,
-      0.697
+      0.656
      ],
      "local streets": [
       14751,
-      0.899
+      0.888
      ],
      "lanes and access": [
       228,
-      0.987
+      0.978
      ]
     },
-    "extra_m": 3748,
+    "extra_m": 3464,
     "signed_offset_m": 0.0,
     "whole_lines": 0.75,
-    "f1": 0.746,
+    "f1": 0.745,
     "scenario": "hilly",
     "role": "check"
    },
    "cbcheck": {
     "reference_km": 19.73,
-    "derived_km": 21.73,
-    "recall": 0.96,
-    "precision": 0.874,
-    "offset_median_m": 0.18,
-    "offset_p90_m": 0.42,
+    "derived_km": 21.65,
+    "recall": 0.958,
+    "precision": 0.875,
+    "offset_median_m": 0.19,
+    "offset_p90_m": 0.45,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.906,
-    "recall_at_2.0m": 0.97,
+    "recall_at_0.5m": 0.896,
+    "recall_at_2.0m": 0.968,
     "tiles": [
      15,
      16
@@ -110,121 +109,121 @@
     "types": {
      "under trees": [
       6975,
-      0.951
+      0.946
      ],
      "in shadow": [
       4345,
-      0.917
+      0.914
      ],
      "cars or clutter": [
       5181,
-      0.954
+      0.95
      ],
      "faint kerb": [
       1081,
-      0.901
+      0.902
      ],
      "clear kerb": [
       27887,
-      0.975
+      0.973
      ]
     },
     "scales": {
      "main roads": [
       195,
-      0.615
+      0.446
      ],
      "collector roads": [
       6767,
-      0.932
+      0.93
      ],
      "local streets": [
       36690,
-      0.987
+      0.986
      ],
      "lanes and access": [
       1817,
-      0.594
+      0.584
      ]
     },
-    "extra_m": 2352,
+    "extra_m": 2299,
     "signed_offset_m": -0.1,
-    "whole_lines": 0.924,
+    "whole_lines": 0.92,
     "f1": 0.915,
     "scenario": "grid",
     "role": "check"
    },
    "wocheck": {
     "reference_km": 10.54,
-    "derived_km": 8.65,
-    "recall": 0.748,
-    "precision": 0.904,
-    "offset_median_m": 0.29,
-    "offset_p90_m": 0.67,
+    "derived_km": 8.28,
+    "recall": 0.727,
+    "precision": 0.914,
+    "offset_median_m": 0.28,
+    "offset_p90_m": 0.65,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.574,
-    "recall_at_2.0m": 0.803,
+    "recall_at_0.5m": 0.566,
+    "recall_at_2.0m": 0.779,
     "tiles": [
-     6,
+     3,
      14
     ],
     "types": {
      "under trees": [
       7331,
-      0.746
+      0.719
      ],
      "in shadow": [
       5768,
-      0.727
+      0.7
      ],
      "cars or clutter": [
       2301,
-      0.765
+      0.752
      ],
      "faint kerb": [
       1067,
-      0.697
+      0.666
      ],
      "clear kerb": [
       9653,
-      0.775
+      0.759
      ]
     },
     "scales": {
      "main roads": [
       5223,
-      0.879
+      0.868
      ],
      "collector roads": [
       5942,
-      0.943
+      0.91
      ],
      "local streets": [
       14817,
-      0.636
+      0.615
      ],
      "lanes and access": [
       138,
       0.174
      ]
     },
-    "extra_m": 935,
+    "extra_m": 804,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.656,
-    "f1": 0.819,
+    "whole_lines": 0.632,
+    "f1": 0.81,
     "scenario": "terraces",
     "role": "check"
    },
    "olympicpark": {
     "reference_km": 10.13,
-    "derived_km": 5.84,
-    "recall": 0.531,
-    "precision": 0.915,
-    "offset_median_m": 0.24,
+    "derived_km": 5.4,
+    "recall": 0.501,
+    "precision": 0.933,
+    "offset_median_m": 0.26,
     "offset_p90_m": 0.58,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.445,
-    "recall_at_2.0m": 0.562,
+    "recall_at_0.5m": 0.418,
+    "recall_at_2.0m": 0.525,
     "tiles": [
      0,
      9
@@ -232,23 +231,23 @@
     "types": {
      "under trees": [
       3399,
-      0.624
+      0.586
      ],
      "in shadow": [
       7421,
-      0.516
+      0.489
      ],
      "cars or clutter": [
       242,
-      0.665
+      0.645
      ],
      "faint kerb": [
       2841,
-      0.512
+      0.453
      ],
      "clear kerb": [
       12706,
-      0.512
+      0.485
      ]
     },
     "scales": {
@@ -258,34 +257,34 @@
      ],
      "collector roads": [
       17088,
-      0.423
+      0.386
      ],
      "local streets": [
       9001,
-      0.729
+      0.706
      ],
      "lanes and access": [
       520,
-      0.544
+      0.531
      ]
     },
-    "extra_m": 474,
-    "signed_offset_m": 0.0,
-    "whole_lines": 0.485,
-    "f1": 0.672,
+    "extra_m": 382,
+    "signed_offset_m": -0.1,
+    "whole_lines": 0.456,
+    "f1": 0.652,
     "scenario": "apartments",
     "role": "check"
    },
    "melbcbd": {
     "reference_km": 87.21,
-    "derived_km": 51.18,
-    "recall": 0.663,
-    "precision": 0.555,
-    "offset_median_m": 0.22,
-    "offset_p90_m": 0.74,
+    "derived_km": 43.72,
+    "recall": 0.614,
+    "precision": 0.597,
+    "offset_median_m": 0.21,
+    "offset_p90_m": 0.75,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.435,
-    "recall_at_2.0m": 0.842,
+    "recall_at_0.5m": 0.402,
+    "recall_at_2.0m": 0.784,
     "tiles": [
      0,
      16
@@ -293,23 +292,23 @@
     "types": {
      "under trees": [
       41872,
-      0.587
+      0.546
      ],
      "in shadow": [
       64097,
-      0.628
+      0.577
      ],
      "cars or clutter": [
       50817,
-      0.769
+      0.693
      ],
      "faint kerb": [
       5863,
-      0.59
+      0.519
      ],
      "clear kerb": [
       49845,
-      0.765
+      0.74
      ]
     },
     "scales": {
@@ -319,64 +318,64 @@
      ],
      "collector roads": [
       80453,
-      0.657
+      0.632
      ],
      "local streets": [
       127562,
-      0.703
+      0.639
      ],
      "lanes and access": [
       4479,
-      0.645
+      0.58
      ]
     },
-    "extra_m": 27428,
+    "extra_m": 21292,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.409,
-    "f1": 0.604,
+    "whole_lines": 0.363,
+    "f1": 0.605,
     "scenario": "dense",
     "role": "check"
    },
    "monavale": {
     "reference_km": 16.4,
-    "derived_km": 19.99,
-    "recall": 0.9,
-    "precision": 0.777,
-    "offset_median_m": 0.27,
+    "derived_km": 19.27,
+    "recall": 0.894,
+    "precision": 0.801,
+    "offset_median_m": 0.28,
     "offset_p90_m": 0.68,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.717,
-    "recall_at_2.0m": 0.954,
+    "recall_at_0.5m": 0.71,
+    "recall_at_2.0m": 0.947,
     "tiles": [
-     11,
+     12,
      16
     ],
     "types": {
      "under trees": [
       6431,
-      0.821
+      0.803
      ],
      "in shadow": [
       11463,
-      0.881
+      0.871
      ],
      "cars or clutter": [
       4074,
-      0.935
+      0.929
      ],
      "faint kerb": [
       857,
-      0.588
+      0.567
      ],
      "clear kerb": [
       19552,
-      0.954
+      0.952
      ]
     },
     "scales": {
      "main roads": [
       7845,
-      0.832
+      0.825
      ],
      "collector roads": [
       0,
@@ -384,30 +383,30 @@
      ],
      "local streets": [
       34198,
-      0.922
+      0.915
      ],
      "lanes and access": [
       334,
-      0.874
+      0.877
      ]
     },
-    "extra_m": 4971,
+    "extra_m": 4370,
     "signed_offset_m": 0.0,
     "whole_lines": 0.857,
-    "f1": 0.834,
+    "f1": 0.845,
     "scenario": "hilly",
     "role": "hold"
    },
    "newport": {
     "reference_km": 12.56,
-    "derived_km": 15.73,
-    "recall": 0.858,
-    "precision": 0.732,
-    "offset_median_m": 0.32,
+    "derived_km": 15.28,
+    "recall": 0.848,
+    "precision": 0.743,
+    "offset_median_m": 0.31,
     "offset_p90_m": 0.75,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.636,
-    "recall_at_2.0m": 0.941,
+    "recall_at_0.5m": 0.632,
+    "recall_at_2.0m": 0.927,
     "tiles": [
      5,
      16
@@ -415,121 +414,121 @@
     "types": {
      "under trees": [
       4877,
-      0.739
+      0.715
      ],
      "in shadow": [
       4562,
-      0.791
+      0.759
      ],
      "cars or clutter": [
       2773,
-      0.943
+      0.944
      ],
      "faint kerb": [
       1324,
-      0.588
+      0.587
      ],
      "clear kerb": [
       14700,
-      0.933
+      0.929
      ]
     },
     "scales": {
      "main roads": [
       2173,
-      1.0
+      0.997
      ],
      "collector roads": [
       4083,
-      0.963
+      0.967
      ],
      "local streets": [
       21945,
-      0.829
+      0.815
      ],
      "lanes and access": [
       35,
-      0.743
+      0.514
      ]
     },
-    "extra_m": 4474,
+    "extra_m": 4138,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.761,
-    "f1": 0.79,
+    "whole_lines": 0.772,
+    "f1": 0.792,
     "scenario": "hilly",
     "role": "hold"
    },
    "parramatta": {
     "reference_km": 24.99,
-    "derived_km": 21.88,
-    "recall": 0.729,
-    "precision": 0.826,
+    "derived_km": 21.01,
+    "recall": 0.711,
+    "precision": 0.837,
     "offset_median_m": 0.28,
     "offset_p90_m": 0.58,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.608,
-    "recall_at_2.0m": 0.775,
+    "recall_at_0.5m": 0.592,
+    "recall_at_2.0m": 0.756,
     "tiles": [
-     3,
+     2,
      16
     ],
     "types": {
      "under trees": [
       3486,
-      0.865
+      0.845
      ],
      "in shadow": [
       25338,
-      0.731
+      0.713
      ],
      "cars or clutter": [
       7065,
-      0.752
+      0.732
      ],
      "faint kerb": [
       1762,
-      0.293
+      0.27
      ],
      "clear kerb": [
       23390,
-      0.743
+      0.721
      ]
     },
     "scales": {
      "main roads": [
       2790,
-      0.881
+      0.879
      ],
      "collector roads": [
       18097,
-      0.76
+      0.751
      ],
      "local streets": [
       33898,
-      0.742
+      0.722
      ],
      "lanes and access": [
       6256,
-      0.545
+      0.481
      ]
     },
-    "extra_m": 3958,
+    "extra_m": 3549,
     "signed_offset_m": 0.2,
-    "whole_lines": 0.581,
-    "f1": 0.774,
+    "whole_lines": 0.57,
+    "f1": 0.769,
     "scenario": "dense",
     "role": "hold"
    },
    "paddington": {
     "reference_km": 35.48,
-    "derived_km": 33.36,
-    "recall": 0.865,
-    "precision": 0.901,
+    "derived_km": 32.03,
+    "recall": 0.848,
+    "precision": 0.917,
     "offset_median_m": 0.28,
-    "offset_p90_m": 0.69,
+    "offset_p90_m": 0.68,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.66,
-    "recall_at_2.0m": 0.937,
+    "recall_at_0.5m": 0.653,
+    "recall_at_2.0m": 0.918,
     "tiles": [
      7,
      14
@@ -537,84 +536,84 @@
     "types": {
      "under trees": [
       20208,
-      0.805
+      0.779
      ],
      "in shadow": [
       23075,
-      0.873
+      0.861
      ],
      "cars or clutter": [
       9886,
-      0.911
+      0.895
      ],
      "faint kerb": [
       2208,
-      0.827
+      0.796
      ],
      "clear kerb": [
       35934,
-      0.907
+      0.891
      ]
     },
     "scales": {
      "main roads": [
       2423,
-      0.997
+      0.995
      ],
      "collector roads": [
       10496,
-      0.786
+      0.772
      ],
      "local streets": [
       57398,
-      0.884
+      0.869
      ],
      "lanes and access": [
       20994,
-      0.877
+      0.85
      ]
     },
-    "extra_m": 3723,
+    "extra_m": 2980,
     "signed_offset_m": 0.1,
-    "whole_lines": 0.768,
-    "f1": 0.883,
+    "whole_lines": 0.743,
+    "f1": 0.881,
     "scenario": "terraces",
     "role": "hold"
    },
    "kensington": {
     "reference_km": 80.21,
-    "derived_km": 48.6,
-    "recall": 0.825,
-    "precision": 0.669,
-    "offset_median_m": 0.11,
-    "offset_p90_m": 0.57,
+    "derived_km": 46.07,
+    "recall": 0.808,
+    "precision": 0.687,
+    "offset_median_m": 0.1,
+    "offset_p90_m": 0.54,
     "tol_m": 1.0,
-    "recall_at_0.5m": 0.678,
-    "recall_at_2.0m": 0.919,
+    "recall_at_0.5m": 0.68,
+    "recall_at_2.0m": 0.9,
     "tiles": [
-     6,
+     4,
      16
     ],
     "types": {
      "under trees": [
       48563,
-      0.772
+      0.733
      ],
      "in shadow": [
       25377,
-      0.82
+      0.805
      ],
      "cars or clutter": [
       48284,
-      0.855
+      0.84
      ],
      "faint kerb": [
       2264,
-      0.899
+      0.887
      ],
      "clear kerb": [
       72409,
-      0.863
+      0.854
      ]
     },
     "scales": {
@@ -624,28 +623,28 @@
      ],
      "collector roads": [
       19082,
-      0.812
+      0.807
      ],
      "local streets": [
       172065,
-      0.846
+      0.829
      ],
      "lanes and access": [
       5750,
-      0.539
+      0.418
      ]
     },
-    "extra_m": 18990,
+    "extra_m": 16960,
     "signed_offset_m": 0.0,
-    "whole_lines": 0.593,
-    "f1": 0.739,
+    "whole_lines": 0.573,
+    "f1": 0.743,
     "scenario": "terraces",
     "role": "hold"
    }
   },
-  "artifact": "pc-12-0",
+  "artifact": "pc-13-0",
   "run": "pc",
-  "round": 13
+  "round": 14
  },
  "history": [
   {
@@ -748,6 +747,14 @@
     "control": 0.776,
     "kerb pixels weighted 6": 0.774
    }
+  },
+  {
+   "round": 14,
+   "scores": {
+    "control": 0.772,
+    "hide car- and tree-sized patches (3 per chip), keep the kerb label": 0.774,
+    "hide car- and tree-sized patches (6 per chip), keep the kerb label": 0.773
+   }
   }
  ],
  "done": [
@@ -772,16 +779,17 @@
   "LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes",
   "LiDAR + aerial, photo blanked on 3/4 of the chips",
   "apartment boxes + kerb pixels weighted 6",
-  "kerb pixels weighted 6"
+  "kerb pixels weighted 6",
+  "hide car- and tree-sized patches (3 per chip), keep the kerb label",
+  "hide car- and tree-sized patches (6 per chip), keep the kerb label"
  ],
- "stale": 2,
- "status": "running",
+ "stale": 3,
+ "status": "stopped: plateau (2 rounds within noise of the control)",
  "min_gain": 0.006,
  "takeaways": [
-  "1 Nov PC side runs: LiDAR only 300 min 0.782 vs 0.780 (longer no help); two-judge label cleaning on LiDAR only 0.758 (worse on all 8 LiDAR boxes), dropped. Round 11: LiDAR + aerial with photo blanked on half the chips 0.798 on LiDAR boxes beats LiDAR only 0.780 by 3x noise: aerial kept.",
-  "Round 12. Question: does LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes raise the scenario score?; does LiDAR + aerial, photo blanked on 3/4 of the chips raise the scenario score?\nControl: 0.774 (noise +-0.006). Changes: LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes 0.801 vs control 0.797 on LiDAR boxes (within noise); LiDAR + aerial, photo blanked on 3/4 of the chips 0.796 vs control 0.797 on LiDAR boxes (within noise).\nLearnt: most movement in scenario 'none'; site share 35%, worst held-out F1 0.735.\nNext: queue empty, add the next change to kerb-learn/queue.json.",
   "Round 13. Question: does apartment boxes + kerb pixels weighted 6 raise the scenario score?; does kerb pixels weighted 6 raise the scenario score?\nControl: 0.776 (noise +-0.006). Changes: apartment boxes + kerb pixels weighted 6 0.804 vs control 0.802 on LiDAR boxes (within noise); kerb pixels weighted 6 0.798 vs control 0.802 on LiDAR boxes (within noise).\nLearnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.739.\nNext: hide car- and tree-sized patches (3 per chip), keep the kerb label (Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole)).",
-  "Rounds 12-13 (PC): apartment boxes (Melrose Park, Wentworth Point) lifted apartments 0.675->0.716 and 0.685->0.723, repeated twice, overall within noise; added to the base config by hand (worst scenario first). Kerb weight 6 and hiding the photo on 3/4 of chips: no gain."
+  "Rounds 12-13 (PC): apartment boxes (Melrose Park, Wentworth Point) lifted apartments 0.675->0.716 and 0.685->0.723, repeated twice, overall within noise; added to the base config by hand (worst scenario first). Kerb weight 6 and hiding the photo on 3/4 of chips: no gain.",
+  "Round 14. Question: does hide car- and tree-sized patches (3 per chip), keep the kerb label raise the scenario score?; does hide car- and tree-sized patches (6 per chip), keep the kerb label raise the scenario score?\nControl: 0.772 (noise +-0.006). Changes: hide car- and tree-sized patches (3 per chip), keep the kerb label 0.801 vs control 0.797 on LiDAR boxes (within noise); hide car- and tree-sized patches (6 per chip), keep the kerb label 0.800 vs control 0.797 on LiDAR boxes (within noise).\nLearnt: most movement in scenario 'none'; site share 33%, worst held-out F1 0.743.\nNext: queue empty, add the next change to kerb-learn/queue.json."
  ],
  "v1": "rounds 1-4 of the old loop are in LOG.md and git history (c: b3da6a0)",
  "note_round4": "scale2 crashed (float64 input), so only one change was tested; plateau stop undone by hand, stale kept at 1",

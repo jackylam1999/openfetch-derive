@@ -260,3 +260,28 @@ Control: 0.776 (noise +-0.006). Changes: apartment boxes + kerb pixels weighted 
 Learnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.739.
 Next: hide car- and tree-sized patches (3 per chip), keep the kerb label (Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole)).
 ```
+
+## Round 14
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.772 | 0.743 | 33% | 0.794 | 0.915 | 0.811 | 0.652 | 0.687 |
+| hide car- and tree-sized patches (3 per chip), keep the kerb label | 0.774 | 0.736 | 34% | 0.794 | 0.914 | 0.813 | 0.663 | 0.684 |
+| hide car- and tree-sized patches (6 per chip), keep the kerb label | 0.773 | 0.714 | 34% | 0.784 | 0.912 | 0.806 | 0.672 | 0.690 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.797 | 0.770 | 0% | 0.787 | 0.914 | 0.849 | 0.663 | 0.770 |
+| hide car- and tree-sized patches (3 per chip), keep the kerb label | 0.801 | 0.776 | 0% | 0.790 | 0.913 | 0.853 | 0.672 | 0.776 |
+| hide car- and tree-sized patches (6 per chip), keep the kerb label | 0.800 | 0.777 | 0% | 0.780 | 0.914 | 0.851 | 0.676 | 0.777 |
+
+Held-out (found/precise/median offset): monavale 89%/80%/0.28 m; newport 85%/74%/0.31 m; parramatta 71%/84%/0.28 m; paddington 85%/92%/0.28 m; kensington 81%/69%/0.1 m
+
+```
+Round 14. Question: does hide car- and tree-sized patches (3 per chip), keep the kerb label raise the scenario score?; does hide car- and tree-sized patches (6 per chip), keep the kerb label raise the scenario score?
+Control: 0.772 (noise +-0.006). Changes: hide car- and tree-sized patches (3 per chip), keep the kerb label 0.801 vs control 0.797 on LiDAR boxes (within noise); hide car- and tree-sized patches (6 per chip), keep the kerb label 0.800 vs control 0.797 on LiDAR boxes (within noise).
+Learnt: most movement in scenario 'none'; site share 33%, worst held-out F1 0.743.
+Next: queue empty, add the next change to kerb-learn/queue.json.
+```
