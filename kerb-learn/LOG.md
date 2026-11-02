@@ -285,3 +285,26 @@ Control: 0.772 (noise +-0.006). Changes: hide car- and tree-sized patches (3 per
 Learnt: most movement in scenario 'none'; site share 33%, worst held-out F1 0.743.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 15
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| apartment boxes + hide 3 patches per chip, 300 min | 0.781 | 0.725 | 38% | 0.782 | 0.913 | 0.809 | 0.707 | 0.694 |
+| control | 0.779 | 0.722 | 36% | 0.775 | 0.913 | 0.802 | 0.723 | 0.684 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| apartment boxes + hide 3 patches per chip, 300 min | 0.806 | 0.767 | 0% | 0.778 | 0.913 | 0.851 | 0.720 | 0.767 |
+| control | 0.804 | 0.768 | 0% | 0.768 | 0.913 | 0.838 | 0.732 | 0.768 |
+
+Held-out (found/precise/median offset): monavale 90%/74%/0.27 m; newport 86%/72%/0.32 m; parramatta 73%/82%/0.29 m; paddington 88%/88%/0.28 m; kensington 84%/64%/0.11 m
+
+```
+Round 15. Question: does apartment boxes + hide 3 patches per chip, 300 min raise the scenario score?
+Control: 0.779 (noise +-0.006). Changes: apartment boxes + hide 3 patches per chip, 300 min 0.806 vs control 0.804 on LiDAR boxes (within noise).
+Learnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.722.
+Next: fill hidden kerb gaps along the road (Jacky 1 Nov: guess hidden kerbs like a person. kerbfill.py: along each block frontage the kerb sits at the verge width measured on the visible kerb (carried across the gap from the kerb before to the kerb after); gaps 2-40 m with kerb seen on both sides are drawn in the same kerb layer. Synthetic test (council kerbs with 4-30 m pieces cut out, 8 NSW check/held-out boxes): found 0.871 -> 0.939, precise 1.000 -> 0.981. Post-processing only; scored with minutes 0 on the best model (pc/side-fill-eval.json)).
+```
