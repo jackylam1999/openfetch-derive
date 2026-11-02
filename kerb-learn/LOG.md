@@ -321,3 +321,26 @@ Fill drew only a few short pieces (14 of 298 lines on Parramatta). On cut-out co
 (found 0.871 -> 0.939), but the model's real misses are not short gaps bounded by kerb on both sides along a frontage.
 Kept in the code (CFG gapfill, off by default); not promoted. Next: kerbmiss.py to see where the misses are; round 16 main-road sampling.
 ```
+
+## Round 16
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.786 | 0.732 | 37% | 0.781 | 0.913 | 0.806 | 0.739 | 0.690 |
+| main and collector road kerbs sampled 30% of chips | 0.779 | 0.727 | 41% | 0.775 | 0.913 | 0.809 | 0.727 | 0.673 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.810 | 0.774 | 0% | 0.776 | 0.913 | 0.841 | 0.745 | 0.774 |
+| main and collector road kerbs sampled 30% of chips | 0.806 | 0.766 | 0% | 0.775 | 0.913 | 0.851 | 0.727 | 0.766 |
+
+Held-out (found/precise/median offset): monavale 89%/76%/0.27 m; newport 86%/73%/0.32 m; parramatta 73%/83%/0.28 m; paddington 87%/90%/0.28 m; kensington 84%/65%/0.1 m
+
+```
+Round 16. Question: does main and collector road kerbs sampled 30% of chips raise the scenario score?
+Control: 0.786 (noise +-0.006). Changes: main and collector road kerbs sampled 30% of chips 0.806 vs control 0.810 on LiDAR boxes (within noise).
+Learnt: most movement in scenario 'none'; site share 37%, worst held-out F1 0.732.
+Next: learn from misses again (LiDAR + Satlas model), 30% of chips (round 6 tied on the old photo-only ResNet-34; kerbmiss 2 Nov: 52% of missed kerb is whole stretches over 40 m, 54% on local streets; feed back exactly the stretches the best model skips).
+```
