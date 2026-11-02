@@ -24,6 +24,7 @@ import numpy as np
 from scipy import ndimage
 import kerbphoto as kp
 import kerbtidy
+import kerbfill
 import kerbvic
 
 _trace = kp.vectorise
@@ -762,7 +763,12 @@ def _thresholds(job):
     out, nm, pp, tr = job
     P = np.load(pp); sc = {}
     for th in kp.THRESHS:
-        kp.vec(out, nm, P, tr, th); sc[th] = kp.score(out, nm, th)
+        kp.vec(out, nm, P, tr, th)
+        if CFG.get("gapfill"):  # Jacky 1 Nov: hidden kerbs drawn from the lot frontage at the street's verge width, same layer
+            rd = f"{out}/{nm}_roads.geojson"
+            kerbfill.fill_file(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_lots.geojson", rd if os.path.exists(rd) else None,
+                               **CFG.get("fill_opts", {}))
+        sc[th] = kp.score(out, nm, th)
         os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
     os.remove(pp)
     return nm, sc

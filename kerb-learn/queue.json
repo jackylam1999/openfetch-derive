@@ -213,11 +213,10 @@
  },
  {
   "name": "fill hidden kerb gaps along the road",
-  "why": "Jacky 31 Oct 23:35Z (road centreline): kerbs run in pairs at a steady offset from the centreline; where both ends of a gap are found (under trees, cars), join them along the path parallel to the centreline. Post-processing only, no retraining",
+  "why": "Jacky 1 Nov: guess hidden kerbs like a person. kerbfill.py: along each block frontage the kerb sits at the verge width measured on the visible kerb (carried across the gap from the kerb before to the kerb after); gaps 2-40 m with kerb seen on both sides are drawn in the same kerb layer. Synthetic test (council kerbs with 4-30 m pieces cut out, 8 NSW check/held-out boxes): found 0.871 -> 0.939, precise 1.000 -> 0.981. Post-processing only; scored with minutes 0 on the best model (pc/side-fill-eval.json)",
   "cfg": {
    "gapfill": 1
   },
-  "kill": "found under trees / cars does not rise, or precise drops beyond noise",
-  "todo": "code: after tracing, for each gap under 25 m between two traced lines on the same side of one centreline at matching offsets (within 0.5 m), add the offset-centreline piece"
+  "kill": "found under trees / cars does not rise, or precise drops beyond noise"
  }
 ]
