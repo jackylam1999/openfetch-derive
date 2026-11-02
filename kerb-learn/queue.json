@@ -203,6 +203,15 @@
   "kill": "within noise of 3 per chip"
  },
  {
+  "name": "apartment boxes + hide 3 patches per chip, 300 min",
+  "why": "combine the two small positives (apartments +0.04; hidden patches recall +0.01) and train longer as a candidate final model",
+  "cfg": {
+   "occlude": 3,
+   "minutes": 300
+  },
+  "kill": "within noise of the control"
+ },
+ {
   "name": "fill hidden kerb gaps along the road",
   "why": "Jacky 31 Oct 23:35Z (road centreline): kerbs run in pairs at a steady offset from the centreline; where both ends of a gap are found (under trees, cars), join them along the path parallel to the centreline. Post-processing only, no retraining",
   "cfg": {
