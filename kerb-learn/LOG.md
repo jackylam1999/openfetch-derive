@@ -367,3 +367,7 @@ Control: 0.784 (noise +-0.006). Changes: learn from misses again (LiDAR + Satlas
 Learnt: most movement in scenario 'none'; site share 32%, worst held-out F1 0.722.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 17: promoted by hand (2 Nov)
+
+Best model set by hand to learn from misses, 30% of chips (pc-16-1): the record kept the control because the gain was 0.005 against a 0.006 noise bar. Why: 0.815 vs 0.810 on the LiDAR boxes, worst held-out 0.778 -> 0.786, better on 7 of 8 boxes. Against it: Olympic Park found down 63.6% -> 60.1%. Stale count reset, status back to running.
