@@ -394,3 +394,7 @@ Control: 0.781 (noise +-0.006). Changes: learn from misses on half the chips (mi
 Learnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.743.
 Next: queue empty, add the next change to kerb-learn/queue.json.
 ```
+
+## Round 18: best put back by hand (3 Nov)
+
+The record made the round 18 control the best model, as it always promotes the control. Best set back to pc-16-1 (state.json and C:\kerb\dataest\model.pt; copy in C:\kerb\savedest-pc-16-1.pt): LiDAR boxes 0.815 vs 0.808 (mine 0.3, retrained) and 0.798 (mine 0.5). Rescored unchanged it gives 0.815 again, box for box, so scoring repeats exactly; the 0.007 gap is retraining spread.
