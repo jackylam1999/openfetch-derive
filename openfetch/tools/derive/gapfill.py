@@ -192,8 +192,18 @@ if gap:  # each gap's own heights: the trace's h_max belongs to the whole blob, 
             pr.update({k: r[k] for k in HKEYS if r and k in r})
         if (pr.get("h_max") or 0) > HIGH_RISE:  # a piece of a tower block
             n_tall_piece += 1; continue
-        if (pr.get("h_max") or 0) > THIN_H and 2 * g.area / g.length < THIN_W:  # a strip along a taller roof (Gosford, Chatswood pilots)
-            n_tall_piece += 1; continue
+        if (pr.get("h_max") or 0) > THIN_H and 2 * g.area / g.length < THIN_W:
+            # a thin piece (terrace strip, or a strip along a taller roof: Gosford, Chatswood pilots) whose top points are a
+            # neighbour's: its 90th percentile when that is a plausible height (Surry Hills terraces), else it is not shown
+            h90 = None
+            if LAZ and "ground" in pr:
+                from shapely import contains_xy
+                bm = P["c"] == 6
+                zb = P["z"][bm][contains_xy(g, P["x"][bm], P["y"][bm])]
+                h90 = float(np.percentile(zb, 90)) - pr["ground"] if len(zb) >= 10 else None
+            if h90 is None or h90 > THIN_H:
+                n_tall_piece += 1; continue
+            pr["h_max"] = round(h90, 2); pr["ridge"] = round(pr["ground"] + h90, 2)
         keep.append(ft)
     gap = keep
 for f in S:
