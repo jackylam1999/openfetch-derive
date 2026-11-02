@@ -371,3 +371,26 @@ Next: queue empty, add the next change to kerb-learn/queue.json.
 ## Round 17: promoted by hand (2 Nov)
 
 Best model set by hand to learn from misses, 30% of chips (pc-16-1): the record kept the control because the gain was 0.005 against a 0.006 noise bar. Why: 0.815 vs 0.810 on the LiDAR boxes, worst held-out 0.778 -> 0.786, better on 7 of 8 boxes. Against it: Olympic Park found down 63.6% -> 60.1%. Stale count reset, status back to running.
+
+## Round 18
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.781 | 0.743 | 36% | 0.791 | 0.915 | 0.814 | 0.706 | 0.681 |
+| learn from misses on half the chips (mine 0.5) | 0.773 | 0.732 | 38% | 0.789 | 0.915 | 0.810 | 0.664 | 0.687 |
+
+On the boxes with LiDAR only (nbcheck, cbcheck, wocheck, olympicpark, monavale, newport, parramatta, paddington; 250 m sites not counted):
+
+| model | scenario score | worst held-out F1 | 250 m sites ok | hilly | grid | terraces | apartments | dense |
+|---|---|---|---|---|---|---|---|---|
+| control | 0.808 | 0.777 | 0% | 0.791 | 0.915 | 0.849 | 0.706 | 0.777 |
+| learn from misses on half the chips (mine 0.5) | 0.798 | 0.773 | 0% | 0.779 | 0.914 | 0.848 | 0.676 | 0.773 |
+
+Held-out (found/precise/median offset): monavale 90%/78%/0.27 m; newport 86%/74%/0.32 m; parramatta 73%/83%/0.28 m; paddington 87%/90%/0.28 m; kensington 83%/67%/0.1 m
+
+```
+Round 18. Question: does learn from misses on half the chips (mine 0.5) raise the scenario score?
+Control: 0.781 (noise +-0.006). Changes: learn from misses on half the chips (mine 0.5) 0.798 vs control 0.808 on LiDAR boxes (dropped).
+Learnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.743.
+Next: queue empty, add the next change to kerb-learn/queue.json.
+```
