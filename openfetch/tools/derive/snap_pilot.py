@@ -142,6 +142,8 @@ for r in res:
         g=g.buffer(0.05,join_style=2).buffer(-0.05,join_style=2); trimmed+=1
         if g.is_empty or g.area<10: dropped+=1; continue   # only a sliver left after trimming
         r['geometry']=mapping(g)
+        if r['properties'].get('h_max',0)>THIN_H and 2*g.area/g.length<THIN_W:  # trimmed into a thin strip: its height was read on the whole shape
+            r['properties'].pop('h_max',None); r['properties'].pop('h_mean',None)
     acc.append(g); kept.append(r)
 res=kept
 print('duplicates dropped',dropped,'overlaps trimmed',trimmed)
