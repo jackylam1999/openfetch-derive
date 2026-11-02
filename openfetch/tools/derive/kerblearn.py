@@ -413,7 +413,28 @@ def pools(nm, lab, road, mine):
     return p
 
 
+def main_pool(out, nm, lab, tr):
+    """CFG["mainroad"] (round 16): kerb label points within 25 m of a main or collector road centreline (NSW functionhierarchy 1-5).
+    Main roads are the weakest road type (nbcheck found 54% on main roads vs 89% on local streets, round 13), and the hidden-kerb
+    fill (round 15 side run) could not reach them: their misses are long stretches and median kerbs, not short gaps."""
+    import rasterio.features as rf
+    from shapely.geometry import shape
+    rp = f"{out}/{nm}_roads.geojson"
+    gs = [shape(f["geometry"]) for f in (json.load(open(rp))["features"] if os.path.exists(rp) else [])
+          if f.get("geometry") and (f.get("properties") or {}).get("functionhierarchy") is not None
+          and f["properties"]["functionhierarchy"] <= 5]
+    if not gs:
+        return np.zeros((0, 2), int)
+    M = rf.rasterize(((g, 1) for g in gs), out_shape=lab.shape, transform=tr, all_touched=True, dtype=np.uint8)
+    near = ndimage.distance_transform_edt(M[::8, ::8] == 0) * CELL * 8 <= 25
+    return np.argwhere(near & ((lab[::8, ::8] == 2) | (lab[::8, ::8] == 3))) * 8
+
+
 def pick(rng, data):
+    if CFG.get("mainroad") and rng.random() < CFG["mainroad"]:
+        ok = [d for d in data if len(d[-1].get("main", ()))]
+        if ok:
+            return ok[rng.integers(len(ok))], "main"
     u, mi = rng.random(), CFG["mine"]
     kind = ("focus" if CFG["focus"] and rng.random() < 0.6 else "mistakes") if u < mi else ("kerb" if u < mi + (1 - mi) * 0.6 else "street")
     ok = [d for d in data if len(d[-1].get(kind, ()))]
@@ -552,7 +573,7 @@ def train(path, out, names, init, mine):
         if CFG.get("labelcheck"):
             lab, sh = checked(out, nm, lab, rgb, tr); dropped[nm] = sh
         data.append((np.asarray(rgb), context(out, nm, lot), lab, lidar(out, nm, lab.shape[0]) if CFG.get("lidar") else None,
-                     pools(nm, lab, road, mine)))
+                     {**pools(nm, lab, road, mine), **({"main": main_pool(out, nm, lab, tr)} if CFG.get("mainroad") else {})}))
         print(f"{nm}: " + ", ".join(f"{len(v)} {k}" for k, v in data[-1][-1].items()), file=sys.stderr)
     net = model(pretrained=init is None)
     if init:

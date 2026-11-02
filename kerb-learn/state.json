@@ -790,7 +790,8 @@
   "kerb pixels weighted 6",
   "hide car- and tree-sized patches (3 per chip), keep the kerb label",
   "hide car- and tree-sized patches (6 per chip), keep the kerb label",
-  "apartment boxes + hide 3 patches per chip, 300 min"
+  "apartment boxes + hide 3 patches per chip, 300 min",
+  "fill hidden kerb gaps along the road"
  ],
  "stale": 1,
  "status": "running",

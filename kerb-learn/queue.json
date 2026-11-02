@@ -218,5 +218,13 @@
    "gapfill": 1
   },
   "kill": "found under trees / cars does not rise, or precise drops beyond noise"
+ },
+ {
+  "name": "main and collector road kerbs sampled 30% of chips",
+  "why": "main roads are the weakest road type (nbcheck found 54% vs 89% on local streets) and the lot-frontage fill did not reach them (2 Nov side run: 0.804 -> 0.804); train more on kerbs within 25 m of a main or collector centreline",
+  "cfg": {
+   "mainroad": 0.3
+  },
+  "kill": "main-road found does not rise, or within noise of the control"
  }
 ]

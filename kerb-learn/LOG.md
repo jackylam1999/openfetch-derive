@@ -308,3 +308,16 @@ Control: 0.779 (noise +-0.006). Changes: apartment boxes + hide 3 patches per ch
 Learnt: most movement in scenario 'none'; site share 36%, worst held-out F1 0.722.
 Next: fill hidden kerb gaps along the road (Jacky 1 Nov: guess hidden kerbs like a person. kerbfill.py: along each block frontage the kerb sits at the verge width measured on the visible kerb (carried across the gap from the kerb before to the kerb after); gaps 2-40 m with kerb seen on both sides are drawn in the same kerb layer. Synthetic test (council kerbs with 4-30 m pieces cut out, 8 NSW check/held-out boxes): found 0.871 -> 0.939, precise 1.000 -> 0.981. Post-processing only; scored with minutes 0 on the best model (pc/side-fill-eval.json)).
 ```
+
+## Side run 2 Nov (PC): hidden-kerb fill from the lot frontage (minutes 0, best model pc-14-0)
+
+| | LiDAR boxes scenario score | worst held-out F1 | all boxes scenario score |
+|---|---|---|---|
+| no fill | 0.804 | 0.768 | 0.779 |
+| fill (gapfill, kerbfill.py) | 0.804 | 0.769 | 0.780 |
+
+```
+Fill drew only a few short pieces (14 of 298 lines on Parramatta). On cut-out council kerbs it restored half the gaps
+(found 0.871 -> 0.939), but the model's real misses are not short gaps bounded by kerb on both sides along a frontage.
+Kept in the code (CFG gapfill, off by default); not promoted. Next: kerbmiss.py to see where the misses are; round 16 main-road sampling.
+```
