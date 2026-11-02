@@ -10,3 +10,4 @@ pmtiles
 mapbox-vector-tile
 matplotlib
 remotezip
+scikit-image
