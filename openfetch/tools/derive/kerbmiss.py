@@ -5,6 +5,7 @@ gaps along lot frontages.) For each box, council kerb samples (every 0.5 m) with
   where  'frontage' (a lot within 12 m: the kerb along the property side) or 'median/island' (no lot near: medians,
          roundabouts, traffic islands, kerbs along parks)
   run    length of the missed stretch along the council line: <10 m, 10-40 m, >40 m (whole kerbs not drawn)
+  other  whether a drawn line sits where the kerb mirrored across the road centreline would be (the street's other kerb)
 
 Usage: python3 kerbmiss.py kp_dir thresh box [box ...]   (reads <box>_derived_<thresh>.geojson, _kerbs, _lots, _roads, _meta)
 """
@@ -42,9 +43,10 @@ def one(kp, th, nm):
     cnt = {}
     tot = 0
     for l in R:
-        P = shapely.points([l.interpolate(t).coords[0] for t in np.arange(0.25, l.length, 0.5)])
-        if not len(P):
+        ts = np.arange(0.25, l.length, 0.5)
+        if not len(ts):
             continue
+        P = shapely.points([l.interpolate(t).coords[0] for t in ts])
         tot += len(P)
         miss = shapely.distance(P, np.asarray(D, object)[dt.nearest(P)]) > 1.0 if D else np.ones(len(P), bool)
         if not miss.any():
@@ -53,8 +55,12 @@ def one(kp, th, nm):
         if rt is not None:
             h = np.array([rp[i].get("functionhierarchy") or 9 for i in rt.nearest(P)])
             road = np.where(h <= 3, "main", np.where(h <= 5, "collector", np.where(h == 6, "local", "lane")))
+            C = shapely.get_coordinates(shapely.get_point(shapely.shortest_line(P, np.asarray(roads, object)[rt.nearest(P)]), 1))
+            X = 2 * C - shapely.get_coordinates(P)  # the same spot mirrored across the centreline: the other kerb of the street
+            other = shapely.distance(shapely.points(X), np.asarray(D, object)[dt.nearest(shapely.points(X))]) <= 1.5 if D \
+                else np.zeros(len(P), bool)
         else:
-            road = np.full(len(P), "?")
+            road = np.full(len(P), "?"); other = np.zeros(len(P), bool)
         i = 0
         while i < len(P):
             if not miss[i]:
@@ -64,7 +70,8 @@ def one(kp, th, nm):
                 j += 1
             L = (j - i + 1) * 0.5; run = "<10 m" if L < 10 else "10-40 m" if L <= 40 else ">40 m"
             for k in range(i, j + 1):
-                key = (road[k], "frontage" if lotd[k] <= 12 else "median/island", run)
+                key = (road[k], "frontage" if lotd[k] <= 12 else "median/island", run,
+                       "other side drawn" if other[k] else "other side not drawn")
                 cnt[key] = cnt.get(key, 0) + 1
             i = j + 1
     return cnt, tot
@@ -81,7 +88,7 @@ if __name__ == "__main__":
         print(f"{nm}: missed {m * 0.5 / 1000:.2f} km of {t * 0.5 / 1000:.2f} km ({m / max(t, 1):.0%})")
     m = sum(allc.values())
     print(f"\nALL: missed {m * 0.5 / 1000:.2f} km of {allt * 0.5 / 1000:.2f} km. Share of the missed length:")
-    for dim, i in (("road", 0), ("where", 1), ("run", 2)):
+    for dim, i in (("road", 0), ("where", 1), ("run", 2), ("other kerb of the street", 3)):
         agg = {}
         for k, v in allc.items():
             agg[k[i]] = agg.get(k[i], 0) + v
