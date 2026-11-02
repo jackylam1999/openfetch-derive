@@ -226,5 +226,14 @@
    "mainroad": 0.3
   },
   "kill": "main-road found does not rise, or within noise of the control"
+ },
+ {
+  "name": "learn from misses again (LiDAR + Satlas model), 30% of chips",
+  "why": "round 6 tied on the old photo-only ResNet-34; kerbmiss 2 Nov: 52% of missed kerb is whole stretches over 40 m, 54% on local streets; feed back exactly the stretches the best model skips",
+  "cfg": {
+   "mine": 0.3,
+   "focus": ""
+  },
+  "kill": "within noise of the control"
  }
 ]
