@@ -235,5 +235,13 @@
    "focus": ""
   },
   "kill": "within noise of the control"
+ },
+ {
+  "name": "learn from misses on half the chips (mine 0.5)",
+  "why": "round 17: mine 0.3 gave 0.815 vs 0.810 (precise up on 7 of 8 boxes, worst held-out 0.778 -> 0.786), promoted by hand; more of the chips on the model's own mistakes",
+  "cfg": {
+   "mine": 0.5
+  },
+  "kill": "within noise of the control"
  }
 ]
