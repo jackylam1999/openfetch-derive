@@ -19,7 +19,7 @@ HOLD = ("monavale", "newport", "parramatta", "paddington", "kensington")
 QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../kerb-learn/queue.json")
 
 
-CONTROL = {"minutes": 150, "lr": 3e-4, "mine": 0.0, "focus": "", "more": 1}  # more: apartment boxes kept (rounds 12-13, apartments +0.04)
+CONTROL = {"minutes": 150, "lr": 3e-4, "more": 1}  # more: apartment boxes kept (rounds 12-13); mine/focus come from the best cfg (round 17 promoted mine 0.3)
 SEEDS = (11, 22, 33)
 
 
