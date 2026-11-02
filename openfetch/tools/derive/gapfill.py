@@ -67,6 +67,7 @@ def by_lots(d):
     return parts
 
 
+THIN_W, THIN_H = 4.0, 12.0  # m: a gap narrower than this (2 x area / perimeter) and taller is the edge of a taller roof (tools/mirror/roofs-check.py)
 HIGH_RISE = 25.0  # m roof above ground: over this the trace is a tower block, not a house (same cap as the app, src/regions/nsw/roofs.js)
 HKEYS = ("n_roof", "n_ground", "density", "area_m2", "eave", "ridge", "roof_mean", "ground", "h_max", "h_eave", "h_mean")
 CELL, STEP, MIN_PART = 0.5, 2.5, 40  # m grid; m roof height jump (a storey) that parts two roofs; m2 smallest roof kept apart
@@ -190,6 +191,8 @@ if gap:  # each gap's own heights: the trace's h_max belongs to the whole blob, 
                 pr.pop(k, None)
             pr.update({k: r[k] for k in HKEYS if r and k in r})
         if (pr.get("h_max") or 0) > HIGH_RISE:  # a piece of a tower block
+            n_tall_piece += 1; continue
+        if (pr.get("h_max") or 0) > THIN_H and 2 * g.area / g.length < THIN_W:  # a strip along a taller roof (Gosford, Chatswood pilots)
             n_tall_piece += 1; continue
         keep.append(ft)
     gap = keep
