@@ -95,9 +95,10 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
 3. DONE (above): short misses are mostly a 1-2.5 m offset, no tracing fix. Left: photo check of the offsets; Newport offset 0.31 m; Kensington precision 68%.
 4. DONE (0.819, above). Was: Street-offset prior: carry the drawn kerb's offset from centreline / lot boundary along the same street into undrawn stretches, keep pieces
    the step fit or weak P (0.1-0.5) confirms. Oracle check first (share of long misses within 1 m of the carried offset).
-5. GPU: step-fit height + roughness as two extra model input layers, one round.
-   RUNNING since 20:58Z 3 Nov (first try crashed: stack() scale list, fixed): C:\kerb\stepfit.ps1 builds the layers (kerbstep.fit, CFG stepfit, cache _lidstep_*), waits for side-pdrop8, then runs
-   kerb-learn/pc/side-stepfit.json (~3.5 h, out C:\kerb\out\side-stepfit , log C:\kerb\stepfit.out). Compare by hand with 0.815.
+5. DONE, no gain: side-stepfit (CFG stepfit, step-fit height + roughness as input layers 10-11, kerbstep.fit) 0.809 vs 0.815,
+   Olympic Park found 57.2%. pdrop 0.8 (photo blanked on 80% of chips) also 0.808. Since round 16, ten changes all land at 0.80-0.815:
+   the segmentation model is at its ceiling on this data. Remaining levers: denser LiDAR (Sydney 2020 survey ~11 pts/m2 vs 1.6-2.8 on
+   the check boxes; ELVIS order needs Jacky), wire the street-offset prior (0.819) into the pipeline, kerbclean on all boxes, kerb tracing.
 6. kerbclean.py on all 8 boxes; denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
 - Watchers die on session restarts: side-longmine sat finished from ~09:15Z to 13:37Z. Chain runs in one .ps1 where possible.
 
