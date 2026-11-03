@@ -66,8 +66,7 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
 - Plateau: since round 16 every change lands at 0.80-0.815 (averaging, gap net, hysteresis, wider view, long-miss mining, mine 0.5).
   The photo+LiDAR segmentation model looks at its ceiling; the blind long misses need another kind of method.
 
-## RUNNING: side-pdrop8 on the PC (started 13:40Z 3 Nov, ~3.5 h; out C:\kerb\out\side-pdrop8)
-pc-16-1 trained on with the photo blanked on 80% of chips (pdrop 0.8, was 0.5), to make it lean on the LiDAR step. Compare by hand with 0.815.
+- side-pdrop8 (photo blanked on 80% of chips): 0.808 vs 0.815, Olympic Park found 57.8%. No gain; dropped.
 
 ## 3 Nov LiDAR step detector (thread "Find the kerbs the model misses")
 - kerbstep.py (CPU, no training; log C:\kerb\step2.out, lines C:\kerb\step): redraws pc-16-1 lines from C:\kerb\long P at 0.6 (base 0.816,
@@ -78,13 +77,27 @@ pc-16-1 trained on with the photo blanked on 80% of chips (pdrop 0.8, was 0.5), 
   breaks a box's missed kerb down by test. 42% of nbcheck missed council kerb lies inside lot polygons (lot test is off).
 - Research + game plan doc (Claude Doc): https://claude.ai/artifact/19EfzmPzeuU9rLbRpJLBY8
 
+- Short misses (kerbshort.py, log C:\kerb\short.out): of 7.5 km missed in stretches <= 40 m with P >= 0.5 nearby, 6.2 km "off" (mask within
+  1 m, traced line 1-2.5 m away), 0.6 dropped by tidy/MIN_LEN, 0.7 under the 0.6 cut. Ridge tracing (kerbridge.py, keep mask cells within
+  0.8-0.9 of the 5-15 cell max): 0.812-0.816, no gain. kerboff.py: LiDAR step >= 4 cm at the drawn line vs at the council line, Paddington
+  28% vs 10%, Newport 37% vs 13% -> much of "off" looks like the council line offset ~1.3 m, not the model. Confirm over the photo.
+  (kerbshort/kerbridge/kerboff.py uncommitted on the PC until Jacky OKs a push.)
+
+- Street-offset prior (kerbstreet.py, logs C:\kerb\street.out, street_m.out): per centreline + side, median drawn-kerb offset (>= 10 m drawn,
+  IQR <= 0.6 m) carried along the street, trimmed 3 m past other streets, pieces >= 10 m with no line within 1.5 m. Best: keep pieces with a
+  LiDAR step >= 3 cm on 30% of samples, 0.819 vs 0.816 (0.7 km added, worst held-out 0.788). All pieces 0.817; mirrored to the other side
+  (KERB_MIRROR=1) 0.818 with check, 0.802 without. Proposals reach only 0-11% of the long misses: those streets have neither kerb drawn.
+  Small, deterministic gain; not yet wired into the pipeline (kerbstreet.py uncommitted on the PC with the other check scripts).
+
 ## NEXT (in order)
 1. Score side-pdrop8.
 2. DONE: LiDAR step detector, no gain alone (above). Game plan from the doc, in order:
-3. Why short misses with P >= 0.5 get no line (7.2 km; kerbtidy/MIN_LEN drops, 1 m offset); Newport offset 0.31 m; Kensington precision 68%.
-4. Street-offset prior: carry the drawn kerb's offset from centreline / lot boundary along the same street into undrawn stretches, keep pieces
+3. DONE (above): short misses are mostly a 1-2.5 m offset, no tracing fix. Left: photo check of the offsets; Newport offset 0.31 m; Kensington precision 68%.
+4. DONE (0.819, above). Was: Street-offset prior: carry the drawn kerb's offset from centreline / lot boundary along the same street into undrawn stretches, keep pieces
    the step fit or weak P (0.1-0.5) confirms. Oracle check first (share of long misses within 1 m of the carried offset).
 5. GPU: step-fit height + roughness as two extra model input layers, one round.
+   RUNNING since 20:58Z 3 Nov (first try crashed: stack() scale list, fixed): C:\kerb\stepfit.ps1 builds the layers (kerbstep.fit, CFG stepfit, cache _lidstep_*), waits for side-pdrop8, then runs
+   kerb-learn/pc/side-stepfit.json (~3.5 h, out C:\kerb\out\side-stepfit , log C:\kerb\stepfit.out). Compare by hand with 0.815.
 6. kerbclean.py on all 8 boxes; denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
 - Watchers die on session restarts: side-longmine sat finished from ~09:15Z to 13:37Z. Chain runs in one .ps1 where possible.
 
