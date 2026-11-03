@@ -67,6 +67,24 @@ def grids(src, nm, D):
     return tr_, up_, ok, nr, nc
 
 
+def fit(src, nm):
+    """The step-vs-slope fit of grids() on its own, for the model's input (kerblearn CFG["stepfit"]): step up across the road (m) and
+    the leftover roughness (m) on the 0.25 m ground grid, 0 where there is no ground."""
+    dem = np.load(f"{src}/{nm}_dem.npy").astype(np.float32); n = dem.shape[0]; x0, y0 = kl.BX[nm]
+    tr = Affine(G, 0, x0, 0, -G, y0 + n * G)
+    m = np.isfinite(dem); w = ndimage.gaussian_filter(m.astype(np.float32), 1.5)
+    z = ndimage.gaussian_filter(np.where(m, dem, 0), 1.5) / np.maximum(w, 1e-6); z[w < 0.05] = np.nan
+    cl = burn(f"{src}/{nm}_roads.geojson", n, tr, True)
+    dist, (ri, ci) = ndimage.distance_transform_edt(~cl, return_indices=True)
+    rr, cc = np.mgrid[:n, :n].astype(np.float32); nr, nc = (rr - ri) / np.maximum(dist, 1e-6), (cc - ci) / np.maximum(dist, 1e-6)
+    del ri, ci, dist
+    ks = np.arange(-W, W + 1); X = np.stack([np.ones(len(ks)), ks, (ks > 0).astype(float)], 1); Pi = np.linalg.pinv(X)
+    Z = [ndimage.map_coordinates(z, [rr + k * nr, cc + k * nc], order=1, cval=np.nan).astype(np.float32) for k in ks]
+    a, b, up = (sum(Pi[j, i] * Z[i] for i in range(len(ks))) for j in (0, 1, 2))
+    rss = sum((Z[i] - a - b * k - up * (k > 0)) ** 2 for i, k in enumerate(ks))
+    return np.nan_to_num(up), np.nan_to_num(np.sqrt(rss / (len(ks) - 3)))
+
+
 def burn_lines(D, n, tr):
     import rasterio.features as rf
     return rf.rasterize(((g, 1) for g in D), out_shape=(n, n), transform=tr, all_touched=True, dtype=np.uint8) > 0 if D \

@@ -244,6 +244,24 @@ def lidar(out, nm, n):
         for i in range(3):
             a[o:o + k, o:o + k, i] = np.clip(np.rint(ndimage.zoom(f[..., i], k / g, order=1 if i < 2 else 0)[:k, :k]), 0, 255)
         a.flush(); del a; os.replace(c + ".tmp.npy", c)
+    li = np.load(c, mmap_mode="r")
+    return stepfit(out, nm, n, li, key) if CFG.get("stepfit") else li
+
+
+def stepfit(out, nm, n, li, key):
+    """CFG["stepfit"] (game plan step 5, 3 Nov 2026): two more LiDAR layers from kerbstep.fit, the kerb step across the road (step-vs-
+    slope fit on a 3 m profile, Zhou & Vosselman 2012) and the leftover roughness of that fit. The step detector alone found 18% real
+    candidates (too sparse to find kerbs, 1-6 ground points/m2), so the model gets it as evidence beside the photo instead."""
+    c = f"{out}/_cache/{nm}_lidstep_{key}.npy"
+    if not os.path.exists(c):
+        import kerbstep
+        up, rough = kerbstep.fit(out, nm); g = up.shape[0]; G = 0.25
+        f = [np.clip((up + 0.1) * 637, 0, 255), np.clip(rough * 2550, 0, 255)]
+        k = int(round(G / CELL * g)); o = (n - k) // 2
+        a = np.lib.format.open_memmap(c + ".tmp.npy", "w+", np.uint8, (n, n, 5)); a[..., :3] = li
+        for i in range(2):
+            a[o:o + k, o:o + k, 3 + i] = np.rint(ndimage.zoom(f[i], k / g, order=1)[:k, :k])
+        a.flush(); del a; os.replace(c + ".tmp.npy", c)
     return np.load(c, mmap_mode="r")
 
 
@@ -253,7 +271,7 @@ def inputs(out, nm, lot):
     if not CFG.get("lidar"):
         return ctx
     li = lidar(out, nm, lot.shape[0])
-    return np.concatenate([ctx, np.zeros(lot.shape + (3,), np.uint8) if li is None else np.asarray(li)], -1)
+    return np.concatenate([ctx, np.zeros(lot.shape + (NLI(),), np.uint8) if li is None else np.asarray(li)], -1)
 
 
 def model(pretrained=True):
@@ -328,7 +346,11 @@ def DEV():
 
 
 def NIN():
-    return (6 if CFG.get("context") else 4) + (3 if CFG.get("scale2") else 0) + (3 if CFG.get("lidar") else 0)
+    return (6 if CFG.get("context") else 4) + (3 if CFG.get("scale2") else 0) + (NLI() if CFG.get("lidar") else 0)
+
+
+def NLI():
+    return 5 if CFG.get("stepfit") else 3
 
 
 def wide(rgb, r, c, half, k=3):
@@ -371,7 +393,7 @@ def Average(net, paths):
 
 
 def stack(rgb, inp):
-    sc = [1, 1 / 250, 1][:3 if CFG.get("context") else 1] + ([1 / 250, 1 / 250, 1] if CFG.get("lidar") else [])
+    sc = [1, 1 / 250, 1][:3 if CFG.get("context") else 1] + ([1 / 250, 1 / 250, 1] if CFG.get("lidar") else []) +         ([1 / 255, 1 / 255] if CFG.get("lidar") and CFG.get("stepfit") else [])
     x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, inp.astype(np.float32) * np.array(sc, np.float32) - 0.5], -1)
     if CFG.get("lidar") == 2:  # LiDAR only: the photo is blanked
         x[..., :3] = 0
@@ -634,7 +656,7 @@ def train(path, out, names, init, mine):
             wd = wide(rgb, r, c, hz) * g + o if CFG.get("scale2") else None
             ip, lb = inp[sl], lab[sl]
             if CFG.get("lidar"):
-                ip = np.concatenate([ip, np.zeros(ip.shape[:2] + (3,), np.uint8) if li is None else np.asarray(li[sl])], -1)
+                ip = np.concatenate([ip, np.zeros(ip.shape[:2] + (NLI(),), np.uint8) if li is None else np.asarray(li[sl])], -1)
             if hz != h:
                 f = h / hz
                 img = ndimage.zoom(img, (f, f, 1), order=1)[:2 * h, :2 * h]
