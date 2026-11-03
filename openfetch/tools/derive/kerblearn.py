@@ -424,9 +424,23 @@ def pools(nm, lab, road, mine):
     if mine is not None and f"{nm}_miss" in mine:
         ms, fp = mine[f"{nm}_miss"], mine[f"{nm}_fp"]
         p["mistakes"] = np.concatenate([ms[:, :2], fp]) if len(fp) else ms[:, :2]
+        if CFG.get("longmine"):  # 3 Nov: 78% of missed stretches over 40 m are blind (P < 0.1); train on those stretches only
+            p["mistakes"] = long_runs(ms[:, :2], lab.shape, CFG["longmine"])
         p["focus"] = fp if CFG["focus"] == "extra lines" else (
             ms[ms[:, 2] == TYPES.index(CFG["focus"]), :2] if CFG["focus"] in TYPES else np.zeros((0, 2), int))
     return p
+
+
+def long_runs(pts, shape, metres):
+    """Missed kerb points (every 5th council kerb cell) lying in a missed stretch at least `metres` long: points are joined when
+    within 1 m, and a stretch's length is its point count x 0.5 m."""
+    if not len(pts):
+        return pts
+    g = np.zeros((shape[0] // 10 + 1, shape[1] // 10 + 1), np.int32); np.add.at(g, (pts[:, 0] // 10, pts[:, 1] // 10), 1)
+    lb, n = ndimage.label(ndimage.binary_dilation(g > 0, np.ones((3, 3))))
+    size = ndimage.sum(g, lb, np.arange(1, n + 1)) * 5 * CELL
+    keep = np.concatenate([[False], size >= metres])[lb[pts[:, 0] // 10, pts[:, 1] // 10]]
+    return pts[keep]
 
 
 def main_pool(out, nm, lab, tr):
