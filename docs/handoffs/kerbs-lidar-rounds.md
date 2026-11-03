@@ -41,17 +41,24 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
   fell 63.6% -> 60.1%. Held-out found/precise/offset: monavale 90.5/79.3/0.27, newport 86.7/74.5/0.31, parramatta 74.1/83.7/0.29,
   paddington 86.2/91.4/0.29; kensington (Vic, no LiDAR) 83.0/67.9.
 
-## RUNNING: round 18 on the PC (started 16:47Z 2 Nov, both variants mine, expected ~23:30Z)
-Control (best cfg, mine 0.3; run from local C:\kerb\17.json because kerbloop CONTROL forced mine 0, fixed after) vs "learn from misses on half the chips (mine 0.5)". C:\kerb\next18.ps1 records + pushes.
+## 3 Nov results (thread "Starts now")
+- Round 18 (finished 21:26Z 2 Nov): mine 0.3 retrained 0.808, mine 0.5 0.798, best stays pc-16-1 0.815. `pc.py record` always promotes the control and
+  overwrites data/best/model.pt: it did so again, put back by hand (saved/best-pc-16-1.pt, commit 5f80098). Check after every record.
+- pc-16-1 rescored unchanged gives 0.815 box for box, so scoring repeats exactly; retraining spread is about 0.007. Fair read of the model: 0.81.
+- Clean Parramatta (kerbclean.py, LiDAR roofs from tile 3146256 via roofs.py, in C:\kerb\clean; drawn lines near dropped pieces count neither way):
+  found 74.1 -> 77.0%, precise 83.7 -> 83.6%, F1 0.786 -> 0.802. Dropped 1.5 of 25 km (building 0.9, off road 0.55, rail 0.07). The old 83% guess was wrong:
+  over the photo most remaining misses are real (laneways, deep shadow, bridges, station bus interchange). Normal reference unchanged.
+- Model averaging (CFG avg, kerb-learn/pc/side-avg.json): 16-1+16-0 0.815, 16-1+17-0 0.813, all three 0.814. No gain; dropped.
+- Miss map on real output (0.7): 24.3 of 139.9 km missed; 53% in stretches > 40 m, 32% 10-40 m, 14% < 10 m; other kerb of the street drawn for only 26%.
+- Local commits a4fc601 and later are NOT pushed: pushes of code wait for Jacky's go-ahead.
+
+## RUNNING: gap-repair net on the PC (kerbgap.py, C:\kerb\gap.ps1, log C:\kerb\gap.out, started ~01:25Z 3 Nov, 45 min train then test)
+Trained on council kerbs with pieces cut out; adds only pieces touching a drawn line. Tested on C:\kerb\cleanvg3 lines (3-model average at 0.6, base 0.814).
 
 ## NEXT (in order)
-1. Clean the reference before judging Parramatta: drop council kerb pieces under buildings (our LiDAR roofs, see rule above; NSW
-   has no official footprints for Jacky), over rail land (NSW_Transport_Theme railway layer) and plazas. Score as a separate
-   minutes-0 run so rounds stay comparable; record both numbers.
-2. Average two models (e.g. pc-16-0 + pc-16-1, each better in different scenarios), inference only, small code change in prob().
-3. Gap-repair net (Batra et al. CVPR 2019): second small net trained on our council kerbs with pieces cut out; aims at 10-40 m misses.
-4. Only if still short: kerb tracing (iCurb / Topo-boundary, HKUST 2021-22) for the > 40 m misses.
-5. Newport offset 0.31 m (limit 0.3) and Kensington precision 68% (Vic, aerial only) need their own look.
+1. Read gap.out: keep if the scenario score beats base by more than 0.006 at a cut chosen on the check boxes.
+2. Kerb tracing (iCurb / Topo-boundary, HKUST 2021-22) for the > 40 m misses; 74% of missed length has neither kerb of the street drawn.
+3. Newport offset 0.31 m (limit 0.3) and Kensington precision 68% (Vic, aerial only) need their own look.
 
 ## Open items with Jacky
 - Melbourne LiDAR email drafts (DTP Coordinated Imagery Program, Merri-bek virtual@merri-bek.vic.gov.au) and the newer NSW LiDAR
