@@ -354,6 +354,22 @@ def load(net, path):
     net.load_state_dict(sd)
 
 
+def Average(net, paths):
+    """Several saved models as one: the mean of their outputs before the sigmoid. Scoring only."""
+    import torch
+
+    class Avg(torch.nn.Module):
+        def __init__(s):
+            super().__init__()
+            s.nets = torch.nn.ModuleList([net])
+            for p in paths:
+                n = model(False); load(n, p); s.nets.append(n)
+
+        def forward(s, x):
+            return sum(n(x) for n in s.nets) / len(s.nets)
+    return Avg()
+
+
 def stack(rgb, inp):
     sc = [1, 1 / 250, 1][:3 if CFG.get("context") else 1] + ([1 / 250, 1 / 250, 1] if CFG.get("lidar") else [])
     x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, inp.astype(np.float32) * np.array(sc, np.float32) - 0.5], -1)
@@ -871,7 +887,9 @@ def run(a):
         import shutil
         shutil.copy(init, f"{out}/model.pt")
     net = model(False); load(net, f"{out}/model.pt"); net = net.to(DEV()).eval()
-    ev = {"tta": evaluate(net, out, 1 - CFG["tta"])} if CFG.get("eval_tta") else {}
+    if CFG.get("avg"):  # CFG["avg"]: more saved models, scored as one (kerbs-lidar-rounds.md NEXT 2)
+        net = Average(net, CFG["avg"]).to(DEV()).eval()
+    ev ={"tta": evaluate(net, out, 1 - CFG["tta"])} if CFG.get("eval_tta") else {}
     res = {"cfg": CFG, "train": info, **evaluate(net, out, CFG["tta"]), "eval": ev, "minutes": round((time.time() - t0) / 60),
            "steps_per_min": float(os.environ.get("KERB_STEPS_PER_MIN") or 0), "device": DEV()}
     json.dump(res, open(res_path, "w"), indent=1)
