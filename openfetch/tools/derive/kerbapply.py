@@ -107,10 +107,16 @@ def draw(a):
     for nm, x, y in boxes(area, float(a[4]), float(a[5]), float(a[6])):
         if not os.path.exists(f"{out}/{nm}_meta.json"):
             print(nm, "not fetched", file=sys.stderr); continue
+        kl.BX[nm] = (x, y)  # kerbstep.grids places the LiDAR grid by the box corner
         m, tr, rgb, lot, lab, road = kl.labels(out, nm)
-        P = kl.prob(net, rgb, kl.inputs(out, nm, lot), None, kl.CFG["tta"])
-        kp.vec(out, nm, P, tr, th); del P
-        has = kerbstreet.fill_file(f"{out}/{nm}_derived.geojson", out, nm) if os.path.exists(f"{out}/{nm}_dem.npy") else None
+        mark = f"{out}/{nm}_drawn.json"; key = {"model": os.path.abspath(mp), "thresh": th, "lidar": os.path.exists(f"{out}/{nm}_dem.npy")}
+        if not (os.path.exists(mark) and json.load(open(mark)) == key):  # a box two areas share is drawn once
+            P = kl.prob(net, rgb, kl.inputs(out, nm, lot), None, kl.CFG["tta"])
+            kp.vec(out, nm, P, tr, th); del P
+            if key["lidar"]:
+                kerbstreet.fill_file(f"{out}/{nm}_derived.geojson", out, nm)
+            json.dump(key, open(mark, "w"))
+        has = key["lidar"] or None
         clip = sbox(*m["box"]); L, S = [], []
         for f in json.load(open(f"{out}/{nm}_derived.geojson"))["features"]:
             g = shape(f["geometry"]).intersection(clip)
