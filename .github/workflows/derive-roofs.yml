@@ -12,6 +12,7 @@ on:
       name: {description: 'Short name for the order, e.g. north-shore', required: true}
       zip_url: {description: 'ELVIS zip link (https://elvis-downloads.s3.amazonaws.com/DATA_....zip)', required: true}
       only: {description: 'Optional pilot box in MGA56 metres: xmin ymin xmax ymax (blank = every tile)', required: false, default: ''}
+      split: {description: 'Cut each tile into N x N smaller boxes (2 for dense tiles that ran out of memory; 1 = whole tiles)', required: false, default: '1'}
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -27,7 +28,7 @@ jobs:
         run: echo "boxes=$(python3 openfetch/tools/derive/actions.py plan "$URL" plan.json $ONLY)" >> "$GITHUB_OUTPUT"
         env:
           URL: ${{ inputs.zip_url }}
-          ONLY: ${{ inputs.only != '' && format('--only {0}', inputs.only) || '' }}
+          ONLY: ${{ inputs.only != '' && format('--only {0}', inputs.only) || '' }} --split ${{ inputs.split || '1' }}
       - uses: actions/upload-artifact@v4
         with: {name: plan, path: plan.json}
   box:
