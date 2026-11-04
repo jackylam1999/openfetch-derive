@@ -296,6 +296,7 @@ if LAZ and (work or SG):
             continue  # towers stay whole: lot lines under them are strata lots, not houses (Chatswood P-0098)
         parts = whole_pieces(by_lots(g), g)
         parts = [q for p in parts for q in (by_rows(p, P) if not one_home_lot(p) else [p])]
+        parts = whole_pieces(parts, g) if len(parts) >= 2 else parts  # a party-wall cut can leave a corner sliver too
         if len(parts) >= 2:
             rows_of[k] = parts
     del P
