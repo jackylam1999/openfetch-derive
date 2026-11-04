@@ -11,9 +11,9 @@ from shapely import contains_xy
 src, out = sys.argv[1], sys.argv[2]; files = sys.argv[3:]
 import os
 KEEP_SHARED = os.environ.get('KEEP_SHARED', '1') == '1'  # roof-tracing round RT1: keep OSM shared-wall shapes on dense LiDAR
-# RT4 extra round: cap (m) on how far a hand-drawn OSM shape is moved unless the move clearly fits better (default off)
-SNAP_OSM_MAX = float(os.environ.get('SNAP_OSM_MAX', 'inf'))
-SNAP_OSM_ONROOF = os.environ.get('SNAP_OSM_ONROOF', '0') == '1'  # ... and it also stays when 80 %+ of it is roof where drawn
+# RT4 extra round: cap (m) on how far a hand-drawn OSM shape is moved unless the move clearly fits better (default on since RT6: 0.5 m, with SNAP_OSM_ONROOF=1)
+SNAP_OSM_MAX = float(os.environ.get('SNAP_OSM_MAX', '0.5'))
+SNAP_OSM_ONROOF = os.environ.get('SNAP_OSM_ONROOF', '1') == '1'  # ... and it also stays when 80 %+ of it is roof where drawn
 B=tuple(float(v) for v in os.environ.get("BOX","552861 6882513 553545 6883186").split())
 B=(B[0]-W-2,B[1]-W-2,B[2]+W+2,B[3]+W+2)  # wider than the shift window plus the ring
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
