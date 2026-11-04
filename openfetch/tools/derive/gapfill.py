@@ -122,6 +122,7 @@ def by_lidar(d, P):
     return parts or [d]
 
 
+ROW_SPLIT = os.environ.get("ROW_SPLIT", "1") == "1"  # roof tracing rounds switch (docs/handoffs/roof-tracing-rounds.md): 0 = no row cuts, the control
 FRONT = (3.5, 12.0)  # m: frontage of one terrace or townhouse (Paddington 4-6 m, newer townhouses up to ~10 m)
 ROW_STEP, ROW_VALLEY, ROW_ACROSS = 0.4, 0.3, 0.6  # m step, m gutter depth, share of the row's depth a party wall crosses
 
@@ -283,7 +284,7 @@ if LAZ and (work or SG):
     work = [w for x in work for w in (x if isinstance(x, list) else [x])]
     # terrace and townhouse rows on one lot (strata plans, old shared lots): split along the party walls (Paddington, 4 Nov 2026)
     for i, (f, p) in enumerate(work):
-        if one_home_lot(p):  # a lot of one dwelling's size: the lot lines already split this row
+        if not ROW_SPLIT or one_home_lot(p):  # a lot of one dwelling's size: the lot lines already split this row
             continue
         parts = by_rows(p, P)
         if len(parts) > 1:
@@ -291,7 +292,7 @@ if LAZ and (work or SG):
     work = [w for x in work for w in (x if isinstance(x, list) else [x])]
     # mapped rows: OpenStreetMap often draws a whole terrace row as one building; cut it the same way, so each dwelling
     # gets its own LiDAR height and the row is not one big property (Paddington, 4 Nov 2026)
-    for k, g in enumerate(SG):
+    for k, g in enumerate(SG if ROW_SPLIT else []):
         pk = S[k]["properties"]
         if g.geom_type != "Polygon" or g.area < 2 * 35 or pk.get("high_rise") or (pk.get("h_max") or 0) > HIGH_RISE:
             continue  # towers stay whole: lot lines under them are strata lots, not houses (Chatswood P-0098)
