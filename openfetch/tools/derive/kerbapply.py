@@ -62,22 +62,23 @@ def dem(a):
     out, src = a[0], a[1]; G, W = 0.25, 1000.0; n = int(W / G)
     B = [(os.path.basename(p)[:-10], json.load(open(p))["box"]) for p in glob.glob(f"{out}/*_meta.json")]
     B = [(nm, b) for nm, b in B if not os.path.exists(f"{out}/{nm}_dem.npy")]
-    acc = {}
+    H = []  # tile bounds once, then one box at a time (all boxes at once held 256 MB each in memory)
     for p in sorted(glob.glob(f"{src}/**/*.la[sz]", recursive=True)):
         with laspy.open(p) as r:
-            h = r.header; x0, y0, x1, y1 = h.mins[0], h.mins[1], h.maxs[0], h.maxs[1]
-            hit = [(nm, b) for nm, b in B if b[0] < x1 and b[2] > x0 and b[1] < y1 and b[3] > y0]
-            for ch in (r.chunk_iterator(5_000_000) if hit else ()):
-                g = ch.classification == 2; x, y, z = np.asarray(ch.x)[g], np.asarray(ch.y)[g], np.asarray(ch.z)[g]
-                for nm, b in hit:
+            H.append((p, r.header.mins[0], r.header.mins[1], r.header.maxs[0], r.header.maxs[1]))
+    for nm, b in B:
+        s, t = np.zeros(n * n), np.zeros(n * n)
+        for p, x0, y0, x1, y1 in H:
+            if not (b[0] < x1 and b[2] > x0 and b[1] < y1 and b[3] > y0):
+                continue
+            with laspy.open(p) as r:
+                for ch in r.chunk_iterator(5_000_000):
+                    g = ch.classification == 2; x, y, z = np.asarray(ch.x)[g], np.asarray(ch.y)[g], np.asarray(ch.z)[g]
                     c = ((x - b[0]) / G).astype(int); rr = n - 1 - ((y - b[1]) / G).astype(int)
                     k = (c >= 0) & (c < n) & (rr >= 0) & (rr < n)
-                    s, t = acc.setdefault(nm, (np.zeros(n * n), np.zeros(n * n)))
                     i = rr[k] * n + c[k]; np.add.at(s, i, z[k]); np.add.at(t, i, 1)
-        print(os.path.basename(p), [nm for nm, _ in hit], file=sys.stderr, flush=True)
-    for nm, (s, t) in acc.items():
         d = np.where(t > 0, s / np.maximum(t, 1), np.nan).reshape(n, n).astype(np.float32)
-        np.save(f"{out}/{nm}_dem.npy", d); print(nm, f"{np.isfinite(d).mean():.0%} cells with ground", file=sys.stderr)
+        np.save(f"{out}/{nm}_dem.npy", d); print(nm, f"{np.isfinite(d).mean():.0%} cells with ground", file=sys.stderr, flush=True)
 
 
 def tag(out, nm, lines):
