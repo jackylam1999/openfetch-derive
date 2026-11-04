@@ -122,6 +122,145 @@ def by_lidar(d, P):
     return parts or [d]
 
 
+ROW_SPLIT = os.environ.get("ROW_SPLIT", "1") == "1"  # roof tracing rounds switch (docs/handoffs/roof-tracing-rounds.md): 0 = no row cuts, the control
+FRONT = (3.5, 12.0)  # m: frontage of one terrace or townhouse (Paddington 4-6 m, newer townhouses up to ~10 m)
+ROW_STEP, ROW_VALLEY, ROW_ACROSS = 0.4, 0.3, 0.6  # m step, m gutter depth, share of the row's depth a party wall crosses
+
+
+def by_rows(d, P):
+    """Split a terrace or townhouse row into its dwellings where the cadastre has one lot for the whole row (strata plans,
+    old shared lots). Each dwelling has its own roof: at a party wall the roof steps (a row on a slope) or dips into a
+    gutter between two roofs, along a straight line right across the row. A ridge is a peak, not a dip, so a single house
+    whose ridge crosses it is not cut. Cuts are kept only when they give 2+ dwellings of a frontage FRONT wide that are
+    about the same width (a row is built from one plan); otherwise the piece stays whole."""
+    if d.geom_type != "Polygon" or d.area < 2 * 35:
+        return [d]
+    c = np.asarray(d.minimum_rotated_rectangle.exterior.coords)[:3]
+    best = None
+    for a, b in ((c[0], c[1]), (c[1], c[2])):  # cut across either side of the rectangle
+        u = (b - a) / np.linalg.norm(b - a); v = np.array([-u[1], u[0]])
+        cut = _row_cuts(d, P, u, v)
+        if cut and (best is None or cut[0] > best[0]):
+            best = cut + (u,)
+    if not best:
+        return [d]
+    _, s_cuts, u = best
+    from shapely.geometry import Polygon
+    v = np.array([-u[1], u[0]]); big = 1e3
+    o = np.asarray(d.centroid.coords[0])
+    edges = [-big] + list(s_cuts) + [big]
+    parts = []
+    for s0, s1 in zip(edges[:-1], edges[1:]):
+        q = [o + s0 * u - big * v, o + s1 * u - big * v, o + s1 * u + big * v, o + s0 * u + big * v]
+        p = d.intersection(Polygon(q))
+        if not p.is_empty:
+            parts.append(p if p.geom_type == "Polygon" else max(p.geoms, key=lambda g: g.area))
+    return parts if len(parts) >= 2 else [d]
+
+
+def _row_cuts(d, P, u, v):
+    """Party-wall cut positions across direction u (metres from the centroid), with a score; None when it is not a row."""
+    from shapely import contains_xy
+    x0, y0, x1, y1 = d.bounds
+    s = slice(*np.searchsorted(P["x"], [x0, x1]))
+    x, y, z, cl = P["x"][s], P["y"][s], P["z"][s], P["c"][s]
+    m = (y >= y0) & (y <= y1) & (cl == 6)
+    x, y, z = x[m], y[m], z[m]
+    if len(x) < 50:
+        return None
+    m = contains_xy(d, x, y); x, y, z = x[m], y[m], z[m]
+    if len(x) < 50:  # a piece with no roof points of its own (Gosford)
+        return None
+    o = np.asarray(d.centroid.coords[0])
+    ps, pt = (x - o[0]) * u[0] + (y - o[1]) * u[1], (x - o[0]) * v[0] + (y - o[1]) * v[1]
+    smin, smax = ps.min(), ps.max(); tmin, tmax = pt.min(), pt.max()
+    length, depth = smax - smin, tmax - tmin
+    if length < 2 * FRONT[0] or depth < 5:
+        return None
+    ns, nt = int(length / CELL) + 1, int(depth / CELL) + 1
+    i, j = ((ps - smin) / CELL).astype(int), ((pt - tmin) / CELL).astype(int)
+    H = np.full((ns, nt), np.nan); np.fmax.at(H, (i, j), z)
+    # fill single empty cells along the row (point spacing), so a missing cell is not read as a break
+    Hf = H.copy()
+    for k in range(1, ns - 1):
+        e = np.isnan(Hf[k]); Hf[k, e] = np.fmax(H[k - 1, e], H[k + 1, e])
+    H = Hf
+    w = 2  # cells (1 m) on each side of a party wall
+    score = np.zeros(ns)
+    for k in range(w, ns - w):
+        with np.errstate(all="ignore"):
+            left, right = np.nanmean(H[k - w:k], axis=0), np.nanmean(H[k + 1:k + 1 + w], axis=0)
+        mid = H[k]
+        ok = ~np.isnan(left) & ~np.isnan(right)
+        if ok.sum() < 0.5 * nt:
+            continue
+        step = np.abs(right - left) > ROW_STEP
+        with np.errstate(invalid="ignore"):
+            dip = (np.fmin(left, right) - mid) > ROW_VALLEY
+            gap = np.isnan(mid)
+        score[k] = ((step | dip | gap) & ok).sum() / ok.sum()
+    # strongest lines first, at least one narrow frontage apart
+    cand = [k for k in np.argsort(-score) if score[k] >= ROW_ACROSS]
+    pick = []
+    for k in cand:
+        if all(abs(k - q) * CELL >= FRONT[0] for q in pick):
+            pick.append(k)
+    pick.sort()
+    if not pick:
+        return None
+    pos = [smin + (k + 0.5) * CELL for k in pick]
+    widths = np.diff([smin] + pos + [smax])
+    if widths.min() < FRONT[0] or widths.max() > FRONT[1]:
+        return None
+    if widths.max() / widths.min() > 1.6:  # dwellings of one row are about the same width
+        return None
+    if widths.max() > 0.9 * depth:  # a dwelling is deeper than its frontage: a cut along a house's depth is its back wing
+        return None
+    return (float(np.mean(score[pick])) * len(pick), pos)
+
+
+ONE_HOME = 250  # m2: an inner-city lot under this holds one terrace or house
+
+
+def one_home_lot(g):
+    return any(LOTS[i].area < ONE_HOME and LOTS[i].intersection(g).area >= 0.5 * g.area for i in (lot_tree.query(g) if lot_tree else []))
+
+
+def whole_pieces(parts, g):
+    """Lot pieces of a mapped outline without the slivers its drawing leaves over a neighbour's lot: a piece under 15 m2
+    or 2.5 m across joins the piece it touches most."""
+    small = lambda p: p.area < 15 or 2 * p.area / p.length < 1.25
+    big = [p for p in parts if not small(p)]
+    if len(big) < 2:
+        return [g]
+    for p in parts:
+        if small(p):
+            j = max(range(len(big)), key=lambda i: big[i].buffer(0.05).intersection(p).area + big[i].distance(p) * -1e-6)
+            u = unary_union([big[j], p]).buffer(0.01, join_style=2).buffer(-0.01, join_style=2)
+            big[j] = u if u.geom_type == "Polygon" else max(u.geoms, key=lambda q: q.area)
+    return big
+
+
+def local_heights(roofs, P, geoms, cell=100.0):
+    """roofs.heights, read 100 m square by square: it scans every point once per outline, too slow for a box's thousands
+    of terrace houses. Same answers (each outline needs points 4 m around it at most)."""
+    if not geoms:
+        return []
+    o = np.argsort(P["x"]); Q = {k: P[k][o] for k in "xyzc"}
+    groups = {}
+    for i, g in enumerate(geoms):
+        c = g.centroid; groups.setdefault((int(c.x // cell), int(c.y // cell)), []).append(i)
+    out = [None] * len(geoms)
+    for idx in groups.values():
+        b = unary_union([geoms[i] for i in idx]).bounds
+        s = slice(*np.searchsorted(Q["x"], [b[0] - 5, b[2] + 5]))
+        m = (Q["y"][s] >= b[1] - 5) & (Q["y"][s] <= b[3] + 5)
+        sub = {k: Q[k][s][m] for k in "xyzc"}
+        for i, r in zip(idx, roofs.heights(sub, [geoms[i] for i in idx], CELL)):
+            out[i] = r
+    return out
+
+
 def lots_spanned(g):
     """House lots holding a real part of the outline (at least 15 m2 and a tenth of it)."""
     return sum(1 for i in (hl_tree.query(g) if hl_tree else []) if house_lots[i].intersection(g).area >= max(15, 0.1 * g.area))
@@ -134,16 +273,37 @@ def house_lot(g):
 low = [f for f in T if (f["properties"].get("h_max") or 0) <= HIGH_RISE]
 n_high = len(T) - len(low)
 work = [(f, p) for f in low for p in by_lots(shape(f["geometry"]))]
-n_lidar = 0
-if LAZ:  # pieces on no house lot that could hold 2+ houses: split by the LiDAR
-    todo = [i for i, (f, p) in enumerate(work) if p.area >= 2 * MIN_PART + 20 and not house_lot(p)]
-    if todo:
-        P = lidar_points([work[i][1] for i in todo])
-        for i in todo:
-            parts = by_lidar(work[i][1], P)
+n_lidar = n_rows = 0
+rows_of = {}  # index in S -> the mapped row's dwellings
+if LAZ and (work or SG):
+    P = lidar_points([p for f, p in work] + SG)
+    # pieces on no house lot that could hold 2+ houses: split where the LiDAR shows ground or a storey step
+    for i, (f, p) in enumerate(work):
+        if p.area >= 2 * MIN_PART + 20 and not house_lot(p):
+            parts = by_lidar(p, P)
             if len(parts) > 1:
-                n_lidar += 1; work[i] = [(work[i][0], q) for q in parts]
-        work = [w for x in work for w in (x if isinstance(x, list) else [x])]
+                n_lidar += 1; work[i] = [(f, q) for q in parts]
+    work = [w for x in work for w in (x if isinstance(x, list) else [x])]
+    # terrace and townhouse rows on one lot (strata plans, old shared lots): split along the party walls (Paddington, 4 Nov 2026)
+    for i, (f, p) in enumerate(work):
+        if not ROW_SPLIT or one_home_lot(p):  # a lot of one dwelling's size: the lot lines already split this row
+            continue
+        parts = by_rows(p, P)
+        if len(parts) > 1:
+            n_rows += 1; work[i] = [(f, q) for q in parts]
+    work = [w for x in work for w in (x if isinstance(x, list) else [x])]
+    # mapped rows: OpenStreetMap often draws a whole terrace row as one building; cut it the same way, so each dwelling
+    # gets its own LiDAR height and the row is not one big property (Paddington, 4 Nov 2026)
+    for k, g in enumerate(SG if ROW_SPLIT else []):
+        pk = S[k]["properties"]
+        if g.geom_type != "Polygon" or g.area < 2 * 35 or pk.get("high_rise") or (pk.get("h_max") or 0) > HIGH_RISE:
+            continue  # towers stay whole: lot lines under them are strata lots, not houses (Chatswood P-0098)
+        parts = whole_pieces(by_lots(g), g)
+        parts = [q for p in parts for q in (by_rows(p, P) if not one_home_lot(p) else [p])]
+        parts = whole_pieces(parts, g) if len(parts) >= 2 else parts  # a party-wall cut can leave a corner sliver too
+        if len(parts) >= 2:
+            rows_of[k] = parts
+    del P
 for f, t in work:
     hits = [i for i in (ltree.query(t) if ltree else []) if LG[i].intersects(t)]
     block = [LG[i].buffer(0.3, join_style=2) for i in hits if LG[i].intersection(t).area >= 0.5 * t.area]
@@ -173,14 +333,25 @@ for f, t in work:
             gap_geoms.append(g)
             gap.append({"type": "Feature", "geometry": mapping(g), "properties": dict(f["properties"], kind="traced gap", **({"replaces": replaces} if replaces else {}))})
 n_tall_piece = 0
-if gap:  # each gap's own heights: the trace's h_max belongs to the whole blob, not to a piece of it
+row_geoms = [q for k in sorted(rows_of) for q in rows_of[k]]
+if gap or row_geoms:  # each gap's own heights: the trace's h_max belongs to the whole blob, not to a piece of it
     if LAZ:
         import roofs
-        b = unary_union(gap_geoms).bounds
+        b = unary_union(gap_geoms + row_geoms).bounds
         P = roofs.to_gda2020(roofs.read_points(LAZ, [b[0] - 5, b[1] - 5, b[2] + 5, b[3] + 5]))
         if roofs.roof_density(P) < roofs.DENSE_ROOF:
             roofs.own_buildings(P)  # thin LiDAR: same roof test as the trace
-        rows = roofs.heights(P, gap_geoms, CELL)
+        rows = local_heights(roofs, P, gap_geoms)
+        row_h = iter(local_heights(roofs, P, row_geoms))
+        for k in sorted(rows_of):  # a mapped row's dwellings, each with its own heights
+            hs = [next(row_h) for _ in rows_of[k]]
+            whole = {a: S[k]["properties"][a] for a in HKEYS if a in S[k]["properties"]}
+            hs = [r if "h_max" in r else whole for r in hs]  # a dwelling with too few points of its own keeps the row's height
+            base = {a: v for a, v in S[k]["properties"].items() if a not in HKEYS}
+            # `row` = the mapped outline the dwelling was cut from, so tools/mirror/roofs.py can find its OpenStreetMap / Microsoft id
+            base["row"] = [[round(x, 2), round(y, 2)] for x, y in SG[k].exterior.coords]
+            rows_of[k] = [{"type": "Feature", "geometry": mapping(q), "properties": dict(base, **{a: r[a] for a in HKEYS if a in r})}
+                          for q, r in zip(rows_of[k], hs)]
     else:
         rows = [None] * len(gap)
     keep = []
@@ -207,7 +378,12 @@ if gap:  # each gap's own heights: the trace's h_max belongs to the whole blob, 
             pr["h_max"] = round(h90, 2); pr["ridge"] = round(pr["ground"] + h90, 2)
         keep.append(ft)
     gap = keep
-for f in S:
+S2 = []
+for k, f in enumerate(S):
     f["properties"]["kind"] = "community shape moved onto LiDAR"
+    for q in rows_of.get(k, [f]):
+        q["properties"]["kind"] = f["properties"]["kind"]; S2.append(q)
+n_mapped_rows = len(rows_of)
+S = S2
 json.dump({"type": "FeatureCollection", "features": S + gap}, open(out, "w"))
-print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)
+print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_rows} traced and {n_mapped_rows} mapped terrace rows split into dwellings; {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)
