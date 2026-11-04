@@ -149,3 +149,15 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
 - Step 4 NOT run: needs P 0.2-0.5 along >= 30% of the long misses; kerblong found 78% of them at P < 0.1.
 - Programme result (kerbs-direction.md "Always"): steps 1-3 end at 0.817-0.818, below 0.83 -> stop and tell Jacky; recommend shipping
   kerbs by area with a per-council confidence, busiest first (tools/priority/TOP.md), training only in the background.
+
+## 4 Nov arterial data round (kerbs-direction.md item 3): STOP ALL TRAINING
+side-arterial.json, 150 min (3150 steps) from pc-16-1, street 1, 6 new arterial/median boxes (deewhy, frenchsforest, belmore,
+lakemba, rosebay, rydalmere; no LiDAR grids on them). Found by road type, length-weighted over the 8 NSW scored boxes:
+| run | scenario | main | collector | local |
+|---|---|---|---|---|
+| pc-16-1 + street (control) | 0.790 | 82.9% | 73.8% | 85.1% |
+| a: + 6 boxes | 0.789 | 83.7% | 75.9% | 86.3% |
+| b: + 6 boxes + rare chips 0.3 | 0.787 | 84.4% | 75.7% | 86.4% |
+Main-road found +0.8 / +1.5 pts, under the 5-pt stop rule: all kerb training stops, pc-16-1 stays the model, the PC is free after
+the ship run. Caveat: the new boxes had no LiDAR, so a LiDAR version of the same round is untested; it is not a reason to restart
+by itself. Training restarts only on new information (denser or Vic LiDAR, a new council kerb reference, a user-reported miss pattern).
