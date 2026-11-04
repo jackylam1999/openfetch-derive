@@ -106,7 +106,16 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
 6. DONE 4 Nov, little change: kerbclean.py on all 10 boxes at 0.8 on the side-street-eval lines (roofs only for Parramatta, others
    road + rail rules; C:\kerb\kp\*_clean.json). F1 moves only Parramatta 0.786 -> 0.802 and cbcheck 0.916 -> 0.921; Kensington drops
    5.5 km off-road lines but F1 stays 0.759, Melb CBD 0.605. The council reference is not what holds the score down outside Parramatta
-   CBD, so no ELVIS order for roofs. Left: denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
+   CBD, so no ELVIS order for roofs. Left:
+7. Tracing pilot, 4 Nov (kerbtrace.py, no training; log C:\kerb\trace.out; 8 NSW boxes, side-street-eval lines at 0.8, pc-16-1 P in
+   C:\kerb\long): walk on 1 m steps from every line end, turn <= 15 deg/step, evidence = max(P, LiDAR step / 8 cm), stop after 3 weak steps.
+   NSW scenario 0.814 -> 0.818 (e0.5, 9.3 km added, worst held-out unchanged 0.786). Found rises on every box (Olympic Park 57.7 -> 62.0%,
+   e0.3 63.9%), precision falls: only about half the traced length is kerb. "bridge" (keep only traces that reach another line) 0.816.
+   Read: tracing reaches kerbs the pixel model misses; the hand-made stop/turn rule is what costs precision. Jacky OK'd longer GPU time
+   (4 Nov) if viable, and Melbourne runs on photo only (no DTP LiDAR, treat as not existing).
+   NEXT = learned tracer (iCurb-style, Xu et al. RA-L 2021): small CNN on a rotated crop (photo, P, LiDAR step, lots, centreline distance)
+   around the current point predicts the next step angle + stop; teacher = council kerb paths in the training boxes; second pass on its
+   own rollouts (DAgger). Seeds = line ends as in kerbtrace.py. Compare with e0.5 (0.818 NSW) and wire as CFG "trace" after street. denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
 - Watchers die on session restarts: side-longmine sat finished from ~09:15Z to 13:37Z. Chain runs in one .ps1 where possible.
 
 ## Open items with Jacky
