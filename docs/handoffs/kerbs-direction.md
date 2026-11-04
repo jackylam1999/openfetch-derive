@@ -90,3 +90,43 @@ Thread "Build learned kerb tracer": hold at the current commit; do not start tra
 - Stop the whole programme and tell Jacky if steps 1-3 end below 0.83: then the remaining gap is reference quality (Parramatta,
   Woollahra lanes) and Olympic Park's bridges/parkland, not the model, and the honest move is to ship kerbs by area with a
   per-council confidence, busiest first, and keep training in the background.
+
+## 4 Nov 09:40Z: results of steps 1-3 and the way forward (Fable)
+Results (thread "Raise kerb score to 0.85", kerbs-lidar-rounds.md "4 Nov results" on branch claude/project-thread-tkuw2p 3fa2b4d): step 1 confirmed the reading: 94% found
+at 3-6 m from a lot; 40% of the missed kerb is on medians or the far side of the road; 70% of the misses sit in spots that make up
+under 5% of the training labels. Step 2 map hiding: 0.805 (dropout) and 0.770 (no map), main-road found unchanged. Step 3 trace
+filter 0.816. Step 4 skipped: no faint signal along the long misses. Score still 0.817-0.818. Not tried: arterial/median training boxes.
+
+Read: hiding the map could not help because the model has never SEEN a median or far-side kerb in its labels (under 5% of training
+length). You cannot un-learn a prior without examples of the exception. The one lever left inside the model is data, not architecture.
+The rest of the gap (Olympic Park bridges and parkland edges, Parramatta laneways, deep shadow and the bus interchange, Woollahra
+lanes 17%) is not a kerb the model could learn from this data, and no tracer finds what has no evidence.
+
+### Decision: ship by road type now, one bounded data round, then stop training until new information arrives
+1. Scoring: replace the single scenario number as the shipping gate with FOUND BY ROAD TYPE over all 8 boxes (local, collector, main),
+   each with precision and offset. Today roughly: local 89-99% (wocheck 64% is the exception, check its council lines over the photo
+   like Paddington's 1.3 m offset before believing it), collector 68-94%, main 53-88%. Ship gate per council: local >= 85% found and
+   >= 70% precise; collector >= 80%. Main roads ship as partial. The scenario score stays in reports but no longer blocks shipping.
+   Reason: Jacky's target (found >= 85%, offset <= 0.3 m, precise >= 70%) is met on local streets in every NSW box but Woollahra's,
+   and local streets are where sites for architects sit. Olympic Park and Parramatta CBD are one box each and decide 40% of the
+   scenario mean; that number measures two atypical places, not the product.
+2. Shipping (thread, Opus, after Jacky's go-ahead, kerbs-method.md + openfetch-publish-derived skill): run pc-16-1 + street (+ trace
+   filter if kept) on the NSW top-20 suburbs in tools/priority/TOP.md, tag each kerb piece with the nearest road type
+   (kerblearn.py SCALES), one kerb layer "(OpenFetch)". Data hint under the layer row and the Details line, one sentence, no pop-up:
+   "Kerbs (OpenFetch): traced from aerial + LiDAR; local streets about 9 in 10, main roads partial." Per-council found figures
+   from the check boxes go in the data registry, not the UI. Melbourne (photo only, Melb CBD 0.605) does NOT ship yet; Kensington
+   (0.76, precision 68%) only if the council data hint says photo only.
+3. One bounded data round (GPU, thread, 2 variants): add 6 training boxes centred on arterials with medians and far-side kerbs inside
+   the training councils (Pittwater Rd Dee Why, Warringah Rd Frenchs Forest, Canterbury Rd Belmore, Hume Hwy Bass Hill, New South
+   Head Rd Rose Bay, Victoria Rd Rydalmere/West Ryde side inside Parramatta), role train_new, more 1; fetch with kerblearn.py data
+   (LiDAR grids too, ELVIS orders via the PC as before). Variant a: boxes only. Variant b: boxes + rare-geometry sampling: 30% of chips centred on label points in the kerbwhere.py bins that hold < 5% of the
+   training labels (far side/median, lot 0-3 m, centreline 10-15 m), a CFG "rare" like mine/mainroad. Far side is 7% and lot 0-3 m
+   18% of training yet found only 40% / 64%: the examples exist but are too few to beat the prior, so both more and oversampled. Fine-tune
+   pc-16-1, 150 min, street 1. Keep rule: main-road found +10 pts over all 8 boxes with scenario >= 0.814 (no loss beyond noise), or
+   scenario >= 0.823. Stop rule: neither variant moves main-road found by 5 pts: STOP ALL TRAINING. Write the final numbers in
+   kerbs-lidar-rounds.md and kerbs-model.md, keep the PC free. Training restarts only on new information: denser or Vic LiDAR,
+   a new council kerb reference (busiest first), or a user-reported miss pattern from the live layer.
+4. Not doing: the learned tracer (no evidence to follow), more model variants on the same data (ten in a row at 0.80-0.815), more
+   kerbclean beyond Parramatta, the gap net. Each is recorded with its number above so no thread retries it.
+5. JACKY DECIDED 4 Nov 09:45Z: "Ship local streets now". Items 1-3 above are approved: shipping thread (item 2) and the one bounded
+   data round (item 3) can start; training stops after that round unless its keep rule is met.
