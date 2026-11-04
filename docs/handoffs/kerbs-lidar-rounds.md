@@ -93,6 +93,8 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
   Kensington +1.3, Melb CBD +1.0; Paddington -0.5. NEW BEST pipeline = pc-16-1 + street. Use street 1 in every control from now on.
 
 ## NEXT (in order)
+0. 4 Nov Fable review: direction, step plan and stop rules in docs/handoffs/kerbs-direction.md. Learned tracer PAUSED until its
+   steps 1-3 are done; the misses are a location problem (clear kerb found = under-trees found; main roads 53%), not visibility.
 1. Score side-pdrop8.
 2. DONE: LiDAR step detector, no gain alone (above). Game plan from the doc, in order:
 3. DONE (above): short misses are mostly a 1-2.5 m offset, no tracing fix. Left: photo check of the offsets; Newport offset 0.31 m; Kensington precision 68%.
