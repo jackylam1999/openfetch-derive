@@ -1,0 +1,10 @@
+{
+ "init": "C:/kerb/saved/best-pc-16-1.pt",
+ "variants": [
+  {"name": "arterial data round a: + 6 arterial/median boxes (Dee Why, Frenchs Forest, Belmore, Lakemba, Rose Bay, Rydalmere), 150 min from pc-16-1, street 1", "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 150, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"street\": 1}"},
+  {"name": "arterial data round b: + 6 arterial boxes and 30% of chips on rare kerb positions (far side/median, lot 0-3 m, centreline 10-15 m), 150 min from pc-16-1, street 1", "id": 1,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 150, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"street\": 1, \"rare\": 0.3}"}
+ ]
+}
+

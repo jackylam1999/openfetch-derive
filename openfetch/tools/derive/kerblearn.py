@@ -484,7 +484,35 @@ def main_pool(out, nm, lab, tr):
     return np.argwhere(near & ((lab[::8, ::8] == 2) | (lab[::8, ::8] == 3))) * 8
 
 
+def rare_pool(out, nm, lab, tr, lot):
+    """CFG["rare"] (data round, kerbs-direction.md item 3, 4 Nov 2026): kerb label points in the kerbwhere.py bins that hold under
+    5% of the training labels yet most of the misses: far side/median (the way to the nearest lot crosses a centreline), lot 0-3 m,
+    centreline 10-15 m. A CFG["rare"] share of the chips is centred on them."""
+    import shapely
+    from shapely.strtree import STRtree
+    from kerbmiss import flat
+    on = np.argwhere(lab[::8, ::8] == 3) * 8
+    if not len(on):
+        return np.zeros((0, 2), int)
+    P = shapely.points(np.column_stack([tr.c + (on[:, 1] + 0.5) * CELL, tr.f - (on[:, 0] + 0.5) * CELL]))
+    lots = flat(f"{out}/{nm}_lots.geojson", "Polygon")[0]; roads = flat(f"{out}/{nm}_roads.geojson", "LineString")[0]
+    lotd = ndimage.distance_transform_edt(lot[::8, ::8] == 0)[on[:, 0] // 8, on[:, 1] // 8] * CELL * 8
+    k = lotd <= 3
+    if roads:
+        RA = np.asarray(roads, object); cld = shapely.distance(P, RA[STRtree(roads).nearest(P)])
+        k |= (cld >= 10) & (cld <= 15)
+        if lots:
+            U = shapely.union_all(RA); shapely.prepare(U)
+            far = shapely.intersects(U, shapely.shortest_line(P, np.asarray(lots, object)[STRtree(lots).nearest(P)]))
+            k |= far & (lotd > 1) & (lotd <= 30)
+    return on[k]
+
+
 def pick(rng, data):
+    if CFG.get("rare") and rng.random() < CFG["rare"]:
+        ok = [d for d in data if len(d[-1].get("rare", ()))]
+        if ok:
+            return ok[rng.integers(len(ok))], "rare"
     if CFG.get("mainroad") and rng.random() < CFG["mainroad"]:
         ok = [d for d in data if len(d[-1].get("main", ()))]
         if ok:
@@ -627,7 +655,8 @@ def train(path, out, names, init, mine):
         if CFG.get("labelcheck"):
             lab, sh = checked(out, nm, lab, rgb, tr); dropped[nm] = sh
         data.append((np.asarray(rgb), context(out, nm, lot), lab, lidar(out, nm, lab.shape[0]) if CFG.get("lidar") else None,
-                     {**pools(nm, lab, road, mine), **({"main": main_pool(out, nm, lab, tr)} if CFG.get("mainroad") else {})}))
+                     {**pools(nm, lab, road, mine), **({"main": main_pool(out, nm, lab, tr)} if CFG.get("mainroad") else {}),
+                      **({"rare": rare_pool(out, nm, lab, tr, lot)} if CFG.get("rare") else {})}))
         print(f"{nm}: " + ", ".join(f"{len(v)} {k}" for k, v in data[-1][-1].items()), file=sys.stderr)
     net = model(pretrained=init is None)
     if init:

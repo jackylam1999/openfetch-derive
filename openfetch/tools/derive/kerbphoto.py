@@ -77,9 +77,20 @@ def fetch(name, council, x0, y0, out):
                 b = get(IMG.format(X0 + tx, Y0 + ty, X0 + tx + 400, Y0 + ty + 400))
             except Exception as e:  # one tile the server keeps refusing (Villawood, 30 Oct) is left blank, not the whole box
                 b = str(e).encode()
-            if b[:2] != b"\xff\xd8":
-                print(f"{name}: no photo at {X0 + tx},{Y0 + ty}", file=sys.stderr); continue
-            a = np.asarray(Image.open(io.BytesIO(b)).convert("RGB"))
+            if b[:2] == b"\xff\xd8":
+                a = np.asarray(Image.open(io.BytesIO(b)).convert("RGB"))
+            else:  # the server sometimes refuses 4000 px but serves the same area in 200 or 100 m pieces (Bass Hill, 4 Nov 2026)
+                a = np.zeros((4000, 4000, 3), np.uint8); ok = 0
+                for qx in range(0, 400, 100):
+                    for qy in range(0, 400, 100):
+                        try:
+                            q = get(IMG.format(X0 + tx + qx, Y0 + ty + qy, X0 + tx + qx + 100, Y0 + ty + qy + 100).replace("4000,4000", "1000,1000"))
+                        except Exception:
+                            continue
+                        if q[:2] == b"\xff\xd8":
+                            a[(300 - qy) * 10:(400 - qy) * 10, qx * 10:(qx + 100) * 10] = np.asarray(Image.open(io.BytesIO(q)).convert("RGB")); ok += 1
+                if not ok:
+                    print(f"{name}: no photo at {X0 + tx},{Y0 + ty}", file=sys.stderr); continue
             r0 = n - (ty + 400) * 10; c0 = tx * 10
             rr, cc = slice(max(r0, 0), min(r0 + 4000, n)), slice(c0, min(c0 + 4000, n))
             rgb[rr, cc] = a[rr.start - r0:rr.stop - r0, :cc.stop - c0]

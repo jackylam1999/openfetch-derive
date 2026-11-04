@@ -436,6 +436,60 @@
    "role": "train_new",
    "scenario": "dense",
    "note": "West Melbourne, Vic rank 94"
+  },
+  {
+   "name": "deewhy",
+   "council": "nb",
+   "x": 340000,
+   "y": 6262900,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "arterial/median round 4 Nov 2026 (kerbs-direction.md item 3), placed on the most main-road length nearby"
+  },
+  {
+   "name": "frenchsforest",
+   "council": "nb",
+   "x": 335800,
+   "y": 6263700,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "arterial/median round 4 Nov 2026 (kerbs-direction.md item 3), placed on the most main-road length nearby"
+  },
+  {
+   "name": "belmore",
+   "council": "cb",
+   "x": 323700,
+   "y": 6243600,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "arterial/median round 4 Nov 2026 (kerbs-direction.md item 3), placed on the most main-road length nearby"
+  },
+  {
+   "name": "lakemba",
+   "council": "cb",
+   "x": 319300,
+   "y": 6242900,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "arterial/median round 4 Nov 2026 (kerbs-direction.md item 3), placed on the most main-road length nearby; replaces Hume Hwy Bass Hill, where the NSW imagery server refuses 0.1 m photos (Canterbury Rd Lakemba/Punchbowl)"
+  },
+  {
+   "name": "rosebay",
+   "council": "wo",
+   "x": 340100,
+   "y": 6251300,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "arterial/median round 4 Nov 2026 (kerbs-direction.md item 3), placed on the most main-road length nearby"
+  },
+  {
+   "name": "rydalmere",
+   "council": "parra",
+   "x": 316800,
+   "y": 6256900,
+   "role": "train_new",
+   "scenario": "dense",
+   "note": "arterial/median round 4 Nov 2026 (kerbs-direction.md item 3), placed on the most main-road length nearby"
   }
  ]
 }
