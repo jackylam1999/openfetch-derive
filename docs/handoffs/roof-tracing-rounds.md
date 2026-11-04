@@ -81,9 +81,12 @@ after a change in snap or gapfill only, copy the before folder and add `--from s
   hypothesis = one change. Kept when found or merged improves beyond 2 points on 2 of 3 Sydney boxes and Gosford does not fall
   (found -1, precise -1, |h_bias| +0.05 at most). Everything else: dropped, written down with its numbers so nobody retries it.
 - Switches, not forks: every hypothesis is an environment variable read by snap_pilot.py / gapfill.py / roofs.py (like CFG in
-  kerblearn.py), default = old behaviour, so the control and the change run from one code base. Current switches: KEEP_SHARED=1
-  (snap_pilot keeps OSM shapes with shared walls on dense LiDAR, heights read, no gap strip drawn over them), LOT_MIN=30
-  (gapfill counts terrace lots as house lots). A kept switch becomes the default in the next card, and the gate in pipeline.py.
+  kerblearn.py), default = old behaviour, so the control and the change run from one code base. Switches and defaults since RT1 (4 Nov 2026):
+  KEEP_SHARED=1 (snap_pilot keeps OSM shapes with shared walls on dense LiDAR; 0 = old rule), LOT_MIN=30 (gapfill + pipeline
+  count terrace lots as house lots; 100 = old), ROW_SPLIT=1 (row cut from thread "Split terrace rows into separate roofs":
+  lot-line + party-wall cut of rows; 0 = none), ROW_MAPPED=row3 (a mapped OSM/Microsoft outline is cut only when it covers
+  3+ one-home lots under 250 m2; all / ms are the other values). Gates in pipeline.py: "OSM houses kept" (>= 90 % of OSM
+  houses lying 80 %+ on LiDAR roof) and "terrace rows split into houses" (<= 1 % of outlines over 3+ one-home lots). A kept switch becomes the default in the next card, and the gate in pipeline.py.
 - Every round ends with this takeaway in this file (section 6), in the kerb shape:
   `Round N. Question: does <change> raise found / lower merged? Control: <brief table>. Change: <brief table>. Verdict: kept /
   dropped. Learnt: <one line per scenario that moved>. Next: <queue head and why>.`
@@ -153,3 +156,61 @@ joins 86-95 % of houses (trace_merged), so where no OSM house exists and lots ar
 OSM shapes straddle strata lots) only a LiDAR cut can help: that is RT2. Gosford (official, town centre) found 49 %, merged 17 %, offset 1.0 m:
 the official-reference problem is shop rows and Microsoft shapes dropped as shared-wall, RT2 + RT5 territory, and the number to beat.
 Next: RT2 fine step on zetland and surry (the rows left merged there sit on strata or shop lots the cadastre cannot split).
+
+### Round 1 (RT1, Opus, 4 Nov 2026): RT1 as default, combined with the row cut
+
+Code: openfetch main tools/derive at bf7430c/c1a04c1 (row cut, ROW_SPLIT) + RT1 defaults. Same four boxes, community/trace/snap/lots
+shared by every variant, gapfill and gates rerun (`--from gapfill`). Bug found and fixed first: the round-0 KEEP_SHARED test read a
+stale loop variable (the LAST community shape's src, not each shape's); snap_pilot now keeps a per-shape property list and writes
+id + src on every output shape. Also fixed: by_rows crashed on a piece with no roof points inside it (Gosford).
+
+RT1 alone (ROW_SPLIT=0): matches round 0 within 1 point on found / merged in the three Sydney boxes; Gosford found 49 -> 52 %,
+precise 64 -> 60 % (its OSM shapes are now really kept; round 0 kept none there because of the bug). FAILS the terrace-row gate on
+ersk (25 rows), surry (71), zetland (4).
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 509 | 87% | 65% | 1% | 94% | 0% | 0.00 m | 26% | 66% | 25% | - |
+| surry | osm | 482 | 80% | 69% | 7% | 95% | 1% | 0.00 m | 36% | 58% | 12% | - |
+| zetland | osm | 276 | 79% | 84% | 9% | 86% | 0% | 0.00 m | 36% | 52% | 38% | - |
+| gosford | official | 166 | 52% | 60% | 17% | 39% | 3% | 1.00 m | 15% | 57% | 6% | +0.00 m |
+
+Row cut on every mapped outline (ROW_SPLIT=1, ROW_MAPPED=all): passes every gate, Gosford merged 17 -> 6 %, lots_1 up everywhere,
+but Gosford precise 60 -> 41 % and outputs 144 -> 214 (over-cut shops/houses on 2 lots); Surry Hills found 80 -> 67 %.
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 509 | 86% | 46% | 1% | 94% | 7% | 0.00 m | 10% | 70% | 12% | - |
+| surry | osm | 482 | 67% | 29% | 5% | 95% | 10% | 0.16 m | 6% | 78% | 0% | - |
+| zetland | osm | 276 | 76% | 62% | 8% | 86% | 7% | 0.34 m | 16% | 52% | 23% | - |
+| gosford | official | 166 | 53% | 41% | 6% | 39% | 4% | 1.03 m | 1% | 70% | 0% | -0.02 m |
+
+Row cut on mapped outlines only over 3+ one-home lots (ROW_MAPPED=row3; traced pieces still cut by by_rows):
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 509 | 87% | 51% | 1% | 94% | 0% | 0.00 m | 18% | 70% | 19% | - |
+| surry | osm | 482 | 70% | 34% | 6% | 95% | 1% | 0.00 m | 16% | 79% | 0% | - |
+| zetland | osm | 276 | 78% | 75% | 9% | 86% | 0% | 0.00 m | 32% | 53% | 38% | - |
+| gosford | official | 166 | 52% | 59% | 17% | 39% | 3% | 1.00 m | 14% | 57% | 6% | +0.00 m |
+
+Microsoft outlines only (ROW_MAPPED=ms): Gosford merged 7 %, precise 47 %; fails the row gate on surry (59) and zetland (4).
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 509 | 87% | 51% | 1% | 94% | 0% | 0.00 m | 16% | 65% | 19% | - |
+| surry | osm | 482 | 80% | 61% | 7% | 95% | 1% | 0.00 m | 30% | 58% | 12% | - |
+| zetland | osm | 276 | 79% | 82% | 9% | 86% | 0% | 0.00 m | 35% | 52% | 31% | - |
+| gosford | official | 166 | 54% | 47% | 7% | 39% | 5% | 1.02 m | 8% | 74% | 0% | -0.05 m |
+
+Verdict: RT1 KEPT as default (KEEP_SHARED=1, LOT_MIN=30, gate "OSM houses kept" passes 96-100 % on all four boxes). Row cut KEPT
+as ROW_SPLIT=1 with ROW_MAPPED=row3: the only variant that passes the terrace-row gate on all four boxes (what Jacky saw in
+Paddington) without lowering Gosford (found 52, precise 59 vs 60, merged 17, h_bias 0.00 m); ROW_MAPPED=all DROPPED (Gosford precise
+-19), ms DROPPED (row gate fails). Cost of row3 by the OSM judge: Surry Hills found 80 -> 70 % and precise 69 -> 34 %, because OSM
+draws many Surry Hills rows as one shape and row3 cuts them into houses (by the lot judge it is better: out_2lots 36 -> 16 %, lots_1
+58 -> 79 %). The OSM judge cannot score a correct cut of an OSM row; RT4/RT5 (official judges, per-house table) must confirm it.
+Learnt: ersk: RT1 alone already near ship gate on found (87 %); row cuts change nothing there. surry: rows drawn whole by OSM are the
+open question. zetland: merged 9 % untouched by every variant (strata townhouses, no lots and no step found): RT2 target. gosford:
+merged 17 % is Microsoft shapes over 2 lots; cutting them halves merged but over-cuts: RT2/RT5.
+Next: RT2 (fine step) on zetland and Gosford, control = these defaults (row3 table above).
+

@@ -31,7 +31,7 @@ LOTS = [shape(f["geometry"]) for f in json.load(open(sys.argv[5]))["features"]] 
 LAZ = sys.argv[6:]
 lot_tree = STRtree(LOTS) if LOTS else None
 import os
-HOUSE_LOT = (float(os.environ.get("LOT_MIN", 100)), 2000)  # m2: a lot that holds one house (Gregory Hills median 430 m2); LOT_MIN=30 takes terrace lots too (Erskineville median 132, 21 % under 100)
+HOUSE_LOT = (float(os.environ.get("LOT_MIN", 30)), 2000)  # m2: a lot that holds one house (Gregory Hills median 430 m2); 30, not 100, since RT1 (4 Nov 2026): terrace lots count (Erskineville median 132, 21 % under 100)
 house_lots = [g for g in LOTS if HOUSE_LOT[0] <= g.area <= HOUSE_LOT[1]]
 hl_tree = STRtree(house_lots) if house_lots else None
 S = json.load(open(snapped))["features"]; T = json.load(open(traced))["features"]
@@ -226,6 +226,13 @@ def one_home_lot(g):
     return any(LOTS[i].area < ONE_HOME and LOTS[i].intersection(g).area >= 0.5 * g.area for i in (lot_tree.query(g) if lot_tree else []))
 
 
+ROW_MAPPED = os.environ.get("ROW_MAPPED", "row3")  # which mapped outlines the row cut may cut (RT1, 4 Nov 2026): row3 = only one covering 3+ one-home lots (a drawn row; 2 lots is usually 1 m drawing error), all, ms (Microsoft only)
+
+
+def n_home_lots(g):
+    return sum(1 for i in (lot_tree.query(g) if lot_tree else []) if LOTS[i].area < ONE_HOME and LOTS[i].intersection(g).area >= max(15, 0.4 * LOTS[i].area))
+
+
 def whole_pieces(parts, g):
     """Lot pieces of a mapped outline without the slivers its drawing leaves over a neighbour's lot: a piece under 15 m2
     or 2.5 m across joins the piece it touches most."""
@@ -298,6 +305,10 @@ if LAZ and (work or SG):
         pk = S[k]["properties"]
         if g.geom_type != "Polygon" or g.area < 2 * 35 or pk.get("high_rise") or (pk.get("h_max") or 0) > HIGH_RISE:
             continue  # towers stay whole: lot lines under them are strata lots, not houses (Chatswood P-0098)
+        if ROW_MAPPED == "row3" and n_home_lots(g) < 3:
+            continue  # RT1b: a mapped shape is cut only when it covers a row (3+ one-home lots), not 2 lots it overlaps by drawing error
+        if ROW_MAPPED == "ms" and pk.get("src") != "ms":
+            continue
         parts = whole_pieces(by_lots(g), g)
         parts = [q for p in parts for q in (by_rows(p, P) if not one_home_lot(p) else [p])]
         parts = whole_pieces(parts, g) if len(parts) >= 2 else parts  # a party-wall cut can leave a corner sliver too

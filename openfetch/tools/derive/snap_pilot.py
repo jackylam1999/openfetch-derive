@@ -10,6 +10,7 @@ from shapely.affinity import translate
 from shapely import contains_xy
 src, out = sys.argv[1], sys.argv[2]; files = sys.argv[3:]
 import os
+KEEP_SHARED = os.environ.get('KEEP_SHARED', '1') == '1'  # roof-tracing round RT1: keep OSM shared-wall shapes on dense LiDAR
 B=tuple(float(v) for v in os.environ.get("BOX","552861 6882513 553545 6883186").split())
 B=(B[0]-W-2,B[1]-W-2,B[2]+W+2,B[3]+W+2)  # wider than the shift window plus the ring
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
@@ -67,7 +68,7 @@ def scorer(g):
     return f
 def score(g): return scorer(g)()
 F=json.load(open(src))['features']; res=[]; shifts=[]
-G=[]; S=[]
+G=[]; S=[]; FS=[]
 for f in F:
     g=shape(f['geometry']); g=g if g.geom_type=='Polygon' else max(g.geoms,key=lambda q:q.area)
     if g.area<10: continue   # pillars, kiosks, map slivers: not a building outline worth keeping
@@ -82,7 +83,7 @@ for f in F:
     fine={(round(a+i,2),round(b+j,2)) for a,b in sh[ok] for i in np.arange(-0.75,0.76,0.25) for j in np.arange(-0.75,0.76,0.25) if abs(a+i)<=W and abs(b+j)<=W}
     sh,v,ok=pick(sorted(fine))
     k=ok[np.argmin(np.hypot(sh[ok,0],sh[ok,1]))]; best=(v[k],sh[k][0],sh[k][1])
-    G.append(g); S.append(best)
+    G.append(g); S.append(best); FS.append(f['properties'])
 # Microsoft's error comes from the imagery, so neighbours share it: use the median shift of well-fitting buildings within
 # 60 m (its own included) instead of each building's own, which trees, shadows or a neighbour's roof can pull off.
 C=np.array([[g.centroid.x,g.centroid.y] for g in G]); D=np.array([[b[1],b[2]] for b in S]); FIT=np.array([b[0] for b in S])
@@ -99,11 +100,11 @@ for i,g in enumerate(G):
         # walls (no shift can be judged, but the height can; Bowral 2014 town centre lost 239 such shapes). It takes its
         # neighbours' shift (the imagery error), or none. Not on dense LiDAR: there these are mostly Microsoft shapes
         # drawn smaller than their roof (Greenwich 2020: 1,330), and the traced roof that replaces them is better.
-        # KEEP_SHARED=1 (4 Nov 2026, roof-tracing rounds): on dense LiDAR too, a shape lying wholly on roof whose roof goes on
-        # past it is a terrace or shop with shared walls (Erskineville: 507 of 728 OSM shapes were dropped this way and lot-cut
-        # strips drawn over them). It keeps its drawn outline and gets heights; gapfill.py then adds nothing over it.
-        # Only hand-drawn OSM shapes: Microsoft's machine shapes join terrace rows themselves (Erskineville: 81 % span 2+ lots).
-        if not thin and not (os.environ.get("KEEP_SHARED")=="1" and f['properties'].get('src')=='osm'): continue
+        # KEEP_SHARED (default on since RT1, 4 Nov 2026; KEEP_SHARED=0 for the old rule): on dense LiDAR too, a hand-drawn OSM
+        # shape lying wholly on roof whose roof goes on past it is a terrace or shop with shared walls (Erskineville: 507 of
+        # 728 OSM shapes were dropped and lot-cut strips drawn over them). It keeps its outline and gets heights; gapfill.py
+        # adds nothing over it. Microsoft's machine shapes are still dropped: they join terrace rows (81 % span 2+ lots).
+        if not thin and not (KEEP_SHARED and FS[i].get('src')=='osm'): continue
         nd=(np.median(D[near],axis=0) if near.sum()>=3 else (0.0,0.0))
         cand=[(t,translate(g,*t)) for t in (tuple(nd),(0.0,0.0)) if scorer(translate(g,*t)).inside()>=0.8]
         if not cand: continue
@@ -129,6 +130,7 @@ for i,g in enumerate(G):
         if h90<=THIN_H: p['h_max']=round(h90,2)
         else: p.pop('h_max',None); p.pop('h_mean',None)
     p['shift_m']=round(shifts[-1],2); p['fit']=round(fit,2)
+    p.update({k:FS[i][k] for k in ('id','src') if k in FS[i]})   # which community shape this is (pipeline gate: OSM houses kept)
     if shared: p['shared_walls']=True
     res.append({'type':'Feature','geometry':mapping(g2),'properties':p})
 # duplicates: OSM and Microsoft often draw the same building, and shifting can push neighbours into each other.
