@@ -62,9 +62,15 @@ def scorer(g):
         # mean building share inside minus in the ring, for every shift at once (cells outside the grid count as empty)
         def share(P):
             if len(P[0])==0: return np.zeros(len(DX))
-            ci=((P[0][None,:]+DX[:,None]-x0)/cell).astype(int); ri=((y1-P[1][None,:]-DY[:,None])/cell).astype(int)
-            ok=(ci>=0)&(ci<nc)&(ri>=0)&(ri<nr); v=np.zeros(ci.shape,bool); v[ok]=bm[ri[ok],ci[ok]]
-            return (v.sum(1))/np.maximum(ok.sum(1),1)
+            # shifts in chunks of about 4 million (shift, point) pairs: a big factory roof has 200,000+ grid points, and all
+            # 1,681 shifts at once took 14 GB (Lidcombe 2020 jobs killed, 4 Nov 2026); results are the same
+            out=np.empty(len(DX)); n=max(1,4_000_000//len(P[0]))
+            for a in range(0,len(DX),n):
+                dx,dy=DX[a:a+n],DY[a:a+n]
+                ci=((P[0][None,:]+dx[:,None]-x0)/cell).astype(np.int32); ri=((y1-P[1][None,:]-dy[:,None])/cell).astype(np.int32)
+                ok=(ci>=0)&(ci<nc)&(ri>=0)&(ri<nr); v=np.zeros(ci.shape,bool); v[ok]=bm[ri[ok],ci[ok]]
+                out[a:a+n]=v.sum(1)/np.maximum(ok.sum(1),1)
+            return out
         if len(I[0])==0: return np.full(len(DX),-1.0)
         return share(I)-share(R)
     f.many=many
