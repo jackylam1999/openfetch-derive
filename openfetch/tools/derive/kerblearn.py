@@ -397,6 +397,8 @@ def stack(rgb, inp):
     x = np.concatenate([(rgb.astype(np.float32) / 255 - MEAN) / STD, inp.astype(np.float32) * np.array(sc, np.float32) - 0.5], -1)
     if CFG.get("lidar") == 2:  # LiDAR only: the photo is blanked
         x[..., :3] = 0
+    if CFG.get("nolot") and CFG.get("context"):  # kerbs-direction.md step 2b: no map at all, photo + LiDAR only (layers read as zero)
+        x[..., 3:6] = -0.5
     return np.ascontiguousarray(x.transpose(2, 0, 1))
 
 
@@ -666,6 +668,8 @@ def train(path, out, names, init, mine):
             x, y = stack(np.clip(img, 0, 255), ip), lb[None]
             if CFG.get("pdrop") and li is not None and rng.random() < CFG["pdrop"]:  # round 10: LiDAR + aerial ignored the LiDAR
                 x[:3] = 0  # layers (they start at zero); blanking the photo on some chips makes the model learn them
+            if CFG.get("cdrop") and CFG.get("context") and rng.random() < CFG["cdrop"]:  # kerbs-direction.md step 2a: the model
+                x[3:6] = -0.5  # leans on "kerb = lot frontage offset"; with lots, centreline and water gone it must find the kerb itself
             if CFG.get("occlude"):  # Jacky 1 Nov: guess kerbs hidden by cars and trees from the line around them
                 x = occlude(rng, x, y[0], CFG.get("lidar"))
             if wd is not None:
