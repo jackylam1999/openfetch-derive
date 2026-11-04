@@ -141,3 +141,11 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
   near the keep rule (0.823): the filter throws away found faster than it gains precision. Not wired. Rule pilot e0.5 (0.818) stays
   the trace reference.
 - Learned tracer (kerbtracer.py, prep + teacher only, commit 63867fb) held as the doc says.
+- Step 2 DONE, stop rule hit (C:\kerb\out\side-cdrop): cdrop 0.5 score 0.805 (scenario 0.781, thresh 0.8), nolot 0.770 (scenario 0.753,
+  thresh 0.6) vs 0.817. Main-road found 60.8% / 61.5% vs 61.1% (first box with main roads): moves < 3 pts. The prior hypothesis
+  is dead for this kind of training; no more variants of it. Olympic Park found 58.4% / 62.3%.
+  CAUTION: a side run overwrites C:\kerb\kp\<box>_derived_*.geojson. The nolot run did; streeteval.ps1 was rerun 4 Nov to put the
+  pc-16-1 + street lines back (check C:\kerb\streeteval.out before using kp lines).
+- Step 4 NOT run: needs P 0.2-0.5 along >= 30% of the long misses; kerblong found 78% of them at P < 0.1.
+- Programme result (kerbs-direction.md "Always"): steps 1-3 end at 0.817-0.818, below 0.83 -> stop and tell Jacky; recommend shipping
+  kerbs by area with a per-council confidence, busiest first (tools/priority/TOP.md), training only in the background.
