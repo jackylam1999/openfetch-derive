@@ -2,12 +2,13 @@
 """Score one roof box the way the kerb method scores a kerb box: found, precise, offset, MERGED and SPLIT against a reference,
 one roof per lot, and a per-site view (what a user exporting a small site sees). docs/handoffs/roof-tracing-rounds.md.
 
-Usage: python3 tools/derive/roofscore.py BOXDIR [--ref ref.geojson [--hmax FIELD]] [--box xmin ymin xmax ymax] [--tile 150] [--json out.json]
+Usage: python3 tools/derive/roofscore.py BOXDIR [--ref ref.geojson [--hmax FIELD]] [--box xmin ymin xmax ymax] [--tile 150] [--keep-double] [--json out.json]
        python3 tools/derive/roofscore.py brief scores1.json [scores2.json ...]      one table, one line per box
 
 BOXDIR is a pipeline.py output folder (combined.geojson, traced.geojson, community.geojson, lots.geojson). Without --ref the
 reference is the OSM shapes in community.geojson (hand-drawn, one per house in the inner suburbs; not official, say so).
-With --ref (council footprints: Tweed, Central Coast, Wollongong LOD2) the reference is official.
+With --ref (council footprints: Tweed, Central Coast, Wollongong LOD2) the reference is official. On OSM, block outlines drawn
+over their own parts are left out of the reference (drop_double; --keep-double scores them as before RT5).
 
 Per reference building: found = one output roof with IoU >= 0.5. Merged = its best output roof also covers 40 %+ of another
 reference building (a terrace row traced as one roof). Split = 2+ output roofs each cover 30 %+ of it. Precise = share of output
@@ -46,6 +47,22 @@ def cover(a, b):
     return a.intersection(b).area / b.area if b.area else 0
 
 
+def drop_double(R, Rp):
+    """OSM draws some apartment blocks twice: the whole block outline AND its parts / podium (Overture keeps both, Zetland
+    RT2). Judged as two houses, that outline 'merges' its own parts. Leave out every reference outline that holds 80 %+ of a
+    smaller reference outline (the parts stay: they are the finer drawing), and exact repeats after the first."""
+    rt = STRtree(R); drop = set()
+    for i, r in enumerate(R):
+        for k in rt.query(r):
+            k = int(k)
+            if k == i or k in drop or cover(r, R[k]) < 0.8:
+                continue
+            if R[k].area <= 0.8 * r.area or (k < i and cover(R[k], r) >= 0.8):
+                drop.add(i); break
+    keep = [i for i in range(len(R)) if i not in drop]
+    return [R[i] for i in keep], [Rp[i] for i in keep], len(drop)
+
+
 def match(R, O):
     """Per reference building: best output roof by IoU, merged flag, split flag. Per output roof: matched reference or None."""
     ot = STRtree(O); rt = STRtree(R)
@@ -78,7 +95,7 @@ def offset(r, o):
     return float(np.median([b.distance(Point(x, y)) for x, y in pts]))
 
 
-def score_box(d, ref=None, hmax="HEIGHT_MAX", tile=150, bbox=None):
+def score_box(d, ref=None, hmax="HEIGHT_MAX", tile=150, bbox=None, double=False):
     O, Op = load(os.path.join(d, "combined.geojson"))
     T, _ = load(os.path.join(d, "traced.geojson"))
     L, _ = load(os.path.join(d, "lots.geojson"))
@@ -94,7 +111,10 @@ def score_box(d, ref=None, hmax="HEIGHT_MAX", tile=150, bbox=None):
         keep = [i for i, r in enumerate(R) if clip.contains(r.centroid)]
         R, Rp = [R[i] for i in keep], [Rp[i] for i in keep]
         L = [l for l in L if clip.intersects(l)]
-    s = {"box": os.path.basename(d.rstrip("/")), "ref": kind, "n_ref": len(R), "n_out": len(O),
+    nd = 0
+    if kind == "osm" and not double:
+        R, Rp, nd = drop_double(R, Rp)
+    s = {"box": os.path.basename(d.rstrip("/")), "ref": kind, "n_ref": len(R), "n_double": nd, "n_out": len(O),
          "n_gap": sum(1 for p in Op if p.get("kind") == "traced gap"), "n_trace": len(T)}
     if not R or not O:
         return s
@@ -170,9 +190,9 @@ if __name__ == "__main__":
     tile = float(a[a.index("--tile") + 1]) if "--tile" in a else 150
     out = a[a.index("--json") + 1] if "--json" in a else None
     bbox = [float(v) for v in a[a.index("--box") + 1:a.index("--box") + 5]] if "--box" in a else None
-    s = score_box(a[0], ref, hm, tile, bbox)
+    s = score_box(a[0], ref, hm, tile, bbox, "--keep-double" in a)
     if out:
         json.dump(s, open(out, "w"), indent=1)
     brief([s])
-    print(f"reference: {s['n_ref']} {s['ref']} buildings; output {s['n_out']} roofs ({s['n_gap']} traced gaps); raw trace {s['n_trace']} blobs"
+    print(f"reference: {s['n_ref']} {s['ref']} buildings" + (f" ({s['n_double']} OSM block outlines over their own parts left out)" if s.get("n_double") else "") + "; output {s['n_out']} roofs ({s['n_gap']} traced gaps); raw trace {s['n_trace']} blobs"
           + (f"; {s['built_lots']} built lots: {pct(s.get('lots_0'))} no roof, {pct(s.get('lots_1'))} one, {pct(s.get('lots_2'))} two+" if s.get("built_lots") else ""))
