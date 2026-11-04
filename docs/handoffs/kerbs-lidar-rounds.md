@@ -87,7 +87,10 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
   IQR <= 0.6 m) carried along the street, trimmed 3 m past other streets, pieces >= 10 m with no line within 1.5 m. Best: keep pieces with a
   LiDAR step >= 3 cm on 30% of samples, 0.819 vs 0.816 (0.7 km added, worst held-out 0.788). All pieces 0.817; mirrored to the other side
   (KERB_MIRROR=1) 0.818 with check, 0.802 without. Proposals reach only 0-11% of the long misses: those streets have neither kerb drawn.
-  Small, deterministic gain; not yet wired into the pipeline (kerbstreet.py uncommitted on the PC with the other check scripts).
+  Small, deterministic gain. WIRED IN 4 Nov (81c1b65): CFG "street": 1 runs kerbstreet.fill_file after vectorising (and after gapfill),
+  same kerb layer, pieces tagged properties.street = 1. side-street-eval (pc-16-1, minutes 0, street 1; log C:\kerb\streeteval.out,
+  out C:\kerb\out\side-street-eval): 0.817 vs 0.815 (scenario 0.790 vs 0.788, thresh picked 0.8 vs 0.7). Gains nbcheck +1.3,
+  Kensington +1.3, Melb CBD +1.0; Paddington -0.5. NEW BEST pipeline = pc-16-1 + street. Use street 1 in every control from now on.
 
 ## NEXT (in order)
 1. Score side-pdrop8.
@@ -99,8 +102,8 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
    Olympic Park found 57.2%. pdrop 0.8 (photo blanked on 80% of chips) also 0.808. Since round 16, ten changes all land at 0.80-0.815:
    the segmentation model is at its ceiling on this data. Denser LiDAR is NOT available (ELVIS checked 4 Nov): every check/held-out box
    already uses its newest state survey (Parramatta, Olympic Park: Sydney201906 only; others Sydney202005/202006); the 2018 council
-   surveys (SydNthB2018, SydEstB2018) are no denser. Remaining levers: wire the street-offset prior (0.819) into the pipeline, kerbclean on all boxes, kerb tracing.
-6. kerbclean.py on all 8 boxes; denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
+   surveys (SydNthB2018, SydEstB2018) are no denser. Remaining levers: kerbclean on all boxes, kerb tracing (street prior now wired, 0.817).
+6. NEXT: kerbclean.py on all boxes (on top of street 1); denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
 - Watchers die on session restarts: side-longmine sat finished from ~09:15Z to 13:37Z. Chain runs in one .ps1 where possible.
 
 ## Open items with Jacky
