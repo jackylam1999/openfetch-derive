@@ -253,3 +253,43 @@ Learnt (why.py lists the output roofs behind every merged reference house):
 Next: RT3 (plane split) is NOT worth running on zetland (its merged share is a reference artefact). Run RT5 first (per-house
 "where is it blind", with the OSM double-drawing filter), then RT4 (official judges) so Gosford's Microsoft shop-row problem is
 measured on more than one official box before any further cut.
+
+### Round 5 (RT5, Opus, 4 Nov 2026): fix the OSM judge, then "where is it blind"
+
+Judge fix: roofscore.py `drop_double` leaves out an OSM outline that holds 80 %+ of a smaller OSM outline (an apartment block drawn
+over its own parts, RT2), and exact repeats after the first. On by default for OSM references; `--keep-double` scores as before.
+Control (RT1 defaults, rebuilt from scratch; with --keep-double it reproduces the Round 1/2 table exactly). Left out: ersk 2,
+surry 14, zetland 7 outlines. New control:
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 507 | 87% | 51% | 0% | 94% | 0% | 0.00 m | 18% | 69% | 19% | - |
+| surry | osm | 468 | 70% | 34% | 2% | 94% | 1% | 0.00 m | 16% | 79% | 0% | - |
+| zetland | osm | 269 | 77% | 74% | 6% | 86% | 0% | 0.00 m | 32% | 53% | 38% | - |
+| gosford | official | 166 | 52% | 59% | 17% | 39% | 3% | 1.00 m | 14% | 57% | 6% | +0.00 m |
+
+Merged on OSM boxes is now 0-6 %: surry 6 -> 2, zetland 9 -> 6 (the rest: 12-25 m blocks on no lot / strata, 11-18 %).
+
+Where is it blind: roofwhere.py (found / merged per reference house by lot kind, shared walls, height, size, who drew the output roof,
+OSM had it). Full tables: /mnt/project-files/research/lidar-roof-pilot/rt5/where.md. The bands that matter (all four boxes, 1,410 houses):
+
+| band | n | found | merged | reading |
+|---|---|---|---|---|
+| Torrens lot | 988 | 81% | 1% | the lot cut works |
+| no lot (roads, rail, big sites) | 291 | 56% | 8% | |
+| strata lot | 131 | 74% | 14% | Gosford strata 29 % merged (Microsoft over unit rows) |
+| no output roof at all (OSM house, no LiDAR roof under it) | 116 | 0% | - | trees / sheds / built or demolished since 2020: not a tracer fault |
+| output = the kept OSM shape itself, moved > 1 m by snap | 107 (Sydney) | 0% | - | surry 67, ersk 27, zetland 13 |
+| Gosford Microsoft shapes | 90 | 62% | 28% | shared walls 48 % merged |
+| Gosford not drawn by OSM | 127 | 46% | 20% | vs 72 % / 8 % where OSM drew it |
+
+Verdict (no switch in this round): the biggest Sydney miss is not tracing. On the OSM boxes the kept OSM terrace is the output, but
+snap_pilot.py moves it by the neighbours' median shift; on a 4-5 m wide terrace a 1-2 m move drops IoU under 0.5 against the
+same drawing. Surry Hills (found 70 %, sites_ok 0 %) is that scene: 67 of its 142 misses are its own OSM shape moved > 1 m (and 56 misses
+are trimmed to under 70 % of the drawing by a neighbour in the overlap step). Whether those moves are right cannot be told from OSM alone (it is the
+thing moved); a cadastre / LiDAR-edge check can.
+Learnt: ersk misses = shift (27) + no roof (28); surry = shift + overlap trim; zetland = no roof (24) + 12-25 m blocks; gosford =
+Microsoft shapes on shared walls and strata (RT4 territory). RT3 (plane split) stays not worth it.
+Next: one round on surry + ersk, switch SNAP_OSM_MAX (cap the move of a kept shared-wall OSM shape, e.g. 0.5 m, or no move unless
+its own fit beats the unmoved fit), judged by found AND lots_1 / out_2lots so a judge that cannot see the move is not the only
+one. Then RT4 (Wollongong + Tweed official boxes) for the Microsoft shop-row problem.
