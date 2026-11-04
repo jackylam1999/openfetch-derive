@@ -99,7 +99,11 @@ for i,g in enumerate(G):
         # walls (no shift can be judged, but the height can; Bowral 2014 town centre lost 239 such shapes). It takes its
         # neighbours' shift (the imagery error), or none. Not on dense LiDAR: there these are mostly Microsoft shapes
         # drawn smaller than their roof (Greenwich 2020: 1,330), and the traced roof that replaces them is better.
-        if not thin: continue
+        # KEEP_SHARED=1 (4 Nov 2026, roof-tracing rounds): on dense LiDAR too, a shape lying wholly on roof whose roof goes on
+        # past it is a terrace or shop with shared walls (Erskineville: 507 of 728 OSM shapes were dropped this way and lot-cut
+        # strips drawn over them). It keeps its drawn outline and gets heights; gapfill.py then adds nothing over it.
+        # Only hand-drawn OSM shapes: Microsoft's machine shapes join terrace rows themselves (Erskineville: 81 % span 2+ lots).
+        if not thin and not (os.environ.get("KEEP_SHARED")=="1" and f['properties'].get('src')=='osm'): continue
         nd=(np.median(D[near],axis=0) if near.sum()>=3 else (0.0,0.0))
         cand=[(t,translate(g,*t)) for t in (tuple(nd),(0.0,0.0)) if scorer(translate(g,*t)).inside()>=0.8]
         if not cand: continue
