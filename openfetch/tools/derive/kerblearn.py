@@ -841,6 +841,9 @@ def _thresholds(job):
             rd = f"{out}/{nm}_roads.geojson"
             kerbfill.fill_file(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_lots.geojson", rd if os.path.exists(rd) else None,
                                **CFG.get("fill_opts", {}))
+        if CFG.get("street"):  # street-offset prior with the LiDAR step check (kerbstreet.py, 0.819 vs 0.816 on 4 Nov)
+            import kerbstreet
+            kerbstreet.fill_file(f"{out}/{nm}_derived.geojson", out, nm)
         sc[th] = kp.score(out, nm, th)
         os.replace(f"{out}/{nm}_derived.geojson", f"{out}/{nm}_derived_{th}.geojson")
     os.remove(pp)

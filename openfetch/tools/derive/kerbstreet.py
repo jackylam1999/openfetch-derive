@@ -15,7 +15,7 @@ import kerblearn as kl
 import kerbphoto as kp
 import compare_kerbs as ck
 import kerbstep as ks
-from shapely.geometry import shape, Point, LineString, box as sbox
+from shapely.geometry import shape, mapping, Point, LineString, box as sbox
 from shapely.strtree import STRtree
 from shapely.ops import unary_union
 from affine import Affine
@@ -73,6 +73,33 @@ def support(ls, grid, tr, at, share=0.3):
     return out
 
 
+def confirmed(src, nm, D, clip, step=None):
+    """Offset pieces the LiDAR step backs (>= 3 cm on 30% of samples): the 0.819 setting. step = (tr, up) from ks.grids to reuse."""
+    new = cut(proposals(roads(src, nm, clip), D), D, clip)
+    if not new:
+        return []
+    tr, up = step or ks.grids(src, nm, D)[:2]
+    return support(new, up, tr, 0.03)
+
+
+_STEP = {}  # one box's (tr, up): the step grid does not depend on the drawn lines, so every threshold reuses it
+
+
+def fill_file(der, src, nm):
+    """Add the step-confirmed offset pieces to a derived.geojson in place (same kerb layer, as kerbfill). Needs the box's LiDAR."""
+    if not os.path.exists(f"{src}/{nm}_dem.npy"):
+        return 0.0
+    m = json.load(open(f"{src}/{nm}_meta.json")); clip = sbox(*m["box"]); fc = json.load(open(der))
+    D = [p for f in fc["features"] if f.get("geometry") for g in [shape(f["geometry"]).intersection(clip)]
+         for p in getattr(g, "geoms", [g]) if p.geom_type == "LineString"]
+    if (src, nm) not in _STEP:
+        _STEP.clear(); _STEP[(src, nm)] = ks.grids(src, nm, D)[:2]
+    add = confirmed(src, nm, D, clip, _STEP[(src, nm)])
+    fc["features"] += [{"type": "Feature", "geometry": mapping(l), "properties": {"street": 1}} for l in add]
+    json.dump(fc, open(der, "w"))
+    return sum(l.length for l in add)
+
+
 def main():
     src, ld, th, od = sys.argv[1:5]; os.makedirs(od, exist_ok=True); res = {}; ora = {}
     boxes = [b[0] for b in kl.VAL + kl.HOLD if os.path.exists(f"{src}/{b[0]}_dem.npy") and os.path.exists(f"{ld}/{b[0]}_P.npy")]
@@ -91,7 +118,7 @@ def main():
         ora[nm] = (round(hit, 3), round(on, 3), round(sum(l.length for l in new) / 1000, 2))
         tr, up, ok, nr, nc = ks.grids(src, nm, D)
         Pg = P  # photo grid
-        sets = {"base": [], "all": new, "step3": support(new, up, tr, 0.03), "P0.1": support(new, P, trP, 0.1), "P0.2": support(new, P, trP, 0.2)}
+        sets = {"base": [], "all": new, "step3": confirmed(src, nm, D, clip, (tr, up)),"P0.1": support(new, P, trP, 0.1), "P0.2": support(new, P, trP, 0.2)}
         sets["step3|P0.1"] = [l for l in new if l in sets["step3"] or l in sets["P0.1"]]
         res[nm] = {k: (*ks.rate(D + v, R), round(sum(l.length for l in v) / 1000, 2)) for k, v in sets.items()}
         print(nm, "oracle (long-miss hit, proposals on kerb, km)", ora[nm], {k: (round(v[0], 3), round(v[1], 3), round(ks.f1(v), 3), v[2]) for k, v in res[nm].items()}, flush=True)
