@@ -97,8 +97,9 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
    the step fit or weak P (0.1-0.5) confirms. Oracle check first (share of long misses within 1 m of the carried offset).
 5. DONE, no gain: side-stepfit (CFG stepfit, step-fit height + roughness as input layers 10-11, kerbstep.fit) 0.809 vs 0.815,
    Olympic Park found 57.2%. pdrop 0.8 (photo blanked on 80% of chips) also 0.808. Since round 16, ten changes all land at 0.80-0.815:
-   the segmentation model is at its ceiling on this data. Remaining levers: denser LiDAR (Sydney 2020 survey ~11 pts/m2 vs 1.6-2.8 on
-   the check boxes; ELVIS order needs Jacky), wire the street-offset prior (0.819) into the pipeline, kerbclean on all boxes, kerb tracing.
+   the segmentation model is at its ceiling on this data. Denser LiDAR is NOT available (ELVIS checked 4 Nov): every check/held-out box
+   already uses its newest state survey (Parramatta, Olympic Park: Sydney201906 only; others Sydney202005/202006); the 2018 council
+   surveys (SydNthB2018, SydEstB2018) are no denser. Remaining levers: wire the street-offset prior (0.819) into the pipeline, kerbclean on all boxes, kerb tracing.
 6. kerbclean.py on all 8 boxes; denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
 - Watchers die on session restarts: side-longmine sat finished from ~09:15Z to 13:37Z. Chain runs in one .ps1 where possible.
 
