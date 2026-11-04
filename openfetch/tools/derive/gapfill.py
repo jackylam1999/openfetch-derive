@@ -169,6 +169,8 @@ def _row_cuts(d, P, u, v):
     if len(x) < 50:
         return None
     m = contains_xy(d, x, y); x, y, z = x[m], y[m], z[m]
+    if len(x) < 50:  # a piece with no roof points of its own (Gosford)
+        return None
     o = np.asarray(d.centroid.coords[0])
     ps, pt = (x - o[0]) * u[0] + (y - o[1]) * u[1], (x - o[0]) * v[0] + (y - o[1]) * v[1]
     smin, smax = ps.min(), ps.max(); tmin, tmax = pt.min(), pt.max()
