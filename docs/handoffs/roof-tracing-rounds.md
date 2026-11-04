@@ -285,8 +285,8 @@ OSM had it). Full tables: /mnt/project-files/research/lidar-roof-pilot/rt5/where
 
 Verdict (no switch in this round): the biggest Sydney miss is not tracing. On the OSM boxes the kept OSM terrace is the output, but
 snap_pilot.py moves it by the neighbours' median shift; on a 4-5 m wide terrace a 1-2 m move drops IoU under 0.5 against the
-same drawing. Surry Hills (found 70 %, sites_ok 0 %) is that scene: 67 of its 142 misses are its own OSM shape moved > 1 m, 56 more
-trimmed to under 70 % by a neighbour in the overlap step. Whether those moves are right cannot be told from OSM alone (it is the
+same drawing. Surry Hills (found 70 %, sites_ok 0 %) is that scene: 67 of its 142 misses are its own OSM shape moved > 1 m (and 56 misses
+are trimmed to under 70 % of the drawing by a neighbour in the overlap step). Whether those moves are right cannot be told from OSM alone (it is the
 thing moved); a cadastre / LiDAR-edge check can.
 Learnt: ersk misses = shift (27) + no roof (28); surry = shift + overlap trim; zetland = no roof (24) + 12-25 m blocks; gosford =
 Microsoft shapes on shared walls and strata (RT4 territory). RT3 (plane split) stays not worth it.
