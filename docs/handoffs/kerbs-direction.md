@@ -128,5 +128,5 @@ lanes 17%) is not a kerb the model could learn from this data, and no tracer fin
    a new council kerb reference (busiest first), or a user-reported miss pattern from the live layer.
 4. Not doing: the learned tracer (no evidence to follow), more model variants on the same data (ten in a row at 0.80-0.815), more
    kerbclean beyond Parramatta, the gap net. Each is recorded with its number above so no thread retries it.
-5. Open with Jacky: ship kerbs on NSW local streets now at about 9 in 10 found (recommended), or hold everything until a single
-   0.85 scenario score, which the data round alone is unlikely to reach (realistic 0.82-0.83).
+5. JACKY DECIDED 4 Nov 09:45Z: "Ship local streets now". Items 1-3 above are approved: shipping thread (item 2) and the one bounded
+   data round (item 3) can start; training stops after that round unless its keep rule is met.
