@@ -130,3 +130,45 @@ lanes 17%) is not a kerb the model could learn from this data, and no tracer fin
    kerbclean beyond Parramatta, the gap net. Each is recorded with its number above so no thread retries it.
 5. JACKY DECIDED 4 Nov 09:45Z: "Ship local streets now". Items 1-3 above are approved: shipping thread (item 2) and the one bounded
    data round (item 3) can start; training stops after that round unless its keep rule is met.
+
+## 4 Nov 11:40Z: how we know the 20 NSW suburbs are right (Fable; decision for the PC thread "Ship NSW kerbs on local streets")
+Jacky asked how we know the top-20 output is correct when the 0.817 / 85% numbers come from 8 scored boxes. Plain answer: for 19 of
+the 20 suburbs we cannot MEASURE it. No council in the list except City of Parramatta publishes kerb lines (state, TfNSW and City
+of Sydney checked 20 Oct; none). Drawing truth lines by hand for 20 suburbs is days of work and is NOT done. What we can do cheaply is
+check that each suburb behaves like the scored boxes, catch a suburb where the model has gone wrong as a class, and let users find the
+rest. All of it is CPU only, one PC session, no training, no new model. Lot offset is a model INPUT, so it is weak evidence; the LiDAR
+step is the only independent check we have. Say that in the report.
+
+### Step A: one real measurement, free (Parramatta, rank 6)
+The Parramatta ship box overlaps the held-out "parramatta" box and parts of nparramatta/rydalmere. Score the SHIPPING pipeline's own
+output (kerbapply.py draw, which never sees council kerbs) against the council lines on the held-out part only (compare_kerbs.py, the
+cleaned reference, 1 m): found and precision by road type. This checks kerbapply end to end, not just the model. Pass: local found
+within 5 pts of the box's known figure and precision >= 70%. Fail: a kerbapply bug (shift, threshold, tagging), fix it before anything
+else ships. Half a session.
+
+### Step B: consistency numbers for every suburb (new small script openfetch/tools/derive/kerbsanity.py, reuse kerbapply loaders)
+From AREA.geojson + the fetched roads, lots and DEM, print one row per suburb: km drawn (local / collector / main); BOTH-SIDES % =
+share of local-street centreline (functionhierarchy 6, cut every 20 m) that has a drawn kerb on both sides within 2-12 m; STEP % =
+share of "model" pieces whose LiDAR ground grid drops >= 5 cm across the line within 0.5 m (kerbstep.py rule; the scored boxes
+show median 6.6 cm, 43% >= 8 cm, 18% without ground); FILL % = share of length from "street offset" (filled, not seen); OFFSET =
+median distance drawn kerb to nearest lot edge (scored boxes: 94% of found kerb sits 3-6 m from a lot); LIDAR = yes / no.
+Calibrate first: run the same script on the 4 check + 4 hold boxes (where found IS known) and keep the two columns that track found
+best. A suburb is FLAGGED when BOTH-SIDES or STEP is more than 10 pts below the worst scored box, FILL > 30%, or LIDAR = no
+(photo-only is Kensington quality: 0.76, precision 68%, below the gate). Half a session.
+
+### Step C: tiny spot check by eye (60 patches, 5 pictures)
+Pick 3 random 150 m patches on local streets per suburb (seeded, list the centres in the report). Render 5 contact sheets of 12
+patches each (photo at 0.1 m, drawn lines in colour, 10 m bar, suburb + patch id; reuse kerbphoto.py's picture code), so the whole
+check fits one session under the 6-image guard. Judge each patch: OK (kerbs where the kerbs are, within about one kerb width),
+MISS (a visible kerb not drawn), WRONG (a line where no kerb is). Report OK/MISS/WRONG per suburb and overall. 60 patches gives
+about +-12 pts at 95%: it tells us whether the 85% claim is roughly right overall and finds a suburb that is badly off (3 patches all
+WRONG), not an exact per-suburb score. Say so in the report. Half a session.
+
+### Gate and wording
+Ship a suburb when Step A passes, it is not flagged in B, and C shows no 2-of-3 WRONG. A flagged suburb ships as "partial" (same
+one-sentence Details line with "partial in <suburb>") or waits for its LiDAR (ELVIS orders of 4 Nov). Sydney, Haymarket and the
+dense Waterloo/Zetland strip are the likeliest to be low: our only dense scored box (Parramatta CBD) is 0.79, so expect MISS on
+medians and in deep shadow there; the Details line already says main roads are partial. After shipping, the live error-report
+button is the ongoing check: a user-reported miss pattern restarts training (item 3 above); no further checking rounds otherwise.
+Not doing: hand-drawn truth lines for new suburbs, buying or requesting council kerb data for this, any training. Budget: 1-2 PC
+sessions total; numbers go in kerbs-lidar-rounds.md and the data registry, not the UI.
