@@ -32,6 +32,8 @@ MAX_HEIGHT_BIAS = 0.3       # m, median roof height difference when the referenc
 # Merged gap houses in new estates (Gregory Hills) are cut along the cadastre lot lines in gapfill.py (lots.py).
 MIN_TRACE_FIND = 0.6        # share of community roof area the trace covers
 HOUSE_LOT = (100, 2000)     # m2, cadastre lots that hold one house; a traced gap may cover at most one of them
+ONE_HOME = 250              # m2, an inner-city lot under this holds one terrace (gapfill.py ONE_HOME)
+MAX_ROWS = 0.01             # share of outlines that may still cover a terrace row (Paddington: 13.5 % before the row cut, 0.1 % after)
 
 
 def run(cmd, env=None):
@@ -197,6 +199,13 @@ def main():
                   f"{span} traced gaps cover 2+ house lots ({HOUSE_LOT[0]}-{HOUSE_LOT[1]} m2); "
                   + (f"{m.group(1)} cadastre lots, {m.group(2)} gaps dropped for joining lots, {m.group(3)} traces off-lot split by LiDAR" if m else "")
                   + ("" if lots else "; NO cadastre lots: merged houses not checked")))
+    # terrace rows (Paddington, 4 Nov 2026): no outline, traced or mapped, may stand for a whole row of houses; a row joins
+    # 3+ one-house lots (under ONE_HOME m2, each 40 % covered). gapfill.py cuts rows at lot lines and LiDAR party walls
+    small = [g for g in outlines(P("lots.geojson")) if g.area < ONE_HOME]
+    st = STRtree(small) if small else None
+    rows = sum(1 for g in comb if sum(1 for i in (st.query(g) if st else []) if small[i].intersection(g).area >= max(15, 0.4 * small[i].area)) >= 3)
+    gates.append(("FAIL", "terrace rows split into houses", rows <= MAX_ROWS * max(1, len(comb)),
+                  f"{rows} of {len(comb)} outlines still cover a row of 3+ house lots under {ONE_HOME} m2 (max {100*MAX_ROWS:.0f} %)"))
     tiny = sum(1 for g in comb if g.area < 10)
     gates.append(("FAIL", "no tiny outlines", tiny == 0, f"{tiny} outlines under 10 m2"))
     nov = overlaps(comb)
