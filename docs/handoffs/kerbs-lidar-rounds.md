@@ -124,3 +124,20 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
 - Melbourne LiDAR email drafts (DTP Coordinated Imagery Program, Merri-bek virtual@merri-bek.vic.gov.au) and the newer NSW LiDAR
   email: offered, no answer. Drafts only, never send.
 - Picture sheets of the miss check: on the PC in Claude's temp scratchpad (misscheck\), not copied to Drive.
+
+## 4 Nov results (thread "Raise kerb score to 0.85", following kerbs-direction.md)
+- Step 1 DONE (kerbwhere.py, log C:\kerb\where.out; side-street-eval lines at 0.8, pc-16-1 P). Found by distance to the nearest lot:
+  0-3 m 64% (41.6 km; 18% of training labels), 3-6 m 94% (79.2 km; 58%), 6-10 m 71%, 10-15 m 47%, > 15 m 77%. Far side / median
+  40% (4.4 km; 7% of training) vs lot side 83%. Centreline 4-6 m 88%, 0-2 m 71%, 10-15 m 41-49%, > 20 m 0%. 56-85% of each box's
+  missed kerb lies in (lot, centreline, side) types holding < 5% of the training labels (found kerb: 15-40%). Olympic Park lot 0-3 m
+  found 38% with P50 0.00, Parramatta 42% / P50 0.31: the model is sure there is no kerb off its usual offset. -> prior problem,
+  step 2a + 2b run. Far side/median is 7% of the training labels (not empty), so 2c (new arterial boxes) is not run.
+- Step 2 RUNNING: side-cdrop.json (CFG cdrop 0.5 = lots/centreline/water blanked on half the chips; CFG nolot 1 = photo + LiDAR only,
+  layers zeroed at drawing too), 150 min each from pc-16-1, street 1. Log C:\kerb\cdrop.out, out C:\kerb\out\side-cdrop\<id>.
+- Step 3 DONE, no gain (kerbtrace.py filter, log C:\kerb\tracefilt.out). HistGradientBoosting keep/drop on the e0.3 traces, fitted
+  leave-one-box-out on the 8 NSW boxes (NOT the training boxes: their P is near-perfect, so their traces would not look like real ones;
+  the training-box P made so far is in C:\kerb\tracer). 899 traces, 44% good by length. Base 0.814, unfiltered e0.3 0.817, filtered
+  0.815-0.816 at every cut 0.3-0.8 (kept precision 58-69%, 2.9-5.9 km). Not the stop rule (precision >= 60% at >= 2 km) but nowhere
+  near the keep rule (0.823): the filter throws away found faster than it gains precision. Not wired. Rule pilot e0.5 (0.818) stays
+  the trace reference.
+- Learned tracer (kerbtracer.py, prep + teacher only, commit 63867fb) held as the doc says.
