@@ -11,6 +11,9 @@ from shapely import contains_xy
 src, out = sys.argv[1], sys.argv[2]; files = sys.argv[3:]
 import os
 KEEP_SHARED = os.environ.get('KEEP_SHARED', '1') == '1'  # roof-tracing round RT1: keep OSM shared-wall shapes on dense LiDAR
+# RT4 extra round: cap (m) on how far a hand-drawn OSM shape is moved unless the move clearly fits better (default off)
+SNAP_OSM_MAX = float(os.environ.get('SNAP_OSM_MAX', 'inf'))
+SNAP_OSM_ONROOF = os.environ.get('SNAP_OSM_ONROOF', '0') == '1'  # ... and it also stays when 80 %+ of it is roof where drawn
 B=tuple(float(v) for v in os.environ.get("BOX","552861 6882513 553545 6883186").split())
 B=(B[0]-W-2,B[1]-W-2,B[2]+W+2,B[3]+W+2)  # wider than the shift window plus the ring
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
@@ -109,6 +112,13 @@ for i,g in enumerate(G):
         cand=[(t,translate(g,*t)) for t in (tuple(nd),(0.0,0.0)) if scorer(translate(g,*t)).inside()>=0.8]
         if not cand: continue
         (dx,dy),g2=cand[0]; fit=0.0; shared=True
+    if FS[i].get('src')=='osm' and math.hypot(dx,dy)>SNAP_OSM_MAX:
+        # SNAP_OSM_MAX: a 4-5 m terrace moved 1-2 m by its neighbours' median no longer matches its own drawing (RT5: 107
+        # Sydney misses); it stays where it was drawn unless the move fits clearly better, or (shared walls) it is not on roof there
+        f0=score(g)
+        on=scorer(g).inside()>=0.8
+        if (shared and on) or (not shared and (f0>=fit-0.1 or (SNAP_OSM_ONROOF and on))):
+            dx,dy=0.0,0.0; g2=g; fit=fit if shared else f0
     shifts.append(math.hypot(dx,dy))
     zb=inside(g2,bx,by,bz)
     ring=g2.buffer(4).difference(g2.buffer(1)); zg=inside(ring,gx,gy,gz)
