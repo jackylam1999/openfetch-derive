@@ -92,7 +92,7 @@ Thread "Build learned kerb tracer": hold at the current commit; do not start tra
   per-council confidence, busiest first, and keep training in the background.
 
 ## 4 Nov 09:40Z: results of steps 1-3 and the way forward (Fable)
-Results (thread "Build learned kerb tracer", notes on branch claude/project-thread-tkuw2p): step 1 confirmed the reading: 94% found
+Results (thread "Raise kerb score to 0.85", kerbs-lidar-rounds.md "4 Nov results" on branch claude/project-thread-tkuw2p 3fa2b4d): step 1 confirmed the reading: 94% found
 at 3-6 m from a lot; 40% of the missed kerb is on medians or the far side of the road; 70% of the misses sit in spots that make up
 under 5% of the training labels. Step 2 map hiding: 0.805 (dropout) and 0.770 (no map), main-road found unchanged. Step 3 trace
 filter 0.816. Step 4 skipped: no faint signal along the long misses. Score still 0.817-0.818. Not tried: arterial/median training boxes.
@@ -119,7 +119,9 @@ lanes 17%) is not a kerb the model could learn from this data, and no tracer fin
 3. One bounded data round (GPU, thread, 2 variants): add 6 training boxes centred on arterials with medians and far-side kerbs inside
    the training councils (Pittwater Rd Dee Why, Warringah Rd Frenchs Forest, Canterbury Rd Belmore, Hume Hwy Bass Hill, New South
    Head Rd Rose Bay, Victoria Rd Rydalmere/West Ryde side inside Parramatta), role train_new, more 1; fetch with kerblearn.py data
-   (LiDAR grids too, ELVIS orders via the PC as before). Variant a: boxes only. Variant b: boxes + mainroad 0.3 sampling. Fine-tune
+   (LiDAR grids too, ELVIS orders via the PC as before). Variant a: boxes only. Variant b: boxes + rare-geometry sampling: 30% of chips centred on label points in the kerbwhere.py bins that hold < 5% of the
+   training labels (far side/median, lot 0-3 m, centreline 10-15 m), a CFG "rare" like mine/mainroad. Far side is 7% and lot 0-3 m
+   18% of training yet found only 40% / 64%: the examples exist but are too few to beat the prior, so both more and oversampled. Fine-tune
    pc-16-1, 150 min, street 1. Keep rule: main-road found +10 pts over all 8 boxes with scenario >= 0.814 (no loss beyond noise), or
    scenario >= 0.823. Stop rule: neither variant moves main-road found by 5 pts: STOP ALL TRAINING. Write the final numbers in
    kerbs-lidar-rounds.md and kerbs-model.md, keep the PC free. Training restarts only on new information: denser or Vic LiDAR,
