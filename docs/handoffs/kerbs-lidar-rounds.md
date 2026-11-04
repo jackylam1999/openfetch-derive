@@ -103,7 +103,10 @@ From thread "Fill hidden kerbs and continue training". Read AGENTS.md (project f
    the segmentation model is at its ceiling on this data. Denser LiDAR is NOT available (ELVIS checked 4 Nov): every check/held-out box
    already uses its newest state survey (Parramatta, Olympic Park: Sydney201906 only; others Sydney202005/202006); the 2018 council
    surveys (SydNthB2018, SydEstB2018) are no denser. Remaining levers: kerbclean on all boxes, kerb tracing (street prior now wired, 0.817).
-6. NEXT: kerbclean.py on all boxes (on top of street 1); denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
+6. DONE 4 Nov, little change: kerbclean.py on all 10 boxes at 0.8 on the side-street-eval lines (roofs only for Parramatta, others
+   road + rail rules; C:\kerb\kp\*_clean.json). F1 moves only Parramatta 0.786 -> 0.802 and cbcheck 0.916 -> 0.921; Kensington drops
+   5.5 km off-road lines but F1 stays 0.759, Melb CBD 0.605. The council reference is not what holds the score down outside Parramatta
+   CBD, so no ELVIS order for roofs. Left: denser ELVIS LiDAR over check boxes; kerb tracing (iCurb) only if 3-5 leave long misses.
 - Watchers die on session restarts: side-longmine sat finished from ~09:15Z to 13:37Z. Chain runs in one .ps1 where possible.
 
 ## Open items with Jacky
