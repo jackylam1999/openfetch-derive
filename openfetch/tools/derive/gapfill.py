@@ -30,7 +30,8 @@ C = json.load(open(sys.argv[4]))["features"] if len(sys.argv) > 4 else []
 LOTS = [shape(f["geometry"]) for f in json.load(open(sys.argv[5]))["features"]] if len(sys.argv) > 5 else []
 LAZ = sys.argv[6:]
 lot_tree = STRtree(LOTS) if LOTS else None
-HOUSE_LOT = (100, 2000)  # m2: a lot that holds one house (Gregory Hills median 430 m2)
+import os
+HOUSE_LOT = (float(os.environ.get("LOT_MIN", 100)), 2000)  # m2: a lot that holds one house (Gregory Hills median 430 m2); LOT_MIN=30 takes terrace lots too (Erskineville median 132, 21 % under 100)
 house_lots = [g for g in LOTS if HOUSE_LOT[0] <= g.area <= HOUSE_LOT[1]]
 hl_tree = STRtree(house_lots) if house_lots else None
 S = json.load(open(snapped))["features"]; T = json.load(open(traced))["features"]
