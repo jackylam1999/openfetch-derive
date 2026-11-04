@@ -27,7 +27,9 @@ snapped, traced, out = sys.argv[1:4]
 # shapes snap_pilot dropped (no LiDAR roof under them: maybe newer than the LiDAR) still show in the app's community
 # layer, so a trace must not be drawn over them either
 C = json.load(open(sys.argv[4]))["features"] if len(sys.argv) > 4 else []
-LOTS = [shape(f["geometry"]) for f in json.load(open(sys.argv[5]))["features"]] if len(sys.argv) > 5 else []
+_LF = json.load(open(sys.argv[5]))["features"] if len(sys.argv) > 5 else []
+LOTS = [shape(f["geometry"]) for f in _LF]
+STRATA = [str(f["properties"].get("lot", "")).split("/")[-1].startswith("SP") for f in _LF]  # strata plan: one lot, many homes
 LAZ = sys.argv[6:]
 lot_tree = STRtree(LOTS) if LOTS else None
 import os
@@ -126,6 +128,11 @@ def by_lidar(d, P):
 
 STEP_FINE = float(os.environ.get("STEP_FINE", 0))  # RT2 (4 Nov 2026): m, smallest roof step a parapet or party wall makes (0 = off, the control); the kerb step detector lesson
 STEP_FINE_MS = os.environ.get("STEP_FINE_MS", "0") == "1"  # RT2: also part Microsoft outlines with it
+# RT4 (4 Nov 2026): Microsoft outlines drawn over two homes that share a wall (semis, duplexes, unit rows: Gosford 24 of 28
+# merged official houses). lots = cut at the lot line when every piece is a real share of it (MS_PIECE of the outline and 35 m2+;
+# a house drawn 1 m over its neighbour's lot leaves only a sliver there); lots+rows = also the party-wall cut on strata/shared lots
+MS_SPLIT = os.environ.get("MS_SPLIT", "0")
+MS_PIECE = float(os.environ.get("MS_PIECE", 0.3))
 STEP_ACROSS = 0.7  # share of the piece's depth a parapet line must cross
 
 
@@ -275,6 +282,10 @@ def one_home_lot(g):
     return any(LOTS[i].area < ONE_HOME and LOTS[i].intersection(g).area >= 0.5 * g.area for i in (lot_tree.query(g) if lot_tree else []))
 
 
+def on_strata(g):
+    return any(STRATA[i] and LOTS[i].intersection(g).area >= 0.5 * g.area for i in (lot_tree.query(g) if lot_tree else []))
+
+
 ROW_MAPPED = os.environ.get("ROW_MAPPED", "row3")  # which mapped outlines the row cut may cut (RT1, 4 Nov 2026): row3 = only one covering 3+ one-home lots (a drawn row; 2 lots is usually 1 m drawing error), all, ms (Microsoft only)
 
 
@@ -329,7 +340,7 @@ def house_lot(g):
 low = [f for f in T if (f["properties"].get("h_max") or 0) <= HIGH_RISE]
 n_high = len(T) - len(low)
 work = [(f, p) for f in low for p in by_lots(shape(f["geometry"]))]
-n_lidar = n_rows = n_fine_ms = 0
+n_lidar = n_rows = n_fine_ms = n_ms_split = 0
 rows_of = {}  # index in S -> the mapped row's dwellings
 if LAZ and (work or SG):
     P = lidar_points([p for f, p in work] + SG)
@@ -354,6 +365,17 @@ if LAZ and (work or SG):
         pk = S[k]["properties"]
         if g.geom_type != "Polygon" or g.area < 2 * 35 or pk.get("high_rise") or (pk.get("h_max") or 0) > HIGH_RISE:
             continue  # towers stay whole: lot lines under them are strata lots, not houses (Chatswood P-0098)
+        if MS_SPLIT != "0" and pk.get("src") == "ms" and not (ROW_MAPPED == "row3" and n_home_lots(g) >= 3):
+            parts = whole_pieces(by_lots(g), g)
+            if len(parts) < 2 or min(p.area for p in parts) < max(MS_PIECE * g.area, 35):
+                parts = [g]
+            if "rows" in MS_SPLIT or "strata" in MS_SPLIT:  # lots+strata: the party-wall cut only on a strata lot
+                cut = (lambda p: on_strata(p)) if "strata" in MS_SPLIT else (lambda p: not one_home_lot(p))
+                parts = [q for p in parts for q in (by_rows(p, P) if cut(p) else [p])]
+                parts = whole_pieces(parts, g) if len(parts) >= 2 else parts
+            if len(parts) >= 2:
+                rows_of[k] = parts; n_ms_split += 1
+            continue
         if (ROW_MAPPED == "row3" and n_home_lots(g) < 3) or (ROW_MAPPED == "ms" and pk.get("src") != "ms"):
             # RT2: a Microsoft outline over a shop row or units (Gosford) has no row of small lots; with STEP_FINE_MS=1 the
             # fine LiDAR step, ground and storey cuts may still part it (Microsoft joins neighbours itself; OSM draws them apart)
@@ -450,4 +472,4 @@ for k, f in enumerate(S):
 n_mapped_rows = len(rows_of)
 S = S2
 json.dump({"type": "FeatureCollection", "features": S + gap}, open(out, "w"))
-print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_rows} traced and {n_mapped_rows} mapped terrace rows split into dwellings; {n_fine_ms} Microsoft outlines parted by the fine LiDAR step; {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)
+print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_rows} traced and {n_mapped_rows} mapped terrace rows split into dwellings; {n_fine_ms} Microsoft outlines parted by the fine LiDAR step; {n_ms_split} Microsoft outlines split (MS_SPLIT); {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)

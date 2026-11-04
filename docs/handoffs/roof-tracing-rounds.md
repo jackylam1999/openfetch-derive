@@ -293,3 +293,75 @@ Microsoft shapes on shared walls and strata (RT4 territory). RT3 (plane split) s
 Next: one round on surry + ersk, switch SNAP_OSM_MAX (cap the move of a kept shared-wall OSM shape, e.g. 0.5 m, or no move unless
 its own fit beats the unmoved fit), judged by found AND lots_1 / out_2lots so a judge that cannot see the move is not the only
 one. Then RT4 (Wollongong + Tweed official boxes) for the Microsoft shop-row problem.
+
+### Round 4 (RT4, Opus, 4 Nov 2026): official judges, a Microsoft shared-wall split, and the SNAP_OSM_MAX extra round
+
+Judges: Wollongong LOD2 (Aerometrex Nov 2024) exported by the new `openfetch/tools/derive/i3sfoot.py` (I3S leaf meshes -> one plan
+footprint per building, HEIGHT_MAX = mesh top - mesh base): 5,265 footprints, research/lidar-roof-pilot/rt4/wollongong-lod2-ref-7856.geojson.gz.
+Two new official boxes from the saved Wollongong tiles: woll 306000 6187600 306600 6188200 (detached suburb + semis, 649 buildings,
+tiles 3066186 + 3066188) and wcbd 306600 6189200 307200 6189800 (city centre, 338, 40 % over 12 m, tile 3066188). Tweed NOT rerun: no
+Tweed LiDAR is saved anywhere (research/roof-pilot does not exist); it needs a new ELVIS order (Jacky's PC + OK). Scripts: rt4/run.sh
+(six boxes, BOXES= / PAR= / EXTRA=), rt4/score.sh, rt4/hcheck.py; scores per variant in rt4/<variant>/*.json.
+
+Control (RT1 defaults, rebuilt from scratch; Sydney + Gosford rows equal Round 5's):
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 507 | 87% | 51% | 0% | 94% | 0% | 0.00 m | 18% | 69% | 19% | - |
+| surry | osm | 468 | 70% | 34% | 2% | 94% | 1% | 0.00 m | 16% | 79% | 0% | - |
+| zetland | osm | 269 | 77% | 74% | 6% | 86% | 0% | 0.00 m | 32% | 53% | 38% | - |
+| gosford | official | 166 | 52% | 59% | 17% | 39% | 3% | 1.00 m | 14% | 57% | 6% | +0.00 m |
+| woll | official | 649 | 72% | 76% | 3% | 49% | 2% | 0.38 m | 6% | 67% | 6% | -0.40 m |
+| wcbd | official | 338 | 69% | 70% | 1% | 30% | 3% | 0.63 m | 2% | 84% | 6% | -1.41 m |
+
+Wollongong heights: the -0.40 / -1.41 m is the judge, not the roofs. The council mesh base sits below the LiDAR ground around the
+building (median 0.27 m suburb, 1.14 m centre: the mesh goes down to the lowest point on a slope / basement ramp). Judged on the
+same ground (council roof top AHD minus LiDAR ground ring 1-4 m, rt4/hcheck.py): -0.09 m (96 % within 1 m) and -0.20 m (85 %),
+inside the 0.3 m gate. So the pipeline's "roof heights" FAIL on both Wollongong boxes is a reference artefact; wcbd also fails
+"OSM houses kept" (45 of 59, 76 %: centre shapes over podiums). Where blind (rt4/ctl/where.md, three official boxes, 1,153 buildings):
+Microsoft-drawn 85 % found / 6 % merged; shared walls 60 % / 15 %; under 60 m2 31 % found (sheds and garages in the council model
+with no LiDAR roof outline: 101 + 42 Wollongong misses have no output roof at all). Microsoft merged on shared walls: Gosford 24
+(14 strata, 6 Torrens), woll 10 (Torrens semis), wcbd 0. So the Microsoft shared-wall problem is mostly Gosford's strata unit rows.
+
+Round 4a. Question: does cutting a Microsoft outline over two homes (switch MS_SPLIT in gapfill.py; default 0) lower merged on the
+official boxes without lowering precise? lots = cut at lot lines only when every piece is 30 %+ (MS_PIECE) and 35 m2+; lots+rows =
+also the party-wall cut (by_rows) off one-home lots; lots+strata = the party-wall cut only on strata (SP) lots.
+lots: 1-8 outlines cut per box, every box within 1 point of control (dropped: too few semis cross a lot line cleanly).
+lots+rows: Gosford merged 17 -> 11, found 52 -> 54, but precise 59 -> 57; woll precise 76 -> 73, sites_ok 6 -> 0 (22 detached houses
+on big lots cut). lots+strata (on top of 4b below; control = 4b):
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| gosford | official | 166 | 55% | 57% | 11% | 39% | 4% | 0.88 m | 13% | 53% | 6% | -0.00 m |
+| woll | official | 649 | 73% | 76% | 2% | 49% | 3% | 0.37 m | 6% | 64% | 6% | -0.40 m |
+| wcbd | official | 338 | 68% | 67% | 1% | 30% | 4% | 0.62 m | 2% | 80% | 6% | -1.39 m |
+
+Verdict: DROPPED (all three; kill rule: Gosford precise -3, wcbd -2). The strata cut halves Gosford merged (17 -> 11) but the pieces
+mostly do not line up with the council's unit outlines (found +1 only), so they add output roofs that match nothing. Switch stays, off.
+Learnt: gosford: Microsoft strata rows are cuttable by LiDAR party walls, but the cut positions are not good enough to score as
+found; a better cut needs the council outline shape, not more cuts. woll: semis on Torrens lots are few (10) and detached houses on
+big lots must not be cut. wcbd: nothing to gain.
+
+Round 4b (the RT5 extra round). Question: does capping how far a kept OSM shape is moved (SNAP_OSM_MAX=0.5 m in snap_pilot.py)
+raise found on surry / ersk without lowering the official boxes? First version (stay unmoved only when the unmoved fit is within
+0.1 of the moved fit): surry 70 -> 71, zetland merged 6 -> 3, rest unchanged: the fit score is what is wrong on shared walls (the
+ring is the neighbour's roof), so most terraces still moved (surry 261 -> 210 OSM shapes moved > 0.5 m). Second version, kept:
+SNAP_OSM_MAX=0.5 + SNAP_OSM_ONROOF=1 (an OSM shape moved more than 0.5 m stays where it was drawn when 80 %+ of it is LiDAR roof there):
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 507 | 95% | 55% | 0% | 94% | 0% | 0.00 m | 19% | 70% | 25% | - |
+| surry | osm | 468 | 76% | 37% | 1% | 94% | 1% | 0.00 m | 17% | 77% | 0% | - |
+| zetland | osm | 269 | 83% | 77% | 5% | 86% | 0% | 0.00 m | 33% | 51% | 46% | - |
+| gosford | official | 166 | 54% | 60% | 17% | 39% | 3% | 0.88 m | 15% | 53% | 6% | +0.00 m |
+| woll | official | 649 | 73% | 76% | 3% | 49% | 2% | 0.37 m | 7% | 64% | 6% | -0.39 m |
+| wcbd | official | 338 | 69% | 69% | 1% | 30% | 3% | 0.63 m | 2% | 81% | 6% | -1.39 m |
+
+Verdict: KEPT (found +8 ersk, +6 surry, +6 zetland; the official judges agree the moves were wrong: Gosford found 52 -> 54, precise
+59 -> 60, offset 1.00 -> 0.88 m; woll +1; wcbd precise -1 at the limit). Cost: lots_1 -2 to -4 on gosford / woll (an unmoved OSM
+house overlaps a neighbouring lot by its drawing error). Make SNAP_OSM_MAX=0.5 SNAP_OSM_ONROOF=1 the default in the next card.
+Picture: rt4/surry-snapB-check.png (terraces sit on their own drawings). Ersk is now at the found ship gate (95 %); surry is not (76 %:
+the 56 overlap-trim misses from RT5 remain).
+Next: RT6 (rebuild with KEEP_SHARED + LOT_MIN + ROW_SPLIT row3 + SNAP_OSM cap). Before it, make the snap cap default and, if cheap,
+fix the Wollongong judge height (write HEIGHT_MAX from LiDAR ground, or let roofscore read z_top) so the pipeline gate stops failing
+there. Microsoft strata rows (Gosford merged 11-17 %) stay open: no cut tried so far beats the precision cost.
