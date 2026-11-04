@@ -214,3 +214,42 @@ open question. zetland: merged 9 % untouched by every variant (strata townhouses
 merged 17 % is Microsoft shapes over 2 lots; cutting them halves merged but over-cuts: RT2/RT5.
 Next: RT2 (fine step) on zetland and Gosford, control = these defaults (row3 table above).
 
+
+### Round 2 (RT2, Opus, 4 Nov 2026): fine LiDAR step (STEP_FINE) against the row3 control
+
+Question: does a 0.3-2.5 m DSM step line, crossing a piece edge to edge at right angles to its long axis (the kerb step-detector
+lesson), lower merged on zetland / Gosford without lowering Gosford precise? Code: gapfill.py `_fine_lines`, called from by_lidar
+when STEP_FINE > 0 (default 0 = off); STEP_FINE_MS=1 also runs by_lidar (ground + storey + fine step) on Microsoft outlines that
+the row cut leaves whole. Control rebuilt from scratch (all steps) with the RT1 defaults; it reproduces the Round 1 row3 table exactly.
+Outputs and scores: /mnt/project-files/research/lidar-roof-pilot/rt2/{ctl,fA,fB}/ (run.sh, score.sh, why.py there too).
+
+Control (KEEP_SHARED=1, LOT_MIN=30, ROW_SPLIT=1, ROW_MAPPED=row3) = Round 1 row3 table, unchanged.
+
+A: STEP_FINE=0.3 on traced pieces (the card as written): every box identical to the control (ersk 87/51/1, surry 70/34/6,
+zetland 78/75/9, gosford 52/59/17 found/precise/merged). by_lidar parted a few more traces (zetland 14 -> 17, gosford 14 -> 15) but none
+of them sat under a reference house the score counts.
+
+B: STEP_FINE=0.3 + STEP_FINE_MS=1 (Microsoft outlines too):
+
+| box | ref | n_ref | found | precise | merged | trace_merged | split | offset | out_2lots | lots_1 | sites_ok | h_bias |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ersk | osm | 509 | 87% | 51% | 1% | 94% | 0% | 0.00 m | 18% | 70% | 19% | - |
+| surry | osm | 482 | 70% | 34% | 6% | 95% | 1% | 0.00 m | 16% | 79% | 0% | - |
+| zetland | osm | 276 | 78% | 75% | 9% | 86% | 0% | 0.00 m | 32% | 53% | 31% | - |
+| gosford | official | 166 | 46% | 42% | 16% | 39% | 5% | 1.02 m | 12% | 51% | 0% | +0.01 m |
+
+Verdict: DROPPED (A and B). Kill rule met: zetland merged did not fall (9 -> 9), and B lowers Gosford precise 59 -> 42 and found 52 -> 46
+(26 Microsoft outlines cut, mostly detached houses at storey steps) for merged 17 -> 16. Switches stay in gapfill.py, default off.
+
+Learnt (why.py lists the output roofs behind every merged reference house):
+- zetland: ALL 9 % merged are OSM shapes over other OSM shapes: an apartment block's outline drawn over its own parts / podium
+  (Overture keeps both; e.g. a 1,435 m2 outline over five 114-259 m2 parts, 17-48 m tall). The pipeline merges no strata townhouse
+  rows there; the judge counts OSM's double drawing. No LiDAR cut can or should change it. Fix the judge, not the tracer: score
+  against OSM with outlines that hold other OSM outlines left out (RT5), and decide separately whether the app should draw both.
+- gosford: merged is Microsoft outlines over shop rows / units (8-16 m) and 2 OSM outlines over two council buildings; cutting
+  Microsoft shapes by LiDAR over-cuts detached houses (same lesson as ROW_MAPPED=all). The official-box gap is a Microsoft shape
+  problem, not a step-visibility problem.
+- ersk, surry: no change; the traced pieces the fine step parts are not where the judges see merging.
+Next: RT3 (plane split) is NOT worth running on zetland (its merged share is a reference artefact). Run RT5 first (per-house
+"where is it blind", with the OSM double-drawing filter), then RT4 (official judges) so Gosford's Microsoft shop-row problem is
+measured on more than one official box before any further cut.

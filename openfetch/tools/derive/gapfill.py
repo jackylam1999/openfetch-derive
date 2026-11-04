@@ -109,6 +109,8 @@ def by_lidar(d, P):
         j = np.abs(a - bb) > STEP
         step[:nr - dr, :nc - dk] |= j; step[dr:, dk:] |= j
     cut = ndimage.binary_dilation(ground | step) & inside
+    if STEP_FINE:
+        cut |= _fine_lines(d, dsm, roof, tf)
     lab, n = ndimage.label(roof & ~cut)
     sizes = ndimage.sum(np.ones_like(lab), lab, range(1, n + 1)) * CELL * CELL
     keep = [i + 1 for i, a in enumerate(sizes) if a >= MIN_PART]
@@ -120,6 +122,53 @@ def by_lidar(d, P):
     parts = [shape(g).intersection(d) for g, v in rasterio.features.shapes(owner, mask=owner > 0, transform=tf)]
     parts = [p for p in parts if p.area >= 1]
     return parts or [d]
+
+
+STEP_FINE = float(os.environ.get("STEP_FINE", 0))  # RT2 (4 Nov 2026): m, smallest roof step a parapet or party wall makes (0 = off, the control); the kerb step detector lesson
+STEP_FINE_MS = os.environ.get("STEP_FINE_MS", "0") == "1"  # RT2: also part Microsoft outlines with it
+STEP_ACROSS = 0.7  # share of the piece's depth a parapet line must cross
+
+
+def _fine_lines(d, dsm, roof, tf):
+    """Cells on a parapet or party-wall line: the 0.5 m DSM jumps STEP_FINE-STEP m between the cells 1 m either side, and the
+    jump runs straight across the piece (at right angles to its long axis) over STEP_ACROSS of its depth. Roof furniture
+    (a skylight, an air conditioner) jumps too but over a few cells only, so it never makes a line."""
+    c = np.asarray(d.minimum_rotated_rectangle.exterior.coords)[:3]
+    e = [c[1] - c[0], c[2] - c[1]]
+    u = max(e, key=np.linalg.norm); u = u / np.linalg.norm(u); v = np.array([-u[1], u[0]])
+    rr, kk = np.nonzero(roof)
+    if len(rr) < 50:
+        return np.zeros_like(roof)
+    xs, ys = tf.c + (kk + 0.5) * CELL, tf.f - (rr + 0.5) * CELL
+    o = np.asarray(d.centroid.coords[0])
+    ps, pt = (xs - o[0]) * u[0] + (ys - o[1]) * u[1], (xs - o[0]) * v[0] + (ys - o[1]) * v[1]
+    i, j = ((ps - ps.min()) / CELL).astype(int), ((pt - pt.min()) / CELL).astype(int)
+    ns, nt = i.max() + 1, j.max() + 1
+    H = np.full((ns, nt), np.nan); H[i, j] = dsm[rr, kk]
+    w = 2
+    lines = np.zeros(ns, bool)
+    for k in range(w, ns - w):
+        with np.errstate(all="ignore"):
+            left, right = np.nanmedian(H[k - w:k], axis=0), np.nanmedian(H[k + 1:k + 1 + w], axis=0)
+        ok = ~np.isnan(left) & ~np.isnan(right)
+        if ok.sum() < 6:  # 3 m of depth at least
+            continue
+        jump = np.abs(right - left)
+        hit = (jump >= STEP_FINE) & (jump <= STEP) & ok
+        # the line crosses from edge to edge: most of the depth, and both ends of it
+        if hit.sum() >= STEP_ACROSS * ok.sum():
+            lines[k] = True
+    # one cut per line (the strongest run of neighbouring columns is one parapet), at least a frontage from the ends
+    ks = np.flatnonzero(lines)
+    cut = np.zeros_like(roof)
+    if not len(ks):
+        return cut
+    runs = np.split(ks, np.flatnonzero(np.diff(ks) > 1) + 1)
+    pick = [int(np.median(r)) for r in runs]
+    pick = [k for k in pick if k * CELL >= FRONT[0] and (ns - 1 - k) * CELL >= FRONT[0]]
+    on = np.isin(i, pick)
+    cut[rr[on], kk[on]] = True
+    return ndimage.binary_dilation(cut) & roof  # a diagonal line of cells must still part the roof (4-neighbour labels)
 
 
 ROW_SPLIT = os.environ.get("ROW_SPLIT", "1") == "1"  # roof tracing rounds switch (docs/handoffs/roof-tracing-rounds.md): 0 = no row cuts, the control
@@ -280,7 +329,7 @@ def house_lot(g):
 low = [f for f in T if (f["properties"].get("h_max") or 0) <= HIGH_RISE]
 n_high = len(T) - len(low)
 work = [(f, p) for f in low for p in by_lots(shape(f["geometry"]))]
-n_lidar = n_rows = 0
+n_lidar = n_rows = n_fine_ms = 0
 rows_of = {}  # index in S -> the mapped row's dwellings
 if LAZ and (work or SG):
     P = lidar_points([p for f, p in work] + SG)
@@ -305,10 +354,14 @@ if LAZ and (work or SG):
         pk = S[k]["properties"]
         if g.geom_type != "Polygon" or g.area < 2 * 35 or pk.get("high_rise") or (pk.get("h_max") or 0) > HIGH_RISE:
             continue  # towers stay whole: lot lines under them are strata lots, not houses (Chatswood P-0098)
-        if ROW_MAPPED == "row3" and n_home_lots(g) < 3:
+        if (ROW_MAPPED == "row3" and n_home_lots(g) < 3) or (ROW_MAPPED == "ms" and pk.get("src") != "ms"):
+            # RT2: a Microsoft outline over a shop row or units (Gosford) has no row of small lots; with STEP_FINE_MS=1 the
+            # fine LiDAR step, ground and storey cuts may still part it (Microsoft joins neighbours itself; OSM draws them apart)
+            if STEP_FINE and STEP_FINE_MS and pk.get("src") == "ms" and g.area >= 2 * MIN_PART + 20:
+                parts = whole_pieces(by_lidar(g, P), g)
+                if len(parts) >= 2:
+                    rows_of[k] = parts; n_fine_ms += 1
             continue  # RT1b: a mapped shape is cut only when it covers a row (3+ one-home lots), not 2 lots it overlaps by drawing error
-        if ROW_MAPPED == "ms" and pk.get("src") != "ms":
-            continue
         parts = whole_pieces(by_lots(g), g)
         parts = [q for p in parts for q in (by_rows(p, P) if not one_home_lot(p) else [p])]
         parts = whole_pieces(parts, g) if len(parts) >= 2 else parts  # a party-wall cut can leave a corner sliver too
@@ -397,4 +450,4 @@ for k, f in enumerate(S):
 n_mapped_rows = len(rows_of)
 S = S2
 json.dump({"type": "FeatureCollection", "features": S + gap}, open(out, "w"))
-print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_rows} traced and {n_mapped_rows} mapped terrace rows split into dwellings; {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)
+print(f"{len(S)} community shapes + {len(gap)} traced gap roofs -> {out} ({len(LOTS)} lots; {n_span} gaps over 2+ house lots dropped; {n_lidar} traces split by the LiDAR; {n_rows} traced and {n_mapped_rows} mapped terrace rows split into dwellings; {n_fine_ms} Microsoft outlines parted by the fine LiDAR step; {n_high} high-rise traces and {n_tall_piece} tall pieces not traced)", file=sys.stderr)
