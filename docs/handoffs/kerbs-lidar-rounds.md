@@ -161,3 +161,18 @@ lakemba, rosebay, rydalmere; no LiDAR grids on them). Found by road type, length
 Main-road found +0.8 / +1.5 pts, under the 5-pt stop rule: all kerb training stops, pc-16-1 stays the model, the PC is free after
 the ship run. Caveat: the new boxes had no LiDAR, so a LiDAR version of the same round is untested; it is not a reason to restart
 by itself. Training restarts only on new information (denser or Vic LiDAR, a new council kerb reference, a user-reported miss pattern).
+
+## 5 Nov ship run finished (thread "Raise kerb score to 0.85", per kerbs-direction.md 5 Nov 06:50Z)
+- Draw: all 20 suburbs / 72 boxes were already drawn (C:\kerb\shipdraw.out ALLDONE, 5 Nov 04:32 local), all with LiDAR.
+- Check B (kerbsanity.py ship, log C:\kerb\sanity-ship.out): nothing flagged (bars: both < 10%, step < 19%, fill > 30%, LiDAR no).
+  both% / step%: sydney 50.8/77.5, waterloo=zetland 66.5/74.7, erskineville 82.5/75.0, alexandria 71.6/82.4, parramatta 58.4/64.5,
+  randwick 62.9/86.8, marrickville 85.8/92.5, haymarket 61.0/80.9, chatswood 76.5/93.1, merrylands 91.9/77.0, burwood 85.2/81.4,
+  mosman 61.6/93.2, maroubra 79.4/89.9, eastgardens 74.0/84.3, rhodes 52.1/42.7, wollongong 79.8/94.7, auburn 86.7/36.3,
+  ryde 80.2/93.5, ashfield 81.8/83.9. Fill 0.1-1.9%. Lot offset median 2.6-5.1 m.
+- Check C (kerbspot.py, seed 4114, C:\kerb\spot\sheet1-5.png + patches.json): 51 OK, 7 MISS, 2 WRONG of 60 (85% OK, +-12 pts).
+  MISS 01 sydney (Cahill Expwy / Conservatorium area, almost nothing drawn), 05 waterloo (none drawn), 15 alexandria (main road far
+  side), 17 parramatta (park road), 18 parramatta (CBD, fragments), 21 randwick (campus access road), 26 haymarket (fragments under
+  trees). WRONG 27 haymarket (lines inside a block), 30 chatswood (street-offset line under canopy across houses). No 2-of-3 WRONG.
+- Version folder: G:\My Drive\OpenFetch (Claude)\derived-layers\kerbs\nsw-2026-11-05\ (kerbs-nsw.geojson, 10,369 lines, 1,534 km,
+  40.6 MB, WGS84, properties road / source / length_m / areas; README.md). Duplicates from shared boxes removed. Parramatta ships
+  "partial in Parramatta". Handed to "Publish NSW kerb layer from PC files". Nothing deployed.
