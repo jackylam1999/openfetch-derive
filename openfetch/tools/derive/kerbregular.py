@@ -21,6 +21,7 @@ How one line is fitted (fit_lf, used for about 88% of lines):
       lots_dir holds lot GeoJSON in the same EPSG (any file names); output keeps every property, adds "shape": "regular",
       and lines made by joining get source "street offset" on the joined part (as kerbstreet.py fills).
   python kerbregular.py lots cells.json lots_dir     fetch NSW cadastre lots for 1 km cells [[x, y], ...] (EPSG 7856)
+  python kerbregular.py roads cells.json roads_dir   the same for NSW road centrelines (Transport theme layer 5)
 """
 import sys, os, json, glob
 import numpy as np
@@ -101,13 +102,21 @@ class Faces:
 
 
 def load_faces(lots_dir):
-    polys = []
+    """All geometries in a folder of GeoJSON files (lots or road centrelines), each feature once (cells overlap)."""
+    out, seen = [], set()
     for fn in sorted(glob.glob(os.path.join(lots_dir, "*.json")) + glob.glob(os.path.join(lots_dir, "*.geojson"))):
         for f in json.load(open(fn)).get("features", []):
-            if f.get("geometry"):
-                g = shape(f["geometry"])
-                polys += list(g.geoms) if g.geom_type == "MultiPolygon" else [g]
-    return polys
+            if not f.get("geometry"):
+                continue
+            pr = f.get("properties") or {}
+            key = pr.get("objectid", pr.get("OBJECTID", f.get("id")))
+            if key is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
+            g = shape(f["geometry"])
+            out += list(g.geoms) if g.geom_type.startswith("Multi") else [g]
+    return out
 
 
 # ---------------------------------------------------------------- one line
@@ -604,18 +613,27 @@ def run(a):
         if n % 1000 == 0:
             print(n, file=sys.stderr, flush=True)
     joined, filled = join_gaps(lines, ends, faces)
-    # properties of a joined chain: the first member's, plus how much was filled
-    # (rebuild ownership: map each output chain back to a source line by its first point)
+    # each chain keeps the properties of the source line it starts with
     first = {tuple(np.round(l[0], 3)): i for i, l in enumerate(lines)}
     first.update({tuple(np.round(l[-1], 3)): i for i, l in enumerate(lines)})
+    items = [{"p": l, "i": first.get(tuple(np.round(l[0], 3)), 0), "filled": filled.get(ci, 0.0)} for ci, l in enumerate(joined)]
+    if "--roads" in a:
+        import kerbdraft
+        print("drafting", len(items), file=sys.stderr, flush=True)
+        world = kerbdraft.World(load_faces(lots_dir), load_faces(a[a.index("--roads") + 1]))
+        dst = {}
+        items = kerbdraft.draft(items, world, dst)
+        stats["draft"] = dst
     out_feats = []; km_out = 0.0; km_fill = 0.0
-    for ci, l in enumerate(joined):
-        i = first.get(tuple(np.round(l[0], 3)), 0)
-        p = dict(props[i]); g = LineString(l)
+    for it in items:
+        l = it["p"]
+        if len(l) < 2:
+            continue
+        p = dict(props[it["i"]]); g = LineString(l)
         p["length_m"] = round(g.length, 1); p["shape"] = "regular"
-        if filled.get(ci, 0) > 0:
-            p["filled_m"] = round(filled[ci], 1)
-        km_out += g.length / 1000; km_fill += filled.get(ci, 0) / 1000
+        if it["filled"] > 0:
+            p["filled_m"] = round(it["filled"], 1)
+        km_out += g.length / 1000; km_fill += it["filled"] / 1000
         out_feats.append({"type": "Feature", "properties": p,
                           "geometry": {"type": "LineString", "coordinates": [[round(v, 7) for v in back(x, y)] for x, y in l]}})
     json.dump({"type": "FeatureCollection", "features": out_feats}, open(outp, "w"))
@@ -624,9 +642,9 @@ def run(a):
     print("RESULT", json.dumps(stats))
 
 
-def lots(a):
+def lots(a, url="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query",
+         fields="objectid"):
     import urllib.request, urllib.parse
-    url = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query"
     cells, out = json.load(open(a[0])), a[1]; os.makedirs(out, exist_ok=True)
     for x, y in cells:
         fn = f"{out}/{x}_{y}.json"
@@ -635,7 +653,7 @@ def lots(a):
         feats, off = [], 0
         while True:
             q = dict(geometry=f"{x - 60},{y - 60},{x + 1060},{y + 1060}", geometryType="esriGeometryEnvelope", inSR=7856, outSR=7856,
-                     spatialRel="esriSpatialRelIntersects", outFields="objectid", returnGeometry="true", f="geojson",
+                     spatialRel="esriSpatialRelIntersects", outFields=fields, returnGeometry="true", f="geojson",
                      resultOffset=off, resultRecordCount=2000)
             r = json.load(urllib.request.urlopen(urllib.request.Request(url + "?" + urllib.parse.urlencode(q),
                                                                           headers={"User-Agent": "openfetch-derive"}), timeout=120))
@@ -647,4 +665,6 @@ def lots(a):
 
 
 if __name__ == "__main__":
-    {"run": run, "lots": lots}[sys.argv[1]](sys.argv[2:])
+    roads = lambda a: lots(a, "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme_multiCRS/FeatureServer/5/query",
+                           "OBJECTID,functionhierarchy")
+    {"run": run, "lots": lots, "roads": roads}[sys.argv[1]](sys.argv[2:])
