@@ -172,3 +172,25 @@ medians and in deep shadow there; the Details line already says main roads are p
 button is the ongoing check: a user-reported miss pattern restarts training (item 3 above); no further checking rounds otherwise.
 Not doing: hand-drawn truth lines for new suburbs, buying or requesting council kerb data for this, any training. Budget: 1-2 PC
 sessions total; numbers go in kerbs-lidar-rounds.md and the data registry, not the UI.
+
+## 5 Nov 06:50Z: review and decision after the arterial round (Fable)
+What happened since 4 Nov 09:45Z (branch claude/project-thread-tkuw2p, b7398b0): the arterial data round ran (e55bc9b): main-road
+found +0.8 / +1.5 pts, under the 5-pt stop rule, so training already stopped by the rule and pc-16-1 + street stays the model. The
+ship run exists (kerbapply.py, 20 suburbs = 72 unique 1 km boxes fetched, 49 newest-survey ELVIS tiles downloaded from orders
+2652614 + 2652617, grids made); check A was run on Parramatta: shipping output local found 73.9% vs the held-out box's 73.8%,
+precise 86.6% (pass: kerbapply reproduces the model end to end). Checks B and C are written but have no recorded result yet.
+Nothing is published: derived-layers/kerbs/ has no version folder and deployer.md has no kerb line; PR #7 (114 commits) is open.
+
+### Decision: training is over; finish the ship, nothing else
+1. No more training rounds, including a LiDAR version of the arterial round. The rule was met and every lever has a recorded number
+   (ten model variants 0.80-0.815, map hiding, trace filter, data round). Training restarts only on the three triggers in item 3 above.
+2. The PC thread finishes the ship run in one or two sessions, no GPU beyond drawing: draw the remaining suburbs, run kerbsanity.py (B)
+   and kerbspot.py (C), write the version folder to G:\My Drive\OpenFetch (Claude)\derived-layers\kerbs\<version>\ with README, then
+   hand to the cloud thread "Publish NSW kerb layer from PC files" (manifest, tiles, registry, deployer line; preview batching rules
+   apply, no deploy). Record the B and C numbers in kerbs-lidar-rounds.md.
+3. Gate wording per suburb stays as in "4 Nov 11:40Z". Parramatta (local 74% on a reference where most remaining misses are laneways,
+   shadow, bridges and the bus interchange) is under the 85% local gate: it ships as "partial in Parramatta", not held back. The same
+   wording for any suburb flagged by B or C. Do not order more LiDAR for a LIDAR = no suburb; it ships partial.
+4. ELVIS: no new order is needed for the 72 boxes; the 49 tiles are already on the PC. New orders only for a later council.
+5. One thing for Jacky: merge PR #7 when he is ready so the publish thread reads kerbapply and the checks from main. Nothing else
+   waits on him.
