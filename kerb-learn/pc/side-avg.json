@@ -1,0 +1,20 @@
+{
+ "init": "C:/kerb/saved/best-pc-16-1.pt",
+ "variants": [
+  {
+   "name": "average pc-16-1 + pc-16-0",
+   "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 0, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"avg\": [\"C:/kerb/saved/best-pc-16-0.pt\"]}"
+  },
+  {
+   "name": "average pc-16-1 + pc-17-0",
+   "id": 1,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 0, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"avg\": [\"C:/kerb/out/17/0/model.pt\"]}"
+  },
+  {
+   "name": "average pc-16-1 + pc-16-0 + pc-17-0",
+   "id": 2,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 0, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"avg\": [\"C:/kerb/saved/best-pc-16-0.pt\", \"C:/kerb/out/17/0/model.pt\"]}"
+  }
+ ]
+}
