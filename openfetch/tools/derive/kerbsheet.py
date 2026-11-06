@@ -3,7 +3,8 @@
     python3 kerbsheet.py kerbs.json(lon/lat GeoJSON) spots.json out.png [--n 12] [--cols 4] [--m 80] [--label "open corner"]
                          [--before other_kerbs.json]
 
-spots.json: a list of [x, y, ...] in EPSG 7856, or a kerbaudit.py result (its "points" are used, worst first). With --before,
+spots.json: a list of [x, y, ...] in EPSG 7856, or a kerbaudit.py result: then the worst spots (open corners on the busiest roads
+with the biggest gap, then fussy dead-end caps) make the per-version sheet. With --before,
 each spot gets two tiles side by side: the other kerbs (grey label "before") and these kerbs ("after").
 """
 import io
@@ -51,6 +52,18 @@ def tile(kerbs, x, y, m, text):
     return im
 
 
+def worst(audit, n=12):
+    """The spots Jacky looks at per version: open corners on the busiest roads with the biggest gap first (two thirds), then
+    fussy dead-end caps, one per 150 m."""
+    p = sorted(audit.get("points", []), key=lambda q: (q[3], -q[2]))
+    f = []
+    for x, y, _ in audit.get("fussy_points", []):
+        if all(np.hypot(x - u, y - v) > 150 for u, v in f):
+            f.append((x, y))
+    k = min(len(f), n - min(len(p), n * 2 // 3))
+    return p[:n - k] + [[x, y] for x, y in f[:k]]
+
+
 def main(a):
     n = int(a[a.index("--n") + 1]) if "--n" in a else 12
     cols = int(a[a.index("--cols") + 1]) if "--cols" in a else 4
@@ -59,7 +72,7 @@ def main(a):
     kerbs = ka.read_kerbs(a[0])
     spots = json.load(open(a[1]))
     if isinstance(spots, dict):
-        spots = spots["points"]
+        spots = worst(spots, n)
     spots = spots[:n]
     before = ka.read_kerbs(a[a.index("--before") + 1]) if "--before" in a else None
     w = 2 if before else 1
