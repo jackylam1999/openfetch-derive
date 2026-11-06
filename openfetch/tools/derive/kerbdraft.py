@@ -28,6 +28,7 @@ CROSS_END = 10.0      # m, a crossing this close to both ends is a junction corn
 CORNER_R = 5.0        # m, largest round corner made at a junction
 CAP_MAX = 15.0        # m, longest kerb end cut back at a property
 DROP_LEN = 20.0       # m, shorter lone pieces are dropped
+CLOSE = 5.0           # m, two ends this close that do not form a clean corner are simply joined
 LINK_MIN = 8.0        # m, both pieces must be at least this long to be joined or bridged (short bits are noise more often)
 
 
@@ -51,12 +52,28 @@ class World:
                 houses.append(s)
         self.houses = houses
         self.htree = STRtree(houses) if houses else None
+        # deeper inside a house lot: a joining line may graze a lot corner (the traced kerb and the lot do not match to the
+        # centimetre) but must not cut through it
+        deep = [h.buffer(-1.0) for h in houses]
+        self.deep = [d for d in deep if not d.is_empty]
+        self.dtree = STRtree(self.deep) if self.deep else None
+        self.lots = [g for g in lots if not g.is_empty]
+        self.ltree = STRtree(self.lots) if self.lots else None
 
     def crosses_road(self, geom):
         return self.rtree is not None and len(self.rtree.query(geom, predicate="intersects")) > 0
 
     def in_house(self, geom):
         return self.htree is not None and len(self.htree.query(geom, predicate="intersects")) > 0
+
+    def through_house(self, geom):
+        return self.dtree is not None and len(self.dtree.query(geom, predicate="intersects")) > 0
+
+    def lot_dist(self, p):
+        if self.ltree is None:
+            return 1e9
+        q = Point(p); i = self.ltree.nearest(q)
+        return self.lots[int(i)].distance(q)
 
     def house_hits(self, geom):
         return [self.houses[i] for i in self.htree.query(geom, predicate="intersects")] if self.htree is not None else []
@@ -233,13 +250,24 @@ def fragments(items, stats):
     return [it for i, it in enumerate(items) if i not in bad]
 
 
+TRACE = None  # set to a list to record why nearby ends were not linked
+
+
+def _tr(rule, ea, eb, why):
+    if TRACE is not None:
+        TRACE.append((rule, ea, eb, why))
+
+
 def join(items, world, stats):
     """Rule 1 then rule 2, nearest pairs first, each end used once."""
     from scipy.spatial import cKDTree
     links = {}
     lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
     for rule in ("join", "bridge"):
-        ends = [e for e in _free_ends(items, links) if lens[e[0]] >= LINK_MIN]
+        ends = _free_ends(items, links)
+        if TRACE is not None:
+            TRACE.extend([(rule, _end(items[li]["p"], w)[0], None, "piece shorter than %d m" % LINK_MIN) for li, w in ends if lens[li] < LINK_MIN])
+        ends = [e for e in ends if lens[e[0]] >= LINK_MIN]
         if len(ends) < 2:
             break
         E = [_end(items[li]["p"], w) for li, w in ends]
@@ -263,41 +291,53 @@ def join(items, world, stats):
             else:
                 tA = tB = 0.0
                 dturn = _turn(ua, -ub)
+                conn = None
                 if abs(dturn) >= np.radians(30):
                     # a corner: the two kerbs' directions cross near both ends (ahead, or a little behind where an end
                     # overshoots into the side street); cut the overshoot and put a round corner there
                     M = np.array([ua, -ub]).T
-                    if abs(np.linalg.det(M)) < 1e-6:
-                        continue
-                    sa, sb = np.linalg.solve(M, eb - ea)
-                    if not (-8 <= sa <= BRIDGE_MAX and -8 <= sb <= BRIDGE_MAX):
-                        continue
-                    la_, lb_ = lens[la], lens[lb]
-                    T = 6.0 * np.tan(abs(dturn) / 2)
-                    T = min(T, sa + 0.4 * la_, sb + 0.4 * lb_)
-                    if T < 0.3:
-                        continue
-                    r = T / np.tan(abs(dturn) / 2)
-                    pi = ea + sa * ua; t1 = pi - ua * T; t2 = pi - ub * T
-                    tA, tB = max(0.0, T - sa), max(0.0, T - sb)
-                    n1 = np.array([-ua[1], ua[0]]) * np.sign(dturn)
-                    arc = _arc(t1, t1 + n1 * r, r, dturn)
-                    conn = np.array(([ea] if tA == 0 else []) + list(arc) + ([eb] if tB == 0 else []))
+                    sa = sb = None
+                    if abs(np.linalg.det(M)) > 1e-6:
+                        sa, sb = np.linalg.solve(M, eb - ea)
+                    if sa is not None and -8 <= sa <= BRIDGE_MAX and -8 <= sb <= BRIDGE_MAX:
+                        T = 6.0 * np.tan(abs(dturn) / 2)
+                        T = min(T, sa + 0.4 * lens[la], sb + 0.4 * lens[lb])
+                        if T >= 0.3:
+                            r = T / np.tan(abs(dturn) / 2)
+                            pi = ea + sa * ua; t1 = pi - ua * T
+                            tA, tB = max(0.0, T - sa), max(0.0, T - sb)
+                            n1 = np.array([-ua[1], ua[0]]) * np.sign(dturn)
+                            arc = _arc(t1, t1 + n1 * r, r, dturn)
+                            # a kerb corner turns around a block: lots inside the turn, road outside (a corner drawn
+                            # across a side-street mouth has the road inside). Centrelines are not checked for corners:
+                            # in lanes they are often a few metres off and would block real corners.
+                            mid = arc[len(arc) // 2]; nin = (t1 + n1 * r) - mid; nin = nin / max(np.hypot(*nin), 1e-9)
+                            if world.lot_dist(mid + 3 * nin) >= world.lot_dist(mid - 3 * nin):
+                                _tr(rule, ea, eb, 'road inside the corner (would close a side street)'); continue
+                            conn = np.array(([ea] if tA == 0 else []) + list(arc) + ([eb] if tB == 0 else []))
+                    if conn is None:
+                        if g <= CLOSE and ua @ (d / g) > -0.2 and ub @ (-d / g) > -0.2:
+                            conn = np.array([ea, eb])  # two ends a few metres apart: just close the gap
+                        else:
+                            _tr(rule, ea, eb, 'directions do not meet near both ends'); continue
                 else:
                     # a parking-bay taper or a small jog: straight diagonal between ends that point at each other
                     if ua @ (d / g) < np.cos(BRIDGE_ANG) or ub @ (-d / g) < np.cos(BRIDGE_ANG):
-                        continue
+                        _tr(rule, ea, eb, 'ends do not point at each other'); continue
                     conn = np.array([ea, eb])
                 if LineString(conn).length > 1.6 * g + 8:
-                    continue
+                    _tr(rule, ea, eb, 'connector too long'); continue
                 conn = (conn, tA, tB)
             if isinstance(conn, tuple):
                 conn, tA, tB = conn
             else:
                 tA = tB = 0.0
             ls = LineString(conn) if len(conn) > 1 and g > 0.05 else None
-            if ls is not None and (world.crosses_road(ls) or world.in_house(ls)):
-                continue
+            corner = rule == "bridge" and (tA > 0 or tB > 0 or len(conn) > 2)
+            if ls is not None and not corner and world.crosses_road(ls):
+                _tr(rule, ea, eb, 'crosses a road centreline'); continue
+            if ls is not None and world.through_house(ls):
+                _tr(rule, ea, eb, 'runs through a property'); continue
             cand.append((g, a, b, conn, tA, tB))
         cand.sort(key=lambda c: c[0])
         used = set()
