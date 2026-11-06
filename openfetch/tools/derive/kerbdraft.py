@@ -28,6 +28,7 @@ CROSS_END = 10.0      # m, a crossing this close to both ends is a junction corn
 CORNER_R = 5.0        # m, largest round corner made at a junction
 CAP_MAX = 15.0        # m, longest kerb end cut back at a property
 DROP_LEN = 20.0       # m, shorter lone pieces are dropped
+DEAD_REACH = 25.0     # m, kerb ends this close to where a dead-end road stops are capped across it
 CLOSE = 5.0           # m, two ends this close that do not form a clean corner are simply joined
 LINK_MIN = 8.0        # m, both pieces must be at least this long to be joined or bridged (short bits are noise more often)
 
@@ -68,6 +69,16 @@ class World:
 
     def through_house(self, geom):
         return self.dtree is not None and len(self.dtree.query(geom, predicate="intersects")) > 0
+
+    def lot_point(self, p, reach=15.0):
+        """Nearest point on a property to p (None if none within reach)."""
+        if self.ltree is None:
+            return None
+        from shapely.ops import nearest_points
+        q = Point(p); i = int(self.ltree.nearest(q))
+        if self.lots[i].distance(q) > reach:
+            return None
+        return np.array(nearest_points(q, self.lots[i])[1].coords[0])
 
     def lot_dist(self, p):
         if self.ltree is None:
@@ -148,6 +159,10 @@ def _assemble(items, links):
             seg = items[c]["p"] if cw == 0 else items[c]["p"][::-1]
             parts.append(seg); fill += items[c]["filled"]
             nxt = links.get((c, 1 - cw))
+            if nxt and nxt[0] == first and nxt[1] == w and len(parts) and c in seen:
+                parts.append(nxt[2][1:])  # a closed loop round a block: add the last corner
+                fill += nxt[3]
+                break
             if not nxt or nxt[0] in seen:
                 break
             conn = nxt[2]
@@ -271,17 +286,35 @@ def join(items, world, stats):
         if len(ends) < 2:
             break
         E = [_end(items[li]["p"], w) for li, w in ends]
+        KG = [LineString(it["p"]) if len(it["p"]) > 1 else None for it in items]
+        KT = STRtree([g for g in KG if g is not None]); KI = [i for i, g in enumerate(KG) if g is not None]
+        # an end whose line has another kerb between it and the properties (a median, island or parking-lane line nearer
+        # the road centre) is never turned round a corner: the corner belongs to the kerb nearest the block
+        OUTER = []
+        for (li, w) in ends:
+            g = KG[li]; outer = False
+            for t in (3.0, 8.0):
+                if t >= g.length:
+                    continue
+                p0 = np.array(g.interpolate(t if w == 0 else g.length - t).coords[0]); q = world.lot_point(p0)
+                if q is not None and np.hypot(*(q - p0)) > 1.0:
+                    probe = LineString([p0, q])
+                    if any(KI[int(h)] != li for h in KT.query(probe, predicate="intersects")):
+                        outer = True
+            OUTER.append(outer)
         tree = cKDTree(np.array([e for e, _ in E]))
         rng = JOIN_MAX if rule == "join" else BRIDGE_MAX
         cand = []
         for a, b in tree.query_pairs(rng):
             (la, wa), (lb, wb) = ends[a], ends[b]
-            if la == lb:
-                continue
+            if la == lb and (rule != "bridge" or lens[la] < 40):
+                continue  # a line's own two ends: only a long kerb round a block may close on itself (at its last corner)
             (ea, ua), (eb, ub) = E[a], E[b]
             d = eb - ea; g = np.hypot(*d)
             if g < 0.05:
                 cand.append((g, a, b, np.array([ea, eb]), 0.0, 0.0)); continue
+            if rule == "bridge" and (OUTER[a] or OUTER[b]):
+                _tr(rule, ea, eb, 'one end is a line nearer the road centre (another kerb lies between it and the block)'); continue
             if rule == "join":
                 if ua @ (d / g) < np.cos(JOIN_ANG) or ub @ (-d / g) < np.cos(JOIN_ANG):
                     continue
@@ -314,6 +347,13 @@ def join(items, world, stats):
                             mid = arc[len(arc) // 2]; nin = (t1 + n1 * r) - mid; nin = nin / max(np.hypot(*nin), 1e-9)
                             if world.lot_dist(mid + 3 * nin) >= world.lot_dist(mid - 3 * nin):
                                 _tr(rule, ea, eb, 'road inside the corner (would close a side street)'); continue
+                            # the corner must be the kerb nearest the block: no other kerb between it and the properties
+                            # (else it has turned into a median or island line nearer the road centre)
+                            q = world.lot_point(mid)
+                            if q is not None:
+                                probe = LineString([mid, q])
+                                if any(KI[int(h)] not in (la, lb) for h in KT.query(probe, predicate="intersects")):
+                                    _tr(rule, ea, eb, 'another kerb lies between this corner and the block'); continue
                             conn = np.array(([ea] if tA == 0 else []) + list(arc) + ([eb] if tB == 0 else []))
                     if conn is None:
                         if g <= CLOSE and ua @ (d / g) > -0.2 and ub @ (-d / g) > -0.2:
@@ -345,9 +385,10 @@ def join(items, world, stats):
             if a in used or b in used:
                 continue
             (la, wa), (lb, wb) = ends[a], ends[b]
+            closing = la == lb or _same_chain(links, la, lb)
+            if closing and rule != "bridge":
+                continue
             if tA > 0 or tB > 0:
-                if _same_chain(links, la, lb):
-                    continue
                 for li_, wi_, t_ in ((la, wa, tA), (lb, wb, tB)):
                     if t_ > 0:
                         pp = items[li_]["p"]; Lp = LineString(pp).length
@@ -355,15 +396,80 @@ def join(items, world, stats):
                         lens[li_] = Lp - t_
                 ea2 = _end(items[la]["p"], wa)[0]; eb2 = _end(items[lb]["p"], wb)[0]
                 conn = np.vstack([ea2[None], conn, eb2[None]])
-            # never close a chain onto itself through these links
-            if _same_chain(links, la, lb):
-                continue
             used |= {a, b}
             L = LineString(conn).length if len(conn) > 1 else 0.0
             links[(la, wa)] = (lb, wb, conn, L); links[(lb, wb)] = (la, wa, conn[::-1], L)
             stats[rule + "_n"] = stats.get(rule + "_n", 0) + 1
             stats.setdefault("_conn", []).append((rule, conn))
             stats[rule + "_m"] = stats.get(rule + "_m", 0.0) + L
+    return _assemble(items, links)
+
+
+def deadends(items, world, stats):
+    """A road that stops (a centreline end that touches no other road) is a dead end: the kerb on its left and the kerb on its
+    right are closed with a straight cap across the end of the road (Jacky 6 Nov 2026)."""
+    if not world.roads:
+        return items
+    from scipy.spatial import cKDTree
+    tips = []
+    for r in world.roads:
+        c = np.asarray(r.coords)
+        for e, nxt in ((c[0], c[1]), (c[-1], c[-2])):
+            tips.append((e, e - nxt))
+    T = cKDTree(np.array([t[0] for t in tips]))
+    dead = []
+    for i, (e, v) in enumerate(tips):
+        if len(T.query_ball_point(e, 1.0)) > 1:
+            continue  # another road starts here: a junction, not a dead end
+        if len(world.rtree.query(Point(e).buffer(1.0), predicate="intersects")) > 1:
+            continue  # the end touches another road's middle (a T junction)
+        n = np.hypot(*v)
+        if n < 1e-6:
+            continue
+        v = v / n
+        # a real dead end runs into properties: a lot straight ahead within 20 m, and no other road just beyond the tip
+        # (a centreline that simply stops short of a main road is a junction, not a dead end)
+        ahead = LineString([e, e + v * 20])
+        if world.ltree is None or not len(world.ltree.query(ahead, predicate="intersects")):
+            continue
+        if len(world.rtree.query(Point(e + v * 10).buffer(12), predicate="intersects")) > 1:
+            continue
+        dead.append((e, v))
+    links = {}
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    ends = [(li, w) for li, w in _free_ends(items, links) if lens[li] >= LINK_MIN]
+    if not ends or not dead:
+        return items
+    E = [_end(items[li]["p"], w) for li, w in ends]
+    K = cKDTree(np.array([e for e, _ in E]))
+    used = set()
+    for e, v in dead:
+        nrm = np.array([-v[1], v[0]])
+        side = {1: [], -1: []}
+        for k in K.query_ball_point(e, DEAD_REACH):
+            if k in used:
+                continue
+            p, u = E[k]; q = p - e
+            along, across = q @ v, q @ nrm
+            if along < -DEAD_REACH or along > 6 or abs(across) < 1.5 or abs(across) > 15 or u @ v < 0.7:
+                continue  # must stop near the road's end, sit to one side of it and run towards the end
+            side[int(np.sign(across))].append((abs(along) + abs(across), k))
+        if not side[1] or not side[-1]:
+            continue
+        a = min(side[1])[1]; b = min(side[-1])[1]
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if la == lb or (la, wa) in links or (lb, wb) in links:
+            continue
+        ea, eb = E[a][0], E[b][0]
+        conn = np.array([ea, eb])
+        if np.hypot(*(eb - ea)) > 30 or world.through_house(LineString(conn)):
+            continue
+        used |= {a, b}
+        L = float(np.hypot(*(eb - ea)))
+        links[(la, wa)] = (lb, wb, conn, L); links[(lb, wb)] = (la, wa, conn[::-1], L)
+        stats["deadend_n"] = stats.get("deadend_n", 0) + 1
+        _tr("deadend", ea, eb, "cap")
+        stats.setdefault("_conn", []).append(("deadend", conn))
     return _assemble(items, links)
 
 
@@ -504,6 +610,7 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "caps", "frag
         items = mouths(items, world, stats)
     if "join" in rules:
         items = join(items, world, stats)
+        items = deadends(items, world, stats)
     if "corners" in rules:
         items = corners(items, world, stats)
     if "caps" in rules:
