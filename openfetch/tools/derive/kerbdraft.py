@@ -661,6 +661,115 @@ def corners(items, world, stats):
     return items
 
 
+SAME_ONLY = True      # draw only where the same side's kerb was traced further on: from the kerb across the street the
+                      # drawn lines were 32-39 % within 1 m of council kerbs (Mona Vale / Newport), from the same side 50-55 %
+FILL_MAX = 60.0       # m, longest kerb run drawn from the road layout along one street from a corner
+FILL_FRONT = 0.7      # share of a drawn run that must sit beside a property frontage (1-12 m from a lot)
+
+
+def fill(items, world, stats):
+    """Rule 3a (Jacky 6 Nov 2026, "fix it from the root"): at an open block corner where a street has no kerb on the corner's
+    side within 30 m of the junction (never traced, or the trace stops far short), the missing kerb is drawn from the road
+    layout: this side's property frontage moved out by the verge measured on the traced kerb (the same side's kerb further on,
+    else the kerb across the street; the centreline offset when no frontage), from the corner out to where the traced kerb starts again (joined onto it) or to the next junction (at most
+    FILL_MAX m). It is kept only when it runs beside property frontages (FILL_FRONT of it within 1.5 m of the traced kerb's verge), does not cut 1 m
+    into a house lot and crosses no other kerb or road. Rule 3b (blocks) then rounds the corner onto it."""
+    roads = getattr(world, "roads_fh", None)
+    if not roads or not items:
+        return items
+    import kerbaudit as ka
+    from shapely.ops import substring
+    idx = [i for i, it in enumerate(items) if len(it["p"]) > 1]
+    K = ka.Kerbs([items[i]["p"] for i in idx])
+    cs = [c for c in ka.block_corners(roads, world.lots, K, area=ka.traced_area(K)) if c["open"] or not c["covered"]]
+    made, links, done, used = [], {}, set(), set()
+    for c in cs:
+        J = c["J"]
+        for u, n, ri in ((c["u1"], c["n1"], c["roads"][0]), (c["u2"], c["n2"], c["roads"][1])):
+            key = (ri, round(float(n[0]), 1), round(float(n[1]), 1))
+            if key in done or K.offset(J, u, n) is not None:
+                continue  # a kerb within 30 m on this side: the corner rules handle it
+            w_same = K.offset(J, u, n, ka.SHORT_REACH)
+            n_ref = n if w_same is not None else -n
+            w = w_same if w_same is not None else K.offset(J, u, -n, ka.SHORT_REACH)
+            if w is None or w < 2.0 or (SAME_ONLY and w_same is None):
+                continue  # the street was not traced: out of scope
+            # the verge (kerb to property) measured on the traced kerb, then the missing kerb = this side's property
+            # frontage moved out by that verge (the centreline is not always in the middle of the road)
+            vs = [world.lot_dist(J + u * t + n_ref * w) for t in np.arange(10, ka.SHORT_REACH, 5.0)]
+            vs = [v for v in vs if v < 12]
+            verge = float(np.median(vs)) if vs else None
+            done.add(key)
+            g = roads[ri][0]
+            if Point(g.coords[0]).distance(Point(J)) > Point(g.coords[-1]).distance(Point(J)):
+                g = LineString(list(g.coords)[::-1])
+            # the same side's traced kerb further on: its end facing the corner
+            hit = None
+            if w_same is not None:
+                for k in K.tree.query(LineString([J + u * 20, J + u * ka.SHORT_REACH]).buffer(w + 3)):
+                    li = idx[int(k)]
+                    for ww in (0, 1):
+                        if (li, ww) in used:
+                            continue
+                        e, h = _end(items[li]["p"], ww)
+                        t = g.project(Point(e)); cp = np.asarray(g.interpolate(t).coords[0])
+                        if t < 15 or abs(np.hypot(*(e - cp)) - w) > 2.5 or (e - cp) @ n < 0:
+                            continue
+                        gd = np.asarray(g.interpolate(max(t - 3, 0)).coords[0]) - cp
+                        if h @ (gd / max(np.hypot(*gd), 1e-6)) < np.cos(np.radians(30)):
+                            continue
+                        if hit is None or t < hit[0]:
+                            hit = (t, li, ww, e)
+            s0 = 3.0
+            s1 = hit[0] - 0.5 if hit else min(g.length - 6.0, FILL_MAX)
+            if s1 - s0 < LINK_MIN or s1 > ka.SHORT_REACH + 5:
+                continue
+            seg = substring(g, s0, s1)
+            side = 1.0 if (np.asarray(seg.interpolate(min(5.0, seg.length)).coords[0]) - J) @ n >= 0 else -1.0
+            # offset_curve: positive = left of the line's direction; the corner side is n
+            d = np.asarray(seg.coords[1]) - np.asarray(seg.coords[0]); left = np.array([-d[1], d[0]])
+            if verge is not None:
+                fr = []
+                for t in np.arange(1.0, seg.length, 4.0):
+                    cp = np.asarray(seg.interpolate(t).coords[0])
+                    ray = LineString([cp, cp + n * 30])
+                    hits = [world.lots[int(k)] for k in world.ltree.query(ray, predicate="intersects")]
+                    if hits:
+                        fr.append(min(h.distance(Point(cp)) for h in hits) - verge)
+                if len(fr) >= 3:
+                    w = float(np.clip(np.median(fr), 2.0, 15.0))
+            run = seg.offset_curve(w if left @ n > 0 else -w)
+            if run.is_empty or run.geom_type != "LineString" or run.length < LINK_MIN:
+                continue
+            p = np.asarray(run.coords)
+            if np.hypot(*(p[0] - J)) > np.hypot(*(p[-1] - J)):
+                p = p[::-1]  # p[0] is the corner end
+            q = [run.interpolate(t) for t in np.arange(0.5, run.length, 2.0)]
+            lo, hi = ((verge - 1.5, verge + 1.5) if verge is not None else (1.0, 12.0))
+            front = np.mean([lo <= world.lot_dist(np.asarray(x.coords[0])) <= hi for x in q]) if q else 0
+            why = None
+            if front < FILL_FRONT:
+                why = "frontage"
+            elif world.through_house(run):
+                why = "house"
+            elif world.crosses_road(run):
+                why = "road"
+            elif any(idx[int(k)] != (hit[1] if hit else -1) for k in K.tree.query(run, predicate="intersects")):
+                why = "kerb"
+            if why:
+                stats["fill_" + why] = stats.get("fill_" + why, 0) + 1; _tr("fill", J, None, why); continue
+            near = idx[int(K.tree.nearest(run))]  # properties (road type, area) of the nearest traced kerb
+            m = len(items) + len(made)
+            made.append({"p": p.copy(), "i": items[near]["i"], "filled": float(run.length)})
+            if hit:
+                conn = np.array([p[-1], hit[3]]); L = float(np.hypot(*(p[-1] - hit[3])))
+                links[(m, 1)] = (hit[1], hit[2], conn, L); links[(hit[1], hit[2])] = (m, 1, conn[::-1], L)
+                used.add((hit[1], hit[2]))
+            _tr("fill", p[0], p[-1], "made")
+            stats["fill_n"] = stats.get("fill_n", 0) + 1; stats["fill_m"] = stats.get("fill_m", 0.0) + float(run.length)
+    return _assemble(items + made, links) if made else items
+
+
 BLOCK_R = {1: 12.0, 2: 9.0, 3: 6.0}  # m, round corner radius by road rank (main, collector, local)
 BLOCK_LAT = 2.5       # m, a kerb end this close sideways to the road's measured kerb line belongs to that line
 BLOCK_EXT = 40.0      # m, longest straight run a kerb end is extended to reach its corner
@@ -790,7 +899,7 @@ def drop(items, stats):
     return keep
 
 
-def draft(items, world, stats, rules=("mouths", "join", "corners", "blocks", "caps", "fragments", "drop")):
+def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "blocks", "caps", "fragments", "drop")):
     if "mouths" in rules:
         items = mouths(items, world, stats)
     if "join" in rules:
@@ -798,6 +907,8 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "blocks", "ca
         items = deadends(items, world, stats)
     if "corners" in rules:
         items = corners(items, world, stats)
+    if "fill" in rules:
+        items = fill(items, world, stats)
     if "blocks" in rules:
         items = blocks(items, world, stats)
     if "caps" in rules:

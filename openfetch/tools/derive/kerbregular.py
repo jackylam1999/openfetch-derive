@@ -635,6 +635,8 @@ def run(a):
         p["length_m"] = round(g.length, 1); p["shape"] = "regular"
         if it["filled"] > 0:
             p["filled_m"] = round(it["filled"], 1)
+            if it["filled"] > 0.9 * g.length:
+                p["source"] = "street offset"  # drawn from the road layout, not seen in the photo
         km_out += g.length / 1000; km_fill += it["filled"] / 1000
         out_feats.append({"type": "Feature", "properties": p,
                           "geometry": {"type": "LineString", "coordinates": [[round(v, 7) for v in back(x, y)] for x, y in l]}})
