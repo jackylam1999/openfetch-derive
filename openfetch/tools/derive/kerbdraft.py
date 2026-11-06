@@ -14,6 +14,7 @@ Town Hall / Waterloo picture): trace the way a person does when the kerb cannot 
   3c extend a kerb that stops mid-street (photo lost it) is carried on along its street at its own offset while it keeps its
             verge to the frontage: to the next piece of the line (tapered join), before a side street, at a dead end; it stops
             where another kerb runs alongside (never a second line in the road), at a fork, or where the frontage changes
+  3e gaps   two free ends of one kerb line still facing each other across up to 40 m (3 m sideways) are joined
   3d turn   a kerb that stops at a side street on its own side turns the corner into it (round 6/9/12 m): onto the side street's
             traced kerb, else onto one drawn from that street's frontage moved out by this kerb's verge
      dead   a dead end is capped by straights and two equal round corners on the side kerbs' own headings (no jogs)
@@ -114,6 +115,19 @@ def _end(p, w, back=3.0):
 
 def _turn(u, v):
     return float(np.arctan2(u[0] * v[1] - u[1] * v[0], u @ v))
+
+
+def _sharp(h, conn, lim=np.radians(35)):
+    """True when a connector leaving an end with heading h (or turning anywhere along itself) bends more than lim within a step:
+    a hook or a right-angle join instead of a round corner (checker round 3)."""
+    q = [np.asarray(conn[0])]
+    for x in conn[1:]:
+        if np.hypot(*(np.asarray(x) - q[-1])) > 0.3:
+            q.append(np.asarray(x))
+    if len(q) < 2:
+        return False
+    hs = [h] + [(b - a) / np.hypot(*(b - a)) for a, b in zip(q, q[1:])]
+    return any(abs(_turn(u, v)) > lim for u, v in zip(hs, hs[1:]))
 
 
 def _arc(t1, ctr, r, d, step=1.0):
@@ -1174,7 +1188,7 @@ def turn(items, world, stats):
         conn = None
         for r in (R, R / 2, 3.0):
             c_ = _corner(e, h, e2, h2, rmax=r)
-            if c_ is None or len(c_) < 3:
+            if c_ is None or len(c_) < 3 or _sharp(h, c_) or (target is not None and _sharp(-h2, c_[::-1])):
                 continue
             gc = LineString(c_)
             mid = c_[len(c_) // 2]
@@ -1220,6 +1234,62 @@ def turn(items, world, stats):
 WELD = 1.5            # m, two kerb ends this close that carry on each other's line are one kerb
 
 
+GAP_MAX = 40.0        # m, a gap in one kerb line (trees, parked cars, shadow) closed late with a straight or a taper
+GAP_LAT = 3.0         # m sideways between the two ends (the photo trace drifts under trees)
+GAP_ANG = np.radians(25)
+
+
+def gaps(items, world, stats):
+    """Rule 3e: after the other rules, two free ends of the same kerb line still facing each other across a gap (both point at
+    the other end, the lines run on the same heading, at most GAP_LAT m apart sideways) are joined: nothing else can be there.
+    Never across a street centreline, through a house lot or across another kerb."""
+    from scipy.spatial import cKDTree
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1)
+            if lens[li] >= LINK_MIN and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 1.0]
+    if len(ends) < 2:
+        return items
+    E = [_end(items[li]["p"], w, 8.0) for li, w in ends]
+    KG = [LineString(it["p"]) if len(it["p"]) > 1 else Point(0, 0) for it in items]
+    KT = STRtree(KG)
+    T = cKDTree(np.array([e for e, _ in E]))
+    cand = []
+    for a, b in T.query_pairs(GAP_MAX):
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if la == lb:
+            continue
+        (ea, ua), (eb, ub) = E[a], E[b]
+        d = eb - ea; g = np.hypot(*d)
+        if g < 1.0:
+            continue
+        if ua @ (d / g) < np.cos(GAP_ANG) or ub @ (-d / g) < np.cos(GAP_ANG) or ua @ (-ub) < np.cos(np.radians(20)):
+            continue
+        if abs(ua[0] * d[1] - ua[1] * d[0]) > GAP_LAT:
+            continue
+        conn = np.array([ea, eb]); ls = LineString(conn)
+        if _sharp(ua, conn, np.radians(20)) or _sharp(ub, conn[::-1], np.radians(20)):
+            continue
+        if world.crosses_road(ls) or world.through_house(ls):
+            continue
+        if any(int(k) not in (la, lb) for k in KT.query(ls, predicate="intersects")):
+            continue
+        cand.append((g, a, b, conn))
+    cand.sort(key=lambda c: c[0])
+    links, used = {}, set()
+    for g, a, b, conn in cand:
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if _same_chain(links, la, lb):
+            continue
+        links[(la, wa)] = (lb, wb, conn, g); links[(lb, wb)] = (la, wa, conn[::-1], g)
+        used |= {a, b}
+        stats["gap_n"] = stats.get("gap_n", 0) + 1; stats["gap_m"] = stats.get("gap_m", 0.0) + g
+        if RUNS is not None:
+            RUNS.append(("gap", "join", conn.copy()))
+    return _assemble(items, links)
+
+
 STUB_LEN = 30.0       # m, a piece shorter than this that runs mostly beside another kerb is a leftover double
 
 
@@ -1236,7 +1306,13 @@ def stubs(items, stats):
         dbl = np.mean([any(I[int(k)] != i and 1.0 <= G[I[int(k)]].distance(x) <= EXT_TWIN for k in T.query(x.buffer(EXT_TWIN)))
                        for x in q])
         if dbl > 0.5:
-            stats["stub_n"] = stats.get("stub_n", 0) + 1; continue
+            drawn = it["filled"] >= 0.5 * g.length
+            if not drawn:
+                # a kerb seen in the photo goes only when the line beside it is a longer kerb also seen in the photo
+                nb = [I[int(k)] for k in T.query(g.buffer(EXT_TWIN)) if I[int(k)] != i]
+                drawn = any(G[j].length > g.length and items[j]["filled"] < 0.5 * G[j].length for j in nb)
+            if drawn:
+                stats["stub_n"] = stats.get("stub_n", 0) + 1; continue
         keep.append(it)
     return keep
 
@@ -1400,7 +1476,7 @@ def drop(items, stats):
     return keep
 
 
-def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "extend", "turn", "blocks", "caps", "fragments", "drop", "weld")):
+def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "extend", "turn", "gaps", "blocks", "caps", "fragments", "drop", "weld")):
     if "mouths" in rules:
         items = mouths(items, world, stats)
     if "join" in rules:
@@ -1415,6 +1491,8 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "exte
     if "turn" in rules:
         items = turn(items, world, stats)
         items = extend(items, world, stats)  # carry the turned kerbs on along their side streets
+    if "gaps" in rules:
+        items = gaps(items, world, stats)
     if "blocks" in rules:
         items = blocks(items, world, stats)
     if "caps" in rules:
