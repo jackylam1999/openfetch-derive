@@ -9,6 +9,9 @@ Town Hall / Waterloo picture): trace the way a person does when the kerb cannot 
             a centreline or through a lot
   3. corner two kerbs that cross near their ends at a junction are cut at the crossing and joined with a round corner; a kerb end
             that runs over a road centreline is cut back before it
+  3b block every block corner kerbaudit.py finds open (from road centrelines and properties) is rebuilt: the kerb ends of its
+            two roads are extended to where their lines cross and rounded by road type (local 6, collector 9, main 12 m)
+     dead   a dead end is capped by straights and two equal round corners on the side kerbs' own headings (no jogs)
   4. cap    a kerb end that runs into a property (house lot, not a road lot) stops at the lot edge
   5. drop   short pieces still on their own after 1-4 (broken bits nobody can use, e.g. tram stops and medians in the CBD)
 
@@ -405,27 +408,51 @@ def join(items, world, stats):
     return _assemble(items, links)
 
 
-def _round_cap(e, v, ea, eb, rmax=6.0):
-    """Round cap across a dead end: e/v = where the road stops and its heading, ea/eb = the kerb ends on its two sides.
-    Both kerbs run on (along v) to the cap; the cap corners are rounded with radius up to rmax (a half circle when the road is
-    no wider than 2 * rmax)."""
-    nrm = np.array([-v[1], v[0]])
-    aa, ab = (ea - e) @ v, (eb - e) @ v
-    xa, xb = (ea - e) @ nrm, (eb - e) @ nrm
-    r = min(rmax, abs(xa - xb) / 2)
-    A = max(aa, ab)
-    pts = []
-    for x, s0 in ((xa, 1), (xb, -1)):
-        t = e + v * A + nrm * x                     # where this side's straight run meets the round
-        inward = -np.sign(x - (xa + xb) / 2) * nrm  # towards the other side
-        arc = _arc(t, t + inward * r, r, _turn(v, inward))
-        pts.append(arc if s0 == 1 else arc[::-1])
-    out = [ea] + list(pts[0]) + list(pts[1]) + [eb]
-    keep = [out[0]]
-    for q in out[1:]:
+def _fillet_at(P, din, dout, r):
+    """Round corner of radius r at P between a line arriving along din and one leaving along dout: (tangent in, arc, T)."""
+    d = _turn(din, dout)
+    if abs(d) < np.radians(2):
+        return P, np.array([P]), 0.0
+    T = r * np.tan(abs(d) / 2)
+    t1 = P - din * T
+    n1 = np.array([-din[1], din[0]]) * np.sign(d)
+    return t1, _arc(t1, t1 + n1 * r, r, d), T
+
+
+def _round_cap(e, v, ea, ha, eb, hb, A, rmax=6.0):
+    """Returns (cap line, metres each side kerb must be cut back so its round starts at its end) or None.
+    Clean cap across a dead end (Jacky 6 Nov 2026 "some cap looks a bit fussy"): each side kerb runs on along its OWN
+    heading (ha, hb, out of its end) to one cap line square to the road (v) at A m past the road's tip e, and the two corners
+    are rounded with the same radius (up to rmax; a half circle when the road is no wider than 2 * rmax). No jogs, no kinks:
+    straights and tangent arcs only. None if a side kerb does not run towards the cap line."""
+    nrm = np.array([-v[1], v[0]]); C = e + v * A
+    P = []
+    for p, h in ((ea, ha), (eb, hb)):
+        den = h @ v
+        if den < 0.5:
+            return None
+        t = ((C - p) @ v) / den
+        if t < -0.5:
+            return None
+        P.append((p + h * max(t, 0.0), max(t, 0.0)))
+    (Pa, ta), (Pb, tb) = P
+    W = np.hypot(*(Pb - Pa))
+    if W < 1.0:
+        return None
+    da = (Pb - Pa) / W
+    # one radius for both rounds: as asked, but both must fit across the road (a half circle at most)
+    ta_ang = np.tan(abs(_turn(ha, da)) / 2); tb_ang = np.tan(abs(_turn(da, -hb)) / 2)
+    r = rmax
+    if ta_ang + tb_ang > 1e-6:
+        r = min(r, (W - 0.01) / (ta_ang + tb_ang))
+    t1a, arca, Ta = _fillet_at(Pa, ha, da, r)
+    t1b, arcb, Tb = _fillet_at(Pb, da, -hb, r)
+    pts = [ea] + list(arca) + list(arcb) + [eb]
+    keep = [pts[0]]
+    for q in pts[1:]:
         if np.hypot(*(q - keep[-1])) > 0.05:
             keep.append(q)
-    return np.array(keep)
+    return np.array(keep), max(Ta - ta, 0.0), max(Tb - tb, 0.0)
 
 
 def deadends(items, world, stats):
@@ -487,12 +514,51 @@ on a wide one (Jacky 6 Nov 2026)."""
         ea, eb = E[a][0], E[b][0]
         if np.hypot(*(eb - ea)) > 30:
             continue
+        # the cap line: past the further kerb end, moved on towards the property ahead when the road runs on (the kerb
+        # stops a verge short of the property, the verge measured on the two side kerbs), at most 15 m further
+        A0 = max((ea - e) @ v, (eb - e) @ v, 0.0)
+        A = A0
+        hit = world.ltree.query(LineString([e, e + v * 40]), predicate="intersects")
+        if len(hit):
+            d_ahead = min(world.lots[int(k)].distance(Point(e)) for k in hit)
+            verge = min(np.mean([world.lot_dist(ea), world.lot_dist(eb)]), 6.0)
+            A = min(max(A0, d_ahead - verge), A0 + 15.0)
+        ha, hb = _end(items[la]["p"], wa, 8.0)[1], _end(items[lb]["p"], wb, 8.0)[1]  # heading of the side kerb, not its last wiggle
+        own = [r for r in world.rtree.query(Point(e).buffer(0.5)) if world.roads[int(r)].distance(Point(e)) < 0.5]
+        pa, pb = items[la]["p"], items[lb]["p"]
+        conn = None
         for rmax in (6.0, 3.0, 1.5, 0.0):  # smaller rounds where the full one would reach into a property
-            conn = _round_cap(e, v, ea, eb, rmax) if rmax else np.array([ea, eb])
-            if not world.through_house(LineString(conn)):
+            got = _round_cap(e, v, ea, ha, eb, hb, A, rmax) if rmax else None
+            qa, qb = pa, pb
+            if got is not None:
+                c0, ca, cb = got
+                # cut a side kerb back where its round has to start before its end (a straight kerb: same line)
+                for (li, ww), cut, nm in (((la, wa), ca, "a"), ((lb, wb), cb, "b")):
+                    q = pa if nm == "a" else pb
+                    L = LineString(q).length
+                    if cut > 0.05 and L - cut >= LINK_MIN:
+                        q = _cut(q, L - cut, keep_start=True) if ww == 1 else _cut(q, cut, keep_start=False)
+                        if nm == "a":
+                            qa = q
+                        else:
+                            qb = q
+                ea2, ha2 = _end(qa, wa, 8.0); eb2, hb2 = _end(qb, wb, 8.0)
+                got = _round_cap(e, v, ea2, ha2, eb2, hb2, A, rmax)
+            if got is None:
+                qa, qb = pa, pb
+                cand = np.array([ea, eb]) if not rmax else None
+            else:
+                cand = got[0]
+            # the cap may cross its own road's centreline (the centreline often stops short of the turning area), no other
+            if cand is not None and not world.through_house(LineString(cand)) and not any(
+                    int(r) not in own for r in world.rtree.query(LineString(cand), predicate="intersects")):
+                conn = cand
                 break
-        else:
+        if conn is None:
             continue
+        items[la] = dict(items[la], p=qa)
+        if lb != la:
+            items[lb] = dict(items[lb], p=qb)
         used |= {a, b}
         L = float(LineString(conn).length)
         links[(la, wa)] = (lb, wb, conn, L); links[(lb, wb)] = (la, wa, conn[::-1], L)
@@ -595,6 +661,96 @@ def corners(items, world, stats):
     return items
 
 
+BLOCK_R = {1: 12.0, 2: 9.0, 3: 6.0}  # m, round corner radius by road rank (main, collector, local)
+BLOCK_LAT = 2.5       # m, a kerb end this close sideways to the road's measured kerb line belongs to that line
+BLOCK_EXT = 40.0      # m, longest straight run a kerb end is extended to reach its corner
+
+
+def blocks(items, world, stats):
+    """Rule 3b, the root fix for open corners (Jacky 6 Nov 2026): corners come from the street layout, not from the photo.
+    kerbaudit.py finds every block corner from the road centrelines and properties and where the kerb lines of its two roads
+    cross. Where that corner is open, the kerb end of each road on the corner's side is extended to the crossing and the two are
+    joined with a round corner sized by road type (local 6 m, collector 9 m, main 12 m; smaller if the ends are close). Kept only
+    when it stays on the corner's side of both roads, crosses no centreline or other kerb and does not cut 1 m into a house lot."""
+    roads = getattr(world, "roads_fh", None)
+    if not roads or not items:
+        return items
+    import kerbaudit as ka
+    K = ka.Kerbs([it["p"] for it in items])
+    idx = [i for i, it in enumerate(items) if len(it["p"]) > 1]  # K.g[k] is items[idx[k]]
+    cs = [c for c in ka.block_corners(roads, world.lots, K, area=ka.traced_area(K)) if c["open"]]
+    links = {}
+    stats["block_open"] = len(cs)
+
+    def end_for(c, u, n, w):
+        best = None
+        J = c["J"]
+        for k in K.tree.query(LineString([J - u * 5, J + u * ka.SHORT_REACH]).buffer(w + BLOCK_LAT + 2)):
+            li = idx[int(k)]
+            for ww in (0, 1):
+                if (li, ww) in links:
+                    continue
+                e, h = _end(items[li]["p"], ww)
+                along, lat = (e - J) @ u, (e - J) @ n
+                if along < -2 or along > ka.SHORT_REACH or abs(lat - w) > BLOCK_LAT or h @ -u < np.cos(np.radians(25)):
+                    continue
+                if best is None or along < best[0]:
+                    best = (along, li, ww, e, h)
+        return best
+
+    for c in cs:
+        a = end_for(c, c["u1"], c["n1"], c["w1"]); b = end_for(c, c["u2"], c["n2"], c["w2"])
+        if a is None or b is None or (a[1], a[2]) == (b[1], b[2]):
+            stats["block_noend"] = stats.get("block_noend", 0) + 1
+            _tr("block", c["P"], None, "no kerb end on one road"); continue
+        # a kerb that runs on almost to the crossing is cut back so the corner can be round: the full radius when the
+        # piece is long enough, else what fits
+        R = BLOCK_R[c["rank"]]
+        M = np.array([a[4], -b[4]]).T
+        if abs(np.linalg.det(M)) < 1e-6:
+            stats["block_nocross"] = stats.get("block_nocross", 0) + 1; continue
+        ta, tb = np.linalg.solve(M, b[3] - a[3])
+        if max(ta, tb) > BLOCK_EXT:
+            stats["block_far"] = stats.get("block_far", 0) + 1; _tr("block", c["P"], None, "far"); continue
+        J = c["J"]
+        why = None
+        for r in (R, R / 2, 3.0, 1.0):  # a smaller round where the full one would cut into a house lot
+            need = r * np.tan(abs(_turn(a[4], -b[4])) / 2)
+            ends = []
+            for (along, li, ww, e, h), t in ((a, ta), (b, tb)):
+                p = ends[0][4] if ends and ends[0][0] == li else items[li]["p"]  # a block's own loop: both ends on one piece
+                L = LineString(p).length
+                back = min(max(need - t, 0.0), max(L - LINK_MIN, 0.0))
+                if back > 0.3:
+                    p = _cut(p, L - back, keep_start=True) if ww == 1 else _cut(p, back, keep_start=False)
+                    e, h = _end(p, ww)
+                ends.append((li, ww, e, h, p))
+            conn = _corner(ends[0][2], ends[0][3], ends[1][2], ends[1][3], rmax=r)
+            if conn is None or len(conn) < 2:
+                why = "nocross"; continue
+            g = LineString(conn)
+            side = np.minimum((conn - J) @ c["n1"], (conn - J) @ c["n2"])
+            if side.min() < -1.0:
+                why = "side"; continue
+            if world.crosses_road(g):
+                why = "road"; break
+            inner = LineString(conn[1:-1]) if len(conn) > 3 else None
+            if inner is not None and any(idx[int(k)] not in (a[1], b[1]) for k in K.tree.query(inner, predicate="intersects")):
+                why = "kerb"; break
+            if world.through_house(g):
+                why = "house"; continue
+            why = None; break
+        if why:
+            stats["block_" + why] = stats.get("block_" + why, 0) + 1; _tr("block", c["P"], None, why); continue
+        L = float(g.length)
+        for li, ww, e, h, p in ends:
+            items[li] = dict(items[li], p=p)  # the second end of one piece carries both cuts
+        links[(a[1], a[2])] = (b[1], b[2], conn, L); links[(b[1], b[2])] = (a[1], a[2], conn[::-1], L)
+        stats["block_n"] = stats.get("block_n", 0) + 1
+        stats["block_m"] = stats.get("block_m", 0.0) + L
+    return _assemble(items, links)
+
+
 def caps(items, world, stats):
     """Rule 4: a kerb end inside a house lot is cut back to where it enters the lot."""
     for k, it in enumerate(items):
@@ -634,7 +790,7 @@ def drop(items, stats):
     return keep
 
 
-def draft(items, world, stats, rules=("mouths", "join", "corners", "caps", "fragments", "drop")):
+def draft(items, world, stats, rules=("mouths", "join", "corners", "blocks", "caps", "fragments", "drop")):
     if "mouths" in rules:
         items = mouths(items, world, stats)
     if "join" in rules:
@@ -642,6 +798,8 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "caps", "frag
         items = deadends(items, world, stats)
     if "corners" in rules:
         items = corners(items, world, stats)
+    if "blocks" in rules:
+        items = blocks(items, world, stats)
     if "caps" in rules:
         items = caps(items, world, stats)
     if "fragments" in rules:

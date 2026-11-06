@@ -620,7 +620,9 @@ def run(a):
     if "--roads" in a:
         import kerbdraft
         print("drafting", len(items), file=sys.stderr, flush=True)
+        import kerbaudit
         world = kerbdraft.World(load_faces(lots_dir), load_faces(a[a.index("--roads") + 1]))
+        world.roads_fh = kerbaudit.load_roads(a[a.index("--roads") + 1])
         dst = {}
         items = kerbdraft.draft(items, world, dst)
         stats["draft"] = dst
@@ -658,7 +660,7 @@ def lots(a, url="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land
             r = json.load(urllib.request.urlopen(urllib.request.Request(url + "?" + urllib.parse.urlencode(q),
                                                                           headers={"User-Agent": "openfetch-derive"}), timeout=120))
             fs = r.get("features", []); feats += fs; off += len(fs)
-            if len(fs) < 2000:
+            if not fs:  # the server may page by fewer than asked (100 since Nov 2026): stop only on an empty page
                 break
         json.dump({"type": "FeatureCollection", "features": feats}, open(fn, "w"))
         print(x, y, len(feats), file=sys.stderr, flush=True)
