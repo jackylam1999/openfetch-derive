@@ -405,9 +405,33 @@ def join(items, world, stats):
     return _assemble(items, links)
 
 
+def _round_cap(e, v, ea, eb, rmax=6.0):
+    """Round cap across a dead end: e/v = where the road stops and its heading, ea/eb = the kerb ends on its two sides.
+    Both kerbs run on (along v) to the cap; the cap corners are rounded with radius up to rmax (a half circle when the road is
+    no wider than 2 * rmax)."""
+    nrm = np.array([-v[1], v[0]])
+    aa, ab = (ea - e) @ v, (eb - e) @ v
+    xa, xb = (ea - e) @ nrm, (eb - e) @ nrm
+    r = min(rmax, abs(xa - xb) / 2)
+    A = max(aa, ab)
+    pts = []
+    for x, s0 in ((xa, 1), (xb, -1)):
+        t = e + v * A + nrm * x                     # where this side's straight run meets the round
+        inward = -np.sign(x - (xa + xb) / 2) * nrm  # towards the other side
+        arc = _arc(t, t + inward * r, r, _turn(v, inward))
+        pts.append(arc if s0 == 1 else arc[::-1])
+    out = [ea] + list(pts[0]) + list(pts[1]) + [eb]
+    keep = [out[0]]
+    for q in out[1:]:
+        if np.hypot(*(q - keep[-1])) > 0.05:
+            keep.append(q)
+    return np.array(keep)
+
+
 def deadends(items, world, stats):
     """A road that stops (a centreline end that touches no other road) is a dead end: the kerb on its left and the kerb on its
-    right are closed with a straight cap across the end of the road (Jacky 6 Nov 2026)."""
+    right are closed across the end of the road with a round cap: a half circle on a narrow road, a straight with round corners
+on a wide one (Jacky 6 Nov 2026)."""
     if not world.roads:
         return items
     from scipy.spatial import cKDTree
@@ -461,11 +485,16 @@ def deadends(items, world, stats):
         if la == lb or (la, wa) in links or (lb, wb) in links:
             continue
         ea, eb = E[a][0], E[b][0]
-        conn = np.array([ea, eb])
-        if np.hypot(*(eb - ea)) > 30 or world.through_house(LineString(conn)):
+        if np.hypot(*(eb - ea)) > 30:
+            continue
+        for rmax in (6.0, 3.0, 1.5, 0.0):  # smaller rounds where the full one would reach into a property
+            conn = _round_cap(e, v, ea, eb, rmax) if rmax else np.array([ea, eb])
+            if not world.through_house(LineString(conn)):
+                break
+        else:
             continue
         used |= {a, b}
-        L = float(np.hypot(*(eb - ea)))
+        L = float(LineString(conn).length)
         links[(la, wa)] = (lb, wb, conn, L); links[(lb, wb)] = (la, wa, conn[::-1], L)
         stats["deadend_n"] = stats.get("deadend_n", 0) + 1
         _tr("deadend", ea, eb, "cap")
