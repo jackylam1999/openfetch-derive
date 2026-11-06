@@ -663,6 +663,7 @@ def corners(items, world, stats):
 
 SAME_ONLY = True      # draw only where the same side's kerb was traced further on: from the kerb across the street the
                       # drawn lines were 32-39 % within 1 m of council kerbs (Mona Vale / Newport), from the same side 50-55 %
+FILL_RESERVE = 7.0    # m, narrowest road reserve (property to property) a kerb is drawn in
 FILL_MAX = 60.0       # m, longest kerb run drawn from the road layout along one street from a corner
 FILL_FRONT = 0.7      # share of a drawn run that must sit beside a property frontage (1-12 m from a lot)
 
@@ -685,10 +686,13 @@ def fill(items, world, stats):
     made, links, done, used = [], {}, set(), set()
     for c in cs:
         J = c["J"]
-        for u, n, ri in ((c["u1"], c["n1"], c["roads"][0]), (c["u2"], c["n2"], c["roads"][1])):
+        arms = ((c["u1"], c["n1"], c["roads"][0]), (c["u2"], c["n2"], c["roads"][1]))
+        for a_i, (u, n, ri) in enumerate(arms):
             key = (ri, round(float(n[0]), 1), round(float(n[1]), 1))
             if key in done or K.offset(J, u, n) is not None:
                 continue  # a kerb within 30 m on this side: the corner rules handle it
+            ou, on, _ = arms[1 - a_i]
+            w_cross = K.offset(J, ou, on, ka.SHORT_REACH)  # the cross street's kerb on this corner
             w_same = K.offset(J, u, n, ka.SHORT_REACH)
             n_ref = n if w_same is not None else -n
             w = w_same if w_same is not None else K.offset(J, u, -n, ka.SHORT_REACH)
@@ -703,6 +707,23 @@ def fill(items, world, stats):
             g = roads[ri][0]
             if Point(g.coords[0]).distance(Point(J)) > Point(g.coords[-1]).distance(Point(J)):
                 g = LineString(list(g.coords)[::-1])
+            # a centreline that runs through property lots (a walkway or unbuilt road between houses) is no street with kerbs
+            g60 = substring(g, 0, min(g.length, FILL_MAX))
+            inlot = sum(world.lots[int(k)].intersection(g60).length for k in world.ltree.query(g60, predicate="intersects"))
+            if inlot > 0.3 * g60.length:
+                stats["fill_inlot"] = stats.get("fill_inlot", 0) + 1; continue
+            # ... or one squeezed between properties: a reserve under FILL_RESERVE m wide is a lane or footpath, not a kerbed street
+            wid = []
+            for t in np.arange(2.0, g60.length, 5.0):
+                cp = np.asarray(g60.interpolate(t).coords[0])
+                d = []
+                for sgn in (1, -1):
+                    ray = LineString([cp, cp + n * sgn * 20])
+                    hs = [world.lots[int(k)].distance(Point(cp)) for k in world.ltree.query(ray, predicate="intersects")]
+                    d.append(min(hs) if hs else 20.0)
+                wid.append(sum(d))
+            if wid and np.median(wid) < FILL_RESERVE:
+                stats["fill_lane"] = stats.get("fill_lane", 0) + 1; continue
             # the same side's traced kerb further on: its end facing the corner
             hit = None
             if w_same is not None:
@@ -720,7 +741,8 @@ def fill(items, world, stats):
                             continue
                         if hit is None or t < hit[0]:
                             hit = (t, li, ww, e)
-            s0 = 3.0
+            # start past the cross street's kerb line, so the corner rule has room to round onto it
+            s0 = (w_cross + 1.0) if w_cross is not None else 6.0
             s1 = hit[0] - 0.5 if hit else min(g.length - 6.0, FILL_MAX)
             if s1 - s0 < LINK_MIN or s1 > ka.SHORT_REACH + 5:
                 continue
