@@ -19,7 +19,8 @@ corner or a gap.
 
 out.json: {"corners", "covered", "open", "open_pct", "ends", "ends_unexplained", "points": [[x, y, gap_m, rank], ...] (open
 corners, projected CRS, gap_m = distance from P to the nearest kerb, rank = road rank 1 main .. 3 local), "end_points": [[x, y]],
-"kinks" (sharp kinks or wobbles anywhere), "caps_fussy" (those within 25 m of a dead end) with their points}.
+"free_ends" / "free_ends_per_km" (ends with no kerb within 2 m, explained or
+not; "free_ends_inner" leaves out those at the edge of the traced area, where tracing simply stopped), "kinks" (sharp kinks or wobbles anywhere), "caps_fussy" (those within 25 m of a dead end) with their points}.
 
 Fussy shapes. Every kerb is walked every 1 m: a heading change of more than 45 deg within 1 m is a kink (round corners of 1.3 m or more
 turn less), and turning back and forth more than 60 deg beyond the net turn within 10 m is a jog or wobble.
@@ -236,6 +237,47 @@ def loose_ends(K, roads, lots, rtree=None):
     return loose, n
 
 
+def twins(K, lo=1.0, hi=4.5, step=2.0):
+    """Share of kerb length (%) with another kerb piece running alongside it lo-hi m away: a doubled line in the road, or a
+    median / island (council lines: Parramatta 11.6 %, Mona Vale 5.6 %, 6 Nov 2026). Gated on its rise, not its level."""
+    tot = dbl = 0
+    for i, g in enumerate(K.g):
+        for t in np.arange(step / 2, g.length, step):
+            p = g.interpolate(t); tot += 1
+            a = np.asarray(g.interpolate(max(t - 1, 0)).coords[0]); b = np.asarray(g.interpolate(min(t + 1, g.length)).coords[0])
+            u = b - a; nu = np.hypot(*u)
+            if nu < 1e-6:
+                continue
+            u = u / nu
+            for k in K.tree.query(p.buffer(hi)):
+                k = int(k)
+                if k == i:
+                    continue
+                gk = K.g[k]; d = gk.distance(p)
+                if lo <= d <= hi:
+                    tk = gk.project(p)
+                    c = np.asarray(gk.interpolate(max(tk - 1, 0)).coords[0]); e = np.asarray(gk.interpolate(min(tk + 1, gk.length)).coords[0])
+                    v = e - c; nv = np.hypot(*v)
+                    if nv > 1e-6 and abs(u @ v) / nv > np.cos(np.radians(20)):
+                        dbl += 1; break
+    return round(100.0 * dbl / max(tot, 1), 2)
+
+
+def free_ends(K):
+    """Every kerb end with no other kerb within END_NEAR m (closed loops have none), explained or not: the plain count a
+    drawing shows as a line that stops. Council kerbs (Parramatta, 6 Nov 2026) have 2.8 per km."""
+    out = []
+    for i, p in enumerate(K.p):
+        if np.hypot(*(p[0] - p[-1])) < 1.0:
+            continue
+        for e in (p[0], p[-1]):
+            pe = Point(e)
+            if any(int(k) != i and K.g[int(k)].distance(pe) <= END_NEAR for k in K.tree.query(pe.buffer(END_NEAR))):
+                continue
+            out.append([round(float(e[0]), 1), round(float(e[1]), 1)])
+    return out
+
+
 KINK_TURN = np.radians(45)   # heading change within 1 m: a sharp kink (round corners of 1.3 m+ turn less, half circles
                              # across narrow lanes included)
 WIGGLE = np.radians(60)      # turning back and forth within 10 m beyond the net turn: a jog or wobble
@@ -310,7 +352,12 @@ def audit(kerbs, lots, roads):
             TT = cKDTree(np.array(tips))
             fussy = [k for k in kk if TT.query(k[:2])[0] < DEAD_NEAR]
     km = sum(g.length for g in K.g) / 1000
-    return {"corners": len(cs), "covered": len(cov), "open": len(op),
+    free = free_ends(K)
+    edge = traced_area(K).boundary
+    inner = [q for q in free if edge.distance(Point(q)) >= EDGE]
+    return {"twin_pct": twins(K), "free_ends": len(free), "free_ends_per_km": round(len(free) / max(km, 1e-6), 2),
+            "free_ends_inner": len(inner), "free_ends_inner_per_km": round(len(inner) / max(km, 1e-6), 2),
+            "ends_unexplained_per_km": round(len(loose) / max(km, 1e-6), 2), "corners": len(cs), "covered": len(cov), "open": len(op),
             "open_pct": round(100.0 * len(op) / max(len(cov), 1), 2),
             "short": sum(1 for c in op if c.get("short")), "ends": n, "ends_unexplained": len(loose),
             "points": [[round(float(c["P"][0]), 1), round(float(c["P"][1]), 1), round(c["gap"], 1), c["rank"]] for c in op],

@@ -6,6 +6,9 @@
 spots.json: a list of [x, y, ...] in EPSG 7856, or a kerbaudit.py result: then the worst spots (open corners on the busiest roads
 with the biggest gap, then fussy dead-end caps) make the per-version sheet. With --before,
 each spot gets two tiles side by side: the other kerbs (grey label "before") and these kerbs ("after").
+With --ref council.json (a kerbscore.py fetch, EPSG 7856 labels) the council's own kerbs are drawn yellow under ours, so a checker
+sees where we differ from the official lines; --datum 94 when that council's layer is really GDA94 (Parramatta): its lines and
+the spots (a kerbscore.py --out file) are moved back onto GDA2020 first.
 """
 import io
 import json
@@ -35,11 +38,14 @@ def photo(x0, y0, x1, y1):
     return Image.new("RGB", (PX, PX), (60, 60, 60))
 
 
-def tile(kerbs, x, y, m, text):
+def tile(kerbs, x, y, m, text, ref=None):
     x0, y0, x1, y1 = x - m / 2, y - m / 2, x + m / 2, y + m / 2
     im = photo(x0, y0, x1, y1); dr = ImageDraw.Draw(im)
     s = PX / m
     clip = box(x0 - 5, y0 - 5, x1 + 5, y1 + 5)
+    for k in ref or []:
+        if box(*k.bounds).intersects(clip):
+            dr.line([((px - x0) * s, (y1 - py) * s) for px, py in np.asarray(k.coords)], fill=(255, 210, 0), width=5)
     for k in kerbs:
         kx, ky = k[:, 0], k[:, 1]
         if kx.max() < clip.bounds[0] or kx.min() > clip.bounds[2] or ky.max() < clip.bounds[1] or ky.min() > clip.bounds[3]:
@@ -71,6 +77,16 @@ def main(a):
     label = a[a.index("--label") + 1] if "--label" in a else "open corner"
     kerbs = ka.read_kerbs(a[0])
     spots = json.load(open(a[1]))
+    ref = None
+    if "--ref" in a:
+        import kerbscore
+        from pyproj import Transformer
+        back = Transformer.from_crs(28356, 7856, always_xy=True).transform if "--datum" in a and a[a.index("--datum") + 1] == "94" else None
+        ref = kerbscore.lines_of(json.load(open(a[a.index("--ref") + 1])), back)
+        if isinstance(spots, dict) and "open_ends" in spots:
+            spots = spots["open_ends"]
+        if back:
+            spots = [list(back(sp[0], sp[1])) for sp in spots]
     if isinstance(spots, dict):
         spots = worst(spots, n)
     spots = spots[:n]
@@ -83,9 +99,9 @@ def main(a):
         r, c = divmod(i, cols)
         if before:
             sheet.paste(tile(before, x, y, m, f"{label} {i + 1} before"), (c * 2 * (PX + 4), r * (PX + 4)))
-            sheet.paste(tile(kerbs, x, y, m, f"{label} {i + 1} after"), ((c * 2 + 1) * (PX + 4), r * (PX + 4)))
+            sheet.paste(tile(kerbs, x, y, m, f"{label} {i + 1} after", ref), ((c * 2 + 1) * (PX + 4), r * (PX + 4)))
         else:
-            sheet.paste(tile(kerbs, x, y, m, f"{label} {i + 1}"), (c * (PX + 4), r * (PX + 4)))
+            sheet.paste(tile(kerbs, x, y, m, f"{label} {i + 1}", ref), (c * (PX + 4), r * (PX + 4)))
     sheet.save(a[2])
     print(a[2], len(spots))
 
