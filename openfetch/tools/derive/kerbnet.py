@@ -38,15 +38,17 @@ PAR = np.cos(np.radians(20))
 ROAD_GAP = 20.0    # m, a street end this near another street (ahead) is a gap in the road data
 GUIDE_REACH, GUIDE_START, GUIDE_MAX = 10.0, 3.0, 60.0  # m: an open end this near a block loop is walked along it
 GUIDE_TAPER = 10.0  # m, the end (and the kerb it reaches) blend onto the loop over this length
-GUIDE_DIRECT = 15.0  # m, a kerb this near the end is joined straight when the loop path is twice as long
 SMOOTH_TURN, SMOOTH_STEP = 50.0, 2.0  # deg per m: a join turning faster than this is a spike, not a kerb
 CORE_MIN_W = 5.0   # m, mean width (2 x area / perimeter) under which a block core is a sliver
 GUIDE_CUTS = (0.0, 4.0, 8.0)  # m, a join that spikes is tried again from this far back along the traced end
 LINE_MAX, LINE_LAT, LINE_ANG = 80.0, 1.5, 10.0  # m, m, deg: the same kerb carrying on straight ahead is joined
+FOLLOW, MERGE_ANG = 10.0, 25.0  # m, deg: a join may end mid-kerb only on a kerb the loop follows on, entering within 25 deg
+SOFT_SIGMA = 1.5   # m, final smoothing of every line (soften)
+CROSSOVER = 15.0   # m, a fill shorter than this from the middle of one kerb to the middle of another is a crossover
 DEAD_CLEAR = 30.0  # m, a dangling centreline end this near another road is a data gap, not a dead end
 DUP = 2.5          # m, a traced piece this close to a block kerb is that kerb
 TWIN = 6.0         # m, a fill this close beside a parallel traced kerb would double it
-T_END, T_ANG = 3.0, 35.0  # m, deg: a fill may join a traced kerb mid-way only within this angle of it
+T_END = 3.0        # m, this near a kerb's end counts as meeting it end-on
 FILL_MIN = 4.0     # m, shorter gaps between traced kerb and the block loop are left to the weld
 KEEP_MIN = 8.0     # m, shorter leftovers of traced kerb are noise
 
@@ -302,6 +304,24 @@ def build(traced, lots, roads, area=None, stats=None):
     return out
 
 
+def tangent_smooth(c, h0=None, h1=None, it=3):
+    """Chaikin-smoothed line through c with its ends kept: it leaves c[0] along h0 and enters c[-1] along h1 (unit vectors),
+    so a join flows out of one kerb and into the next without a corner (Jacky 7 Nov 2026: "smooth that out")."""
+    c = np.asarray(c, dtype=float)
+    L = LineString(c).length
+    if L < 1.0 or len(c) < 2:
+        return c
+    k = min(3.0, L / 3)
+    pts = [c[0]] + ([c[0] + h0 * k] if h0 is not None else []) + list(c[1:-1]) + ([c[-1] - h1 * k] if h1 is not None else []) + [c[-1]]
+    P = np.asarray(pts)
+    for _ in range(it):
+        Q = [P[0]]
+        for a, b in zip(P[:-1], P[1:]):
+            Q += [0.75 * a + 0.25 * b, 0.25 * a + 0.75 * b]
+        Q.append(P[-1]); P = np.asarray(Q)
+    return P
+
+
 def smooth(c, head=None, lim=SMOOTH_TURN):
     """True when line c never turns more than lim degrees within SMOOTH_STEP m (resampled), counting the heading it leaves
     the kerb it starts from (head, a unit vector), so a join is a curve and not a spike, V or wedge."""
@@ -376,18 +396,25 @@ def fill(traced, loops, streets=(), area=None, stats=None):
                 stats["fill_twin"] = stats.get("fill_twin", 0) + 1; continue  # runs beside a traced kerb: a second copy of it
             if stt is not None and any(sl[int(k)].intersects(q) for k in stt.query(q)):
                 stats["fill_cross"] = stats.get("fill_cross", 0) + 1; continue  # a kerb never crosses a street
-            c = np.asarray(q.coords); ok = True
+            c = np.asarray(q.coords); ok = True; mids = []
             for j in (0, -1):
                 e = Point(c[j]); bs = [t for t in near if t.distance(e) <= DUP + 0.6]
                 if bs:
                     b = min(bs, key=lambda b: b.distance(e)); tb = b.project(e); s0 = np.asarray(b.interpolate(tb).coords[0])
                     # meets that kerb end-on, or runs on along it; a fill hitting the middle of a kerb side-on is a T, not a kerb
                     d_in = tangent(q, 0.0 if j == 0 else q.length)
-                    if min(tb, b.length - tb) > T_END and abs(tangent(b, tb) @ d_in) < np.cos(np.radians(T_ANG)):
-                        ok = False; break
+                    if min(tb, b.length - tb) > T_END:
+                        mids.append(id(b))
+                        if abs(tangent(b, tb) @ d_in) < np.cos(np.radians(MERGE_ANG)):
+                            ok = False; break
                     c = np.vstack([s0, c]) if j == 0 else np.vstack([c, s0])
             if not ok:
                 stats["fill_tee"] = stats.get("fill_tee", 0) + 1; continue
+            if len(mids) == 2 and mids[0] != mids[1] and q.length < CROSSOVER:
+                # both ends land mid-way on two different kerbs a few metres apart: a crossover between two parallel kerbs
+                # (the V at tile 2, Jacky 7 Nov 2026), not a missing piece of either
+                stats["fill_crossover"] = stats.get("fill_crossover", 0) + 1; continue
+            c = tangent_smooth(c)
             if not smooth(c):
                 stats["fill_spike"] = stats.get("fill_spike", 0) + 1; continue
             if along_bridge(c, stt, sl) > 0.3:
@@ -412,18 +439,30 @@ def guide(lines, loops, streets=(), stats=None):
     done = 0
 
     def walk(i, j, e, hd, lp, te):
-        """The join from end e (heading hd) of kerb i along loop lp: (path, line), or why it is not drawn."""
+        """The join from end e (heading hd) of kerb i along loop lp: (path, line), or why it is not drawn. It may end only where
+        it meets another kerb's end, or where it runs into a kerb the loop then FOLLOWS (the same kerb line): a kerb the loop only
+        passes (the kerb across a narrow carriageway, a median) is not this kerb, and joining it would make a V or a second
+        parallel line poking out (Jacky 7 Nov 2026). The path is then smoothed so it leaves the end and enters the kerb tangentially."""
         t0 = lp.project(Point(e)); sg = 1.0 if tangent(lp, t0) @ hd >= 0 else -1.0
+        at = lambda x: lp.interpolate((t0 + sg * x) % lp.length)
         path = [e]; hit = None
         for step in np.arange(GUIDE_START, GUIDE_MAX, 1.0):
-            q = lp.interpolate((t0 + sg * step) % lp.length); path.append(np.asarray(q.coords[0]))
+            q = at(step); path.append(np.asarray(q.coords[0]))
             # its own kerb counts only far along it from the end (closing its own loop), never the stretch it came from
             near = [m for m in near_ids(q.buffer(DUP)) if G[m].distance(q) <= DUP
                     and not (m == i and abs(G[i].project(q) - te) < 30.0)]
             if near:
-                m = min(near, key=lambda m: G[m].distance(q)); hit = np.asarray(G[m].interpolate(G[m].project(q)).coords[0]); break
+                m = min(near, key=lambda m: G[m].distance(q)); hit = np.asarray(G[m].interpolate(G[m].project(q)).coords[0])
+                break
         if hit is None:
             return "no_kerb"
+        hk = G[m]; th_t = hk.project(Point(hit))
+        at_end = min(th_t, hk.length - th_t) <= T_END
+        if not at_end:
+            # the same kerb: the loop keeps running along it for FOLLOW m after the meeting point
+            fol = [hk.distance(at(step + x)) <= DUP + 0.5 for x in np.arange(1.0, FOLLOW + 1.0, 1.0)]
+            if np.mean(fol) < 0.7:
+                return "not_same_kerb"
         # taper: the end's offset from the loop fades out over the first GUIDE_TAPER m, the hit's fades in over the last
         P = np.asarray(path[1:]); n = len(P)
         if n >= 2:
@@ -432,21 +471,20 @@ def guide(lines, loops, streets=(), stats=None):
             a0 = np.clip(1 - (d - GUIDE_START) / GUIDE_TAPER, 0, 1); a1 = np.clip(1 - (d[-1] - d) / GUIDE_TAPER, 0, 1)
             path = [e] + list(P + a0[:, None] * o0 + a1[:, None] * o1)
         path.append(hit)
-        if np.hypot(*(hit - e)) < GUIDE_DIRECT and LineString(path).length > 2 * np.hypot(*(hit - e)):
-            path = [e, hit]   # the next kerb is just ahead: a straight join, not a detour out to the loop and back
-        w = LineString(path)
-        hk = G[m]; th = tangent(hk, hk.project(Point(hit))); dn = np.asarray(path[-1]) - np.asarray(path[-2])
-        dn = dn / (np.hypot(*dn) or 1)
-        at_end = min(hk.project(Point(hit)), hk.length - hk.project(Point(hit))) <= T_END
-        if not smooth(np.asarray(path[:4]), hd):
-            return "spike_head"
-        if not smooth(np.asarray(path)):
-            return "spike_body"
-        if not at_end and abs(th @ dn) < np.cos(np.radians(SMOOTH_TURN)):
+        th = tangent(hk, th_t); dn = np.asarray(path[-1]) - np.asarray(path[-2]); dn = dn / (np.hypot(*dn) or 1)
+        if th @ dn < 0:
+            th = -th
+        if not at_end and th @ dn < np.cos(np.radians(MERGE_ANG)):
             return "spike_hit"
+        path = tangent_smooth(np.asarray(path), hd, th if not at_end else None)
+        w = LineString(path)
+        if not smooth(path[:6], hd):
+            return "spike_head"
+        if not smooth(path):
+            return "spike_body"
         if stt is not None and any(sl[int(x)].intersects(w) for x in stt.query(w)):
             return "cross"
-        if along_bridge(np.asarray(path), stt, sl) > 0.3:
+        if along_bridge(path, stt, sl) > 0.3:
             return "bridge"
         return path, w
 
@@ -466,15 +504,18 @@ def guide(lines, loops, streets=(), stats=None):
                 if dm @ hd < np.cos(np.radians(LINE_ANG)):
                     continue   # that kerb must carry on in the same direction from its end
                 if best is None or along < best[0]:
-                    best = (along, q)
+                    best = (along, q, m, k)
         if best is None:
             return None
-        w = LineString([e, best[1]])
+        q = best[1]; nb = np.asarray(G[best[2]].interpolate(3.0 if best[3] == 0 else G[best[2]].length - 3.0).coords[0])
+        h1 = nb - q; h1 = h1 / (np.hypot(*h1) or 1)
+        pts = tangent_smooth(np.array([e, q]), hd, h1)
+        w = LineString(pts)
         if stt is not None and any(sl[int(x)].intersects(w) for x in stt.query(w)):
             return None
-        if along_bridge(np.asarray(w.coords), stt, sl) > 0.3:
+        if along_bridge(pts, stt, sl) > 0.3:
             return None
-        return [e, best[1]], w
+        return pts, w
 
     for i, c in enumerate(list(out)):
         if len(c) < 2 or np.hypot(*(c[0] - c[-1])) < 1.0:
@@ -519,6 +560,28 @@ def guide(lines, loops, streets=(), stats=None):
             G.append(w); ADD.append(len(G) - 1)
     stats["guide_closed"] = done
     return out
+
+
+def soften(c, sigma=SOFT_SIGMA, step=0.5):
+    """The line resampled every step m and Gaussian-smoothed (sigma m): sideways steps and jogs where traced pieces were welded at
+    slightly different offsets become gentle S-bends over ~4 sigma, wobbles go, corners keep their place (a 6 m round corner moves
+    under 0.3 m). Ends stay put; a closed line stays closed (Jacky 7 Nov 2026: "smooth that out, it still looks fussy")."""
+    from scipy.ndimage import gaussian_filter1d
+    c = np.asarray(c, dtype=float); g = LineString(c)
+    if g.length < 4 * sigma:
+        return c
+    closed = np.hypot(*(c[0] - c[-1])) < 0.5
+    n = max(int(g.length / step), 4)
+    P = np.array([g.interpolate(x).coords[0] for x in np.linspace(0, g.length, n + 1)])
+    if closed:
+        Q = np.c_[gaussian_filter1d(P[:-1, 0], sigma / step, mode="wrap"), gaussian_filter1d(P[:-1, 1], sigma / step, mode="wrap")]
+        Q = np.vstack([Q, Q[:1]])
+    else:
+        Q = np.c_[gaussian_filter1d(P[:, 0], sigma / step, mode="nearest"), gaussian_filter1d(P[:, 1], sigma / step, mode="nearest")]
+        # pin the ends: blend back to the original over the first and last 2 sigma so joins to other kerbs stay exact
+        w = np.clip(np.minimum(np.arange(len(P)), np.arange(len(P))[::-1]) * step / (2 * sigma), 0, 1)[:, None]
+        Q = w * Q + (1 - w) * P
+    return np.asarray(LineString(Q).simplify(0.05).coords)
 
 
 def props(o, kind, traced_path, roads, _c={}):
@@ -570,6 +633,8 @@ def main(a):
         n_tr = len(out) - st["fill_pieces"]; n_fi = len(out)
         out = guide(out, loops, [g for g, fh in roads if fh not in ka.SKIP_FH], st)   # no join across any street, lanes included
         kind = ["traced"] * n_tr + ["block fill"] * (n_fi - n_tr) + ["block guide"] * (len(out) - n_fi)
+        if "--no-soften" not in a:
+            out = [soften(o) for o in out]
     else:
         kind = ["block loop"] * len(out)
     feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
