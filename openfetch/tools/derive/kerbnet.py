@@ -15,6 +15,7 @@ Here the street layout decides where kerbs ARE and the photo decides where exact
      not kerbs; Jacky 7 Nov 2026), doubles a traced kerb, or turns sharper than SMOOTH_TURN per SMOOTH_STEP (no spikes, Vs).
 
     python3 kerbnet.py traced.json(lon/lat) lots_dir roads_dir out.json [--box x0 y0 x1 y1] [--traced-only-area] [--loops]
+        [--keep-motorway] [--lot-guide]   (motorway stretches are taken out unless --keep-motorway; --lot-guide is a tested-off option)
 
 Default output: traced kerbs + loop parts that fill their gaps (fill()); --loops writes the fused block loops instead.
 """
@@ -135,6 +136,207 @@ def close_gaps(streets, stats):
     return out
 
 
+LOT_GUIDE = False   # --lot-guide: block loops follow the lot fronts (road reserve edge) moved out by the street's verge.
+# Tested 7 Nov 2026 (thread "Guide kerbs with property boundaries"), OFF by default: Parramatta box found 69.7 -> 68.1, precise
+# 82.8 -> 82.1, open ends 137 -> 201; lot-front loops alone precise 75.8 vs centreline loops 79.3. The cadastre sits up to ~5 m
+# off the aerial in places (333028 6244986: south lot fronts lie in the carriageway), and the traced kerbs already hug the lots
+# (0.4 % of traced points fall inside a house lot), so drift there comes FROM following the lots; lots cannot correct it.
+VERGE_DEFAULT = {1: 4.5, 2: 4.0, 3: 3.8}   # m, lot front to kerb when no traced kerb measured it (Parramatta council median 4.1)
+VERGE_RANGE = (1.5, 7.5)   # m, a measured verge outside this is not a footpath strip (a median, a car park, a path)
+RESERVE_MAX = {1: 30.0, 2: 18.0, 3: 13.0}   # m, centreline to lot front beyond which the lots do not show where the kerb is
+CL_CLEAR = 2.8     # m, a lot-guided kerb stays at least this far from its street's centreline (half a lane)
+
+
+def lot_bands(f, edge_ids, pieces, rank, house, ht, T, tt, stats):
+    """Jacky 7 Nov 2026: "property boundary is going to be very helpful ... especially for resi suburbs". For each street edge of a
+    block whose lot fronts sit a normal distance from the centreline, the kerb is the lot front moved out into the road reserve by
+    that street side's verge (measured from the traced kerb against the lot front, else a default by road type). Returns bands
+    (the region between the centreline and that kerb, per edge) and the edges done; other edges keep the centreline offset."""
+    if ht is None:
+        return [], set()
+    hs = [house[int(k)] for k in ht.query(f, predicate="intersects")]
+    hs = [h.intersection(f) for h in hs if h.intersection(f).area > 0.5 * h.area]
+    if not hs:
+        return [], set()
+    L = unary_union([h.buffer(0.2, join_style="mitre") for h in hs]).buffer(-0.2, join_style="mitre")
+    if L.is_empty:
+        return [], set()
+    Lb = L.boundary
+    bands, done = [], set()
+    for k in edge_ids:
+        pc = pieces[k]
+        if pc.length < 4:
+            continue
+        # centreline to lot front along the edge, on the block's side
+        fr = []
+        inside = f.buffer(-0.5)
+        for s_ in np.arange(1.0, pc.length - 1.0, 3.0) if pc.length > 3 else [pc.length / 2]:
+            c = np.asarray(pc.interpolate(s_).coords[0]); tg = tangent(pc, s_); n = np.array([-tg[1], tg[0]])
+            for sg in (1, -1):
+                if not inside.contains(Point(c + n * sg * 1.0)):
+                    continue
+                ray = LineString([c, c + n * sg * 40])
+                x = ray.intersection(L)
+                if not x.is_empty:
+                    fr.append(Point(c).distance(x))
+        rk = rank[k]
+        if len(fr) < max(2, 0.6 * pc.length / 3.0) or np.median(fr) > RESERVE_MAX[rk] or np.median(fr) < CL_CLEAR + VERGE_RANGE[0]:
+            stats["lot_edge_skip"] = stats.get("lot_edge_skip", 0) + 1
+            continue
+        D = float(np.percentile(fr, 90))
+        zone = pc.buffer(D + 1.0).intersection(f)
+        # verge: traced kerb (parallel to the edge, between centreline and lot front) to the lot front
+        vs = []
+        if tt is not None:
+            for q in tt.query(zone):
+                g = T[int(q)]
+                part = g.intersection(zone)
+                for seg in getattr(part, "geoms", [part]):
+                    if seg.geom_type != "LineString" or seg.length < 3:
+                        continue
+                    for t_ in np.arange(0.5, seg.length, 2.0):
+                        p = seg.interpolate(t_)
+                        if abs(tangent(seg, t_) @ tangent(pc, pc.project(p))) < PAR:
+                            continue
+                        dl = L.distance(p)
+                        if L.contains(p) or not (VERGE_RANGE[0] <= dl <= VERGE_RANGE[1]):
+                            continue
+                        if pc.distance(p) < CL_CLEAR:
+                            continue
+                        vs.append(dl)
+        if len(vs) >= 4:
+            v = float(np.median(vs)); src = "lot traced"
+        else:
+            v = VERGE_DEFAULT[rk]; src = "lot default"
+        v = min(v, max(VERGE_RANGE[0], float(np.median(fr)) - CL_CLEAR))
+        stats["edge_" + src] = stats.get("edge_" + src, 0) + 1
+        kerb_side = L.buffer(v, join_style="round", quad_segs=8)
+        band = zone.difference(kerb_side).union(pc.buffer(CL_CLEAR, cap_style="flat"))
+        bands.append(band); done.add(k)
+    return bands, done
+
+
+DRIFT_DEV, DRIFT_RUN = 1.5, 8.0   # m: a traced kerb this far off its street side's usual verge for this long has drifted
+DRIFT_MIN_VERGE, DRIFT_MIN_CL = 1.2, 2.3   # m: a local street kerb is never this close to the lot front / its centreline
+DRIFT_NODE = 15.0                 # m, near a street junction the verge changes (corner splays, blisters): not judged there
+DRIFT_FH = (4, 5, 6, 7)           # streets judged; main roads have medians, bus bays and service lanes the lots do not show
+
+
+def lot_drift(traced, lots, roads, stats, area=None):
+    """Traced kerb that has drifted (Jacky 7 Nov 2026 via the reviewer: lines 3 m onto the footpath or into the road): on a street
+    with house lots along it, the kerb sits the same distance in front of the lot fronts all along one side (Parramatta council
+    kerbs: 80 % within 1 m of their street side's median, mid-block). A traced stretch of DRIFT_RUN m or more that is more than
+    DRIFT_DEV m off that side's median verge is cut out; the lot-guided block loop then fills it."""
+    streets = [(g, fh) for g, fh in roads if fh not in ka.SKIP_FH]
+    if area is not None:
+        a3 = prep(area.buffer(300)); streets = [(g, fh) for g, fh in streets if a3.intersects(g)]
+        lots = [l for l in lots if a3.intersects(l)]
+    G = [g for g, _ in streets]; st = STRtree(G)
+    house = [l for l in lots if not any(G[int(k)].intersects(l.buffer(-0.5)) for k in st.query(l))]
+    if not house:
+        return traced
+    ht = STRtree(house)
+    ends = [Point(c) for g in G for c in (g.coords[0], g.coords[-1])]; et = STRtree(ends)
+    samples = []   # (line index, station, group key, verge)
+    T = [LineString(t) for t in traced]
+    for i, g in enumerate(T):
+        if g.length < DRIFT_RUN:
+            continue
+        for t in np.arange(0.5, g.length, 1.0):
+            p = g.interpolate(t)
+            j = st.nearest(p); cl, fh = streets[int(j)]
+            if fh not in DRIFT_FH:
+                continue
+            tp = cl.project(p)
+            if any(ends[int(q)].distance(p) < DRIFT_NODE for q in et.query(p.buffer(DRIFT_NODE))):
+                continue
+            q = np.asarray(cl.interpolate(tp).coords[0]); tg = tangent(cl, tp); n = np.array([-tg[1], tg[0]])
+            v = np.asarray(p.coords[0]) - q; side = 1 if v @ n > 0 else -1
+            if abs(tangent(g, t) @ tg) < PAR:
+                continue
+            # the lot front straight out from the centreline through this point, on this side
+            ray = LineString([q, q + n * side * 40])
+            hit = None
+            for k in ht.query(ray, predicate="intersects"):
+                x = ray.intersection(house[int(k)])
+                if not x.is_empty:
+                    d = Point(q).distance(x)
+                    hit = d if hit is None else min(hit, d)
+            if hit is None:
+                continue
+            dc = float(abs(v @ n))
+            if dc > hit + 1.0:
+                continue   # beyond the lot front: not this street's kerb
+            samples.append((i, t, (int(j), side, int(tp // 60)), hit - dc, dc))
+    groups = {}
+    for i, t, k, v, dc in samples:
+        if VERGE_RANGE[0] <= v <= VERGE_RANGE[1]:
+            groups.setdefault(k, []).append(v)
+    med = {k: float(np.median(v)) for k, v in groups.items() if len(v) >= 12}
+    bad = {}
+    for i, t, k, v, dc in samples:
+        # on the lot front or a fence line (no footpath strip), within half a lane of the centreline, or off the side's usual verge
+        if v < DRIFT_MIN_VERGE or dc < DRIFT_MIN_CL or (k in med and abs(v - med[k]) > DRIFT_DEV):
+            bad.setdefault(i, []).append(t)
+    out = []
+    cut = 0
+    for i, g in enumerate(T):
+        ts = sorted(bad.get(i, []))
+        runs, a0, prev = [], None, None
+        for t in ts:
+            if a0 is None:
+                a0 = prev = t
+            elif t - prev <= 2.5:
+                prev = t
+            else:
+                runs.append((a0, prev)); a0 = prev = t
+        if a0 is not None:
+            runs.append((a0, prev))
+        runs = [(a, b) for a, b in runs if b - a >= DRIFT_RUN]
+        if not runs:
+            out.append(traced[i]); continue
+        pos = 0.0
+        for a, b in runs:
+            if a - 1.0 - pos > KEEP_MIN:
+                out.append(np.asarray(substring(g, pos, a - 1.0).coords))
+            pos = b + 1.0; cut += b - a + 2.0
+        if g.length - pos > KEEP_MIN:
+            out.append(np.asarray(substring(g, pos, g.length).coords))
+    stats["drift_cut_m"] = int(cut); stats["drift_groups"] = len(med)
+    return out
+
+
+def no_motorway(out, roads, stats):
+    """Motorways and their ramps (functionhierarchy 1) have barriers and edge lines, not kerbs (Jacky 7 Nov 2026: "some are highway
+    not kerb"; reviewer d tiles 12, 13, 15: lines on a freeway bridge deck, a ramp nose, a freeway median). Any stretch of a line
+    whose nearest street is a motorway is taken out; leftovers shorter than KEEP_MIN go."""
+    streets = [(g, fh) for g, fh in roads if fh not in ka.SKIP_FH]
+    if not any(fh == 1 for _, fh in streets):
+        return out
+    st = STRtree([g for g, _ in streets]); res = []; cut = 0.0
+    for o in out:
+        g = LineString(o)
+        if not any(streets[int(k)][1] == 1 for k in st.query(g.buffer(40))):
+            res.append(o); continue
+        n = max(2, int(g.length // 1.0) + 1); ts = np.linspace(0, g.length, n)
+        mw = np.array([streets[int(st.nearest(g.interpolate(t)))][1] == 1 for t in ts])
+        if not mw.any():
+            res.append(o); continue
+        i = 0
+        while i < n:
+            j = i
+            while j + 1 < n and mw[j + 1] == mw[i]:
+                j += 1
+            a, b = ts[i], ts[j]
+            if mw[i]:
+                cut += b - a
+            elif b - a >= KEEP_MIN:
+                res.append(np.asarray(substring(g, a, b).coords) if (a > 0 or b < g.length) else o)
+            i = j + 1
+    stats["motorway_cut_m"] = int(cut)
+    return res
+
+
 def build(traced, lots, roads, area=None, stats=None):
     """traced: list of Nx2 arrays (7856); lots: polygons; roads: [(LineString, fh)]. Returns list of Nx2 kerb lines."""
     stats = stats if stats is not None else {}
@@ -180,6 +382,9 @@ def build(traced, lots, roads, area=None, stats=None):
             key = (round(e[0], 2), round(e[1], 2)); deg[key] = deg.get(key, 0) + 1
     faces = [f for f in polygonize(pieces) if f.area > 150]
     lt = STRtree(lots)
+    # house lots (no street centreline runs through them): their street fronts are where the road reserve ends
+    house = [l for l in lots if not any(g.intersects(l.buffer(-0.5)) for g in (pieces[int(k)] for k in pt.query(l)))]
+    ht = STRtree(house) if house else None
     T = [LineString(t) for t in traced if len(t) > 1]
     tt = STRtree(T) if T else None
 
@@ -228,7 +433,13 @@ def build(traced, lots, roads, area=None, stats=None):
         inside = f.buffer(-0.5)
         edge_ids = [int(k) for k in pt.query(f.buffer(0.3)) if pieces[int(k)].within(f.buffer(0.3))]
         bands = []
+        lot_done = set()
+        if LOT_GUIDE:
+            bands, lot_done = lot_bands(f, edge_ids, pieces, rank, house, ht, T, tt, stats)
         for k in edge_ids:
+            if k in lot_done:
+                meas[("other", k)] = meas.get(("other", k), 4.5)
+                continue
             pc = pieces[k]
             w = offset_on(pc, inside, inside.contains)
             src = "traced"
@@ -1388,6 +1599,8 @@ def main(a):
                 seen.add(pr.get("OBJECTID")); g = shape(f["geometry"])
                 BRIDGES.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
     area = None
+    global LOT_GUIDE
+    LOT_GUIDE = "--lot-guide" in a
     if "--box" in a:
         i = a.index("--box"); area = box(*map(float, a[i + 1:i + 5]))
     elif "--traced-only-area" in a:
@@ -1395,6 +1608,8 @@ def main(a):
     st = {}
     if "--no-untangle" not in a:
         traced = untangle(traced, st)
+    if LOT_GUIDE:
+        traced = lot_drift(traced, lots, roads, st, area)
     out = build(traced, lots, roads, area, st)
     loops = [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5]
     if "--loops" not in a:
@@ -1425,6 +1640,8 @@ def main(a):
             out = unwobble(out, st)
             out = unhook(out, st)
             out = tidy(out, st)
+            if "--keep-motorway" not in a:
+                out = no_motorway(out, roads, st)
             # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
             kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                     else "block guide" for o in out]
