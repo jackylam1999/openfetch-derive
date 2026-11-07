@@ -370,6 +370,16 @@ def twin_share(q, near, reach=TWIN):
     return hit / max(tot, 1)
 
 
+
+def crosses_mid(t, w, tol=1.0):
+    """True when kerb t crosses the added line w away from w's two ends: a join that grazes the kerb it ends on (or the end it
+    starts from) while curving in is fine; one that cuts through a kerb on the way (the V at tile 2) is not."""
+    if not t.crosses(w):
+        return False
+    x = t.intersection(w); a, b = Point(w.coords[0]), Point(w.coords[-1])
+    pts = [x] if x.geom_type == "Point" else [g for g in getattr(x, "geoms", [x])]
+    return any(min(g.distance(a), g.distance(b)) > tol for g in pts)
+
 def fill(traced, loops, streets=(), area=None, stats=None):
     """The traced kerbs kept exactly as seen, plus the parts of each block loop where nothing was traced (more than DUP m from
     every traced kerb), each at least FILL_MIN m long and with its ends snapped onto the traced kerb it meets: the photo stays
@@ -410,6 +420,9 @@ def fill(traced, loops, streets=(), area=None, stats=None):
                     c = np.vstack([s0, c]) if j == 0 else np.vstack([c, s0])
             if not ok:
                 stats["fill_tee"] = stats.get("fill_tee", 0) + 1; continue
+            cg = LineString(c)
+            if any(crosses_mid(t, cg) for t in near):
+                stats["fill_crosses_kerb"] = stats.get("fill_crosses_kerb", 0) + 1; continue  # kerbs never cross each other
             if len(mids) == 2 and mids[0] != mids[1] and q.length < CROSSOVER:
                 # both ends land mid-way on two different kerbs a few metres apart: a crossover between two parallel kerbs
                 # (the V at tile 2, Jacky 7 Nov 2026), not a missing piece of either
@@ -458,6 +471,13 @@ def guide(lines, loops, streets=(), stats=None):
             return "no_kerb"
         hk = G[m]; th_t = hk.project(Point(hit))
         at_end = min(th_t, hk.length - th_t) <= T_END
+        if m != i:
+            # two kerbs side by side (a kerb and the bus-lane line beside it, both sides of a median): the kerb it starts from runs
+            # within TWIN m of the one it would join for the last 15 m before its end, so the join only links two parallel lines
+            # (the V at tile 2, Jacky 7 Nov 2026: "there should not be two parallel line")
+            back = [np.asarray(G[i].interpolate(te + x if j == 0 else te - x).coords[0]) for x in (5.0, 10.0, 15.0)]
+            if G[i].length > 20.0 and all(hk.distance(Point(b)) <= TWIN for b in back):
+                return "parallel"
         if not at_end:
             # the same kerb: the loop keeps running along it for FOLLOW m after the meeting point
             fol = [hk.distance(at(step + x)) <= DUP + 0.5 for x in np.arange(1.0, FOLLOW + 1.0, 1.0)]
@@ -484,6 +504,8 @@ def guide(lines, loops, streets=(), stats=None):
             return "spike_body"
         if stt is not None and any(sl[int(x)].intersects(w) for x in stt.query(w)):
             return "cross"
+        if any(crosses_mid(G[x], w) for x in near_ids(w)):
+            return "crosses_kerb"   # kerbs never cross each other
         if along_bridge(path, stt, sl) > 0.3:
             return "bridge"
         return path, w
