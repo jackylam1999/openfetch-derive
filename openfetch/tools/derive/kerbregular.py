@@ -621,8 +621,11 @@ def run(a):
         import kerbdraft
         print("drafting", len(items), file=sys.stderr, flush=True)
         import kerbaudit
-        world = kerbdraft.World(load_faces(lots_dir), load_faces(a[a.index("--roads") + 1]))
-        world.roads_fh = kerbaudit.load_roads(a[a.index("--roads") + 1])
+        roads_fh = kerbaudit.load_roads(a[a.index("--roads") + 1])
+        # streets only: driveways, vehicle tracks and footpaths (functionhierarchy 8-11) do not break a kerb (Jacky 6 Nov 2026:
+        # kerbs were cut 8 m at every driveway and footpath line as if it were a side street)
+        world = kerbdraft.World(load_faces(lots_dir), [g for g, fh in roads_fh if fh not in kerbaudit.SKIP_FH])
+        world.roads_fh = roads_fh
         dst = {}
         items = kerbdraft.draft(items, world, dst)
         stats["draft"] = dst
@@ -670,5 +673,5 @@ def lots(a, url="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land
 
 if __name__ == "__main__":
     roads = lambda a: lots(a, "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme_multiCRS/FeatureServer/5/query",
-                           "OBJECTID,functionhierarchy")
+                           "OBJECTID,functionhierarchy,roadontype")   # roadontype 2 bridge, 3 tunnel: kerbnet.py
     {"run": run, "lots": lots, "roads": roads}[sys.argv[1]](sys.argv[2:])

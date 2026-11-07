@@ -11,9 +11,21 @@ Town Hall / Waterloo picture): trace the way a person does when the kerb cannot 
             that runs over a road centreline is cut back before it
   3b block every block corner kerbaudit.py finds open (from road centrelines and properties) is rebuilt: the kerb ends of its
             two roads are extended to where their lines cross and rounded by road type (local 6, collector 9, main 12 m)
+  3c extend a kerb that stops mid-street (photo lost it) is carried on along its street at its own offset while it keeps its
+            verge to the frontage: to the next piece of the line (tapered join), before a side street, at a dead end; it stops
+            where another kerb runs alongside (never a second line in the road), at a fork, or where the frontage changes
+  3e gaps   two free ends of one kerb line still facing each other across up to 40 m (3 m sideways) are joined
+  3d turn   a kerb that stops at a side street on its own side turns the corner into it (round 6/9/12 m): onto the side street's
+            traced kerb, else onto one drawn from that street's frontage moved out by this kerb's verge
      dead   a dead end is capped by straights and two equal round corners on the side kerbs' own headings (no jogs)
   4. cap    a kerb end that runs into a property (house lot, not a road lot) stops at the lot edge
   5. drop   short pieces still on their own after 1-4 (broken bits nobody can use, e.g. tram stops and medians in the CBD)
+  6. close  last pass on open ends: block loops left open are closed, an end running into another kerb's side within 10 m is
+            carried on to touch it, same-line gaps (40 m, 5 m sideways) are joined also across a driveway or lane line
+  7. weld   two ends that touch and carry on each other's line become one kerb
+  Mouths: a kerb is cut at a side street only where the properties behind it open (not at driveways, footpath lines or roads on
+  bridges: 941 wrong 8 m cuts in version 2026-11-06-e), and road centrelines of tracks and paths (functionhierarchy 8-11) are
+  not streets for any rule.
 
 Items are dicts {"p": Nx2 array (metres), "i": index of the source feature, "filled": metres not seen in the photo}.
 """
@@ -107,6 +119,19 @@ def _turn(u, v):
     return float(np.arctan2(u[0] * v[1] - u[1] * v[0], u @ v))
 
 
+def _sharp(h, conn, lim=np.radians(35)):
+    """True when a connector leaving an end with heading h (or turning anywhere along itself) bends more than lim within a step:
+    a hook or a right-angle join instead of a round corner (checker round 3)."""
+    q = [np.asarray(conn[0])]
+    for x in conn[1:]:
+        if np.hypot(*(np.asarray(x) - q[-1])) > 0.3:
+            q.append(np.asarray(x))
+    if len(q) < 2:
+        return False
+    hs = [h] + [(b - a) / np.hypot(*(b - a)) for a, b in zip(q, q[1:])]
+    return any(abs(_turn(u, v)) > lim for u, v in zip(hs, hs[1:]))
+
+
 def _arc(t1, ctr, r, d, step=1.0):
     a0 = np.arctan2(*(t1 - ctr)[::-1])
     n = max(2, int(np.ceil(abs(d) * r / step)))
@@ -186,6 +211,31 @@ MOUTH_CUT = 4.0      # m cut out each side of where a kerb crosses a side street
 MOUTH_ANG = np.radians(30)
 
 
+def _opening(g, t, world):
+    """True when the properties behind kerb g open at distance t (a side street's mouth): a line along the kerb, just behind the
+    frontage, is mostly not inside a lot. A centreline that crosses the kerb with houses straight behind it (a lane with a
+    driveway crossing, a road on a bridge above) leaves the kerb whole."""
+    if world.ltree is None:
+        return True
+    a = np.array(g.interpolate(max(t - MOUTH_CUT, 0)).coords[0]); b = np.array(g.interpolate(min(t + MOUTH_CUT, g.length)).coords[0])
+    d = b - a; n = np.hypot(*d)
+    if n < 1:
+        return True
+    nv = np.array([-d[1], d[0]]) / n
+    for sgn in (1, -1):
+        m = (a + b) / 2
+        ray = LineString([m, m + nv * sgn * 25])
+        hs = [world.lots[int(k)].distance(Point(m)) for k in world.ltree.query(ray, predicate="intersects")]
+        if not hs or min(hs) > 15:
+            continue
+        off = nv * sgn * (min(hs) + 3.0)
+        back = LineString([a + off, b + off])
+        cov = sum(world.lots[int(k)].intersection(back).length for k in world.ltree.query(back, predicate="intersects"))
+        if cov > 0.6 * back.length:
+            return False
+    return True
+
+
 def mouths(items, world, stats):
     """A kerb running straight across the mouth of a side street (it crosses that street's centreline at an angle) is cut there,
     so the bridge rule can turn each side into the side street with a round corner."""
@@ -210,8 +260,10 @@ def mouths(items, world, stats):
                 u, v = b - a, d - c
                 ang = abs(_turn(u / max(np.hypot(*u), 1e-9), v / max(np.hypot(*v), 1e-9)))
                 ang = min(ang, np.pi - ang)
-                if ang >= MOUTH_ANG:
+                if ang >= MOUTH_ANG and _opening(g, t, world):
                     cuts.append(t)
+                elif ang >= MOUTH_ANG:
+                    stats["mouth_closed"] = stats.get("mouth_closed", 0) + 1
         if not cuts:
             out.append(it); continue
         cuts.sort(); start = 0.0
@@ -269,6 +321,7 @@ def fragments(items, stats):
 
 
 TRACE = None  # set to a list to record why nearby ends were not linked
+RUNS = None   # set to a list to record every drawn run: (rule, why, Nx2 points)
 
 
 def _tr(rule, ea, eb, why):
@@ -783,6 +836,8 @@ def fill(items, world, stats):
             near = idx[int(K.tree.nearest(run))]  # properties (road type, area) of the nearest traced kerb
             m = len(items) + len(made)
             made.append({"p": p.copy(), "i": items[near]["i"], "filled": float(run.length)})
+            if RUNS is not None:
+                RUNS.append(("fill", "made", p.copy()))
             if hit:
                 conn = np.array([p[-1], hit[3]]); L = float(np.hypot(*(p[-1] - hit[3])))
                 links[(m, 1)] = (hit[1], hit[2], conn, L); links[(hit[1], hit[2])] = (m, 1, conn[::-1], L)
@@ -790,6 +845,650 @@ def fill(items, world, stats):
             _tr("fill", p[0], p[-1], "made")
             stats["fill_n"] = stats.get("fill_n", 0) + 1; stats["fill_m"] = stats.get("fill_m", 0.0) + float(run.length)
     return _assemble(items + made, links) if made else items
+
+
+EXT_MAX = 150.0      # m, longest run drawn on from one kerb end along its street
+EXT_PIECE = 20.0     # m, only kerbs at least this long are carried on (shorter bits are noise more often)
+EXT_FRONT = 2.0      # m, the run keeps the end's own verge (kerb to property) within this
+EXT_BAD = 8.0        # m of verge change in a row (a bus bay, a widening, a park) and the run stops before it
+EXT_MIN = 3.0        # m, shorter runs are not worth a line
+EXT_TWIN = 4.5       # m, a run stops where another kerb runs alongside this close (it would double that kerb)
+
+
+def extend(items, world, stats):
+    """Rule 3c (Jacky 6 Nov 2026, "why still so many open ends?"): a kerb that stops in the middle of a street, where the photo
+    lost it (trees, shadow, parked cars), is carried on the way a person draws it: along its street at the same distance from the
+    centreline, while it keeps the same verge to the property frontage. It ends on the next kerb end of the same line (joined),
+    before a side street on its own side (the corner rule rounds it), at a dead end, or where the frontage changes (a bus bay, a
+    park). Kept only when it cuts no house lot and crosses no other kerb."""
+    roads = [g for g, fh in getattr(world, "roads_fh", []) if fh not in (8, 9, 10, 11)]
+    if not roads or not items:
+        return items
+    from scipy.spatial import cKDTree
+    rt = STRtree(roads)
+    nodes = {}
+    for ri, g in enumerate(roads):
+        c = np.asarray(g.coords)
+        for w, p in ((0, c[0]), (1, c[-1])):
+            nodes.setdefault(tuple(np.round(p / 0.5).astype(int)), []).append((ri, w))
+
+    def tangent(g, t):
+        a = np.asarray(g.interpolate(max(t - 1.5, 0)).coords[0]); b = np.asarray(g.interpolate(min(t + 1.5, g.length)).coords[0])
+        d = b - a; n = np.hypot(*d)
+        return d / n if n > 1e-9 else np.array([1.0, 0.0])
+
+    def leaving(ri, w):
+        """Unit heading of road ri leaving its end w."""
+        g = roads[ri]
+        return tangent(g, 0.0) if w == 0 else -tangent(g, g.length)
+
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    KG = [LineString(it["p"]) if len(it["p"]) > 1 else Point(0, 0) for it in items]
+    KT = STRtree(KG)
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1)
+            if lens[li] >= EXT_PIECE and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 1.0]
+    allends = [(li, w) for li in range(len(items)) for w in (0, 1) if lens[li] > 0]
+    ET = cKDTree(np.array([items[li]["p"][0 if w == 0 else -1] for li, w in allends]))
+    links, made, used = {}, [], set()
+    for li, w in ends:
+        if (li, w) in used:
+            continue
+        e, h = _end(items[li]["p"], w, 8.0)
+        # the street this kerb runs along: a centreline 2-20 m to one side, parallel to it
+        best = None
+        for k in rt.query(Point(e).buffer(20)):
+            g = roads[int(k)]; t = g.project(Point(e)); c = np.asarray(g.interpolate(t).coords[0]); tg = tangent(g, t)
+            if abs(tg @ h) < np.cos(np.radians(20)) or t <= 0.5 or t >= g.length - 0.5:
+                continue
+            off = float(tg[0] * (e - c)[1] - tg[1] * (e - c)[0])  # + left of the road's direction
+            if 2.0 <= abs(off) <= 20.0 and (best is None or abs(off) < abs(best[2])):
+                best = (int(k), t, off, 1.0 if tg @ h > 0 else -1.0)
+        if best is None:
+            continue
+        v0 = world.lot_dist(e)
+        if v0 > 10.0:
+            continue  # no property frontage beside it: nothing to keep the line honest
+        # only the kerb nearest the block is carried on (not a median or island line)
+        q = world.lot_point(e)
+        if q is not None and np.hypot(*(q - e)) > 1.0:
+            if any(int(k) != li for k in KT.query(LineString([e, q]), predicate="intersects")):
+                continue
+        ri, t, off, sd = best
+        # the kerb's offset from the centreline measured along its last 20 m (one traced point at the very end can hook)
+        g = roads[ri]; pg = KG[li]; offs = []
+        for s_ in np.arange(1.0, min(20.0, pg.length), 2.0):
+            q_ = np.asarray(pg.interpolate(s_ if w == 0 else pg.length - s_).coords[0]); tq = g.project(Point(q_))
+            cq = np.asarray(g.interpolate(tq).coords[0]); tgq = tangent(g, tq)
+            offs.append(float(tgq[0] * (q_ - cq)[1] - tgq[1] * (q_ - cq)[0]))
+        if offs:
+            om = float(np.median(offs))
+            if abs(om - off) > 1.5 or np.sign(om) != np.sign(off):
+                stats["extend_hook"] = stats.get("extend_hook", 0) + 1
+                continue  # the end bends away from its own line: not a kerb to carry on
+            off = om
+        path, good, bad, dist, why, target = [], 0, 0.0, 0.0, "max", None
+        while dist < EXT_MAX:
+            t2 = t + sd * 1.0
+            if t2 < 0 or t2 > g.length:
+                # at the end of this centreline: a side street on this kerb's side stops it, else carry on along the street
+                node = np.asarray(g.coords[0 if t2 < 0 else -1])
+                here = [(r2, w2) for r2, w2 in nodes.get(tuple(np.round(node / 0.5).astype(int)), []) if r2 != ri]
+                here += [(int(k), None) for k in rt.query(Point(node).buffer(0.8)) if int(k) != ri and roads[int(k)].distance(Point(node)) < 0.8
+                         and all(int(k) != r2 for r2, _ in here)]
+                dvec = sd * tangent(g, min(max(t, 0), g.length)); side = np.array([-dvec[1], dvec[0]]) * np.sign(off * sd)
+                nxt, stop, ahead = None, False, 0
+                for r2, w2 in here:
+                    g2 = roads[r2]
+                    if w2 is None:  # our road ends on another's middle: a T, the kerb turns
+                        stop = True; break
+                    u = leaving(r2, w2)
+                    if u @ side > 0.3:
+                        stop = True
+                    elif u @ dvec > np.cos(np.radians(15)):
+                        ahead += 1
+                        if nxt is None or u @ dvec > nxt[2]:
+                            nxt = (r2, w2, u @ dvec)
+                if ahead > 1:
+                    nxt = None  # a fork: two roads ahead, the kerb does not know which to follow
+                if stop or nxt is None:
+                    why = "junction" if stop else "deadend"
+                    # leave room for the corner: back off by this kerb's offset from the node
+                    back = abs(off) + 0.5
+                    keep = max(len(path) - int(np.ceil(back)), 0)
+                    path = path[:keep]; good = min(good, keep)
+                    break
+                ri, g = nxt[0], roads[nxt[0]]
+                sd2 = 1.0 if nxt[1] == 0 else -1.0
+                off = off * sd * sd2  # the same side of travel on the next centreline
+                sd = sd2
+                t2 = 0.0 if nxt[1] == 0 else g.length
+            t = t2
+            tg = tangent(g, t); c = np.asarray(g.interpolate(t).coords[0])
+            P = c + np.array([-tg[1], tg[0]]) * off
+            dist += 1.0
+            prev = path[-1] if path else e
+            if any(int(k) != ri and roads[int(k)].distance(Point(c)) > 0.5 for k in rt.query(LineString([prev, P]), predicate="intersects")):
+                # a side street on this kerb's side that the centrelines do not split at: stop short of its mouth
+                why = "junction"
+                keep = max(len(path) - int(np.ceil(abs(off) + 0.5)), 0)
+                path = path[:keep]; good = min(good, keep)
+                break
+            # another kerb here: join onto it if it is a free end of the same line, else stop short of it
+            # another kerb running alongside within EXT_TWIN m: this run would double it (a second line in the road). Join it
+            # when it is the next piece of the same line (its free end faces us), else stop here (checker round 1, 6 Nov 2026)
+            near = []
+            for k in KT.query(Point(P).buffer(EXT_TWIN)):
+                k = int(k)
+                if k == li or KG[k].distance(Point(P)) > EXT_TWIN:
+                    continue
+                gk = KG[k]; tk = gk.project(Point(P))
+                a_ = np.asarray(gk.interpolate(max(tk - 1.5, 0)).coords[0]); b_ = np.asarray(gk.interpolate(min(tk + 1.5, gk.length)).coords[0])
+                dk = b_ - a_; nk = np.hypot(*dk)
+                if nk < 0.5 or abs(dk @ tg) / nk > np.cos(np.radians(25)) or gk.distance(Point(P)) <= 1.2:
+                    near.append(k)
+            if near:
+                # the next piece of this kerb, also where it steps sideways (a bus bay, a kerb build-out): joined with a taper
+                cands = []
+                for k in ET.query_ball_point(P, 15.0):
+                    l2, w2 = allends[k]
+                    if l2 in near and (l2, w2) not in used and l2 != li:
+                        e2, h2 = _end(items[l2]["p"], w2, 3.0)
+                        lat = abs((e2 - P) @ np.array([-tg[1], tg[0]])); along = (e2 - P) @ (sd * tg)
+                        if h2 @ (sd * tg) < -0.8 and lat < EXT_TWIN and along > -1.0:
+                            cands.append((np.hypot(*(e2 - P)), l2, w2, e2))
+                if cands:
+                    _, l2, w2, e2 = min(cands, key=lambda c: c[0])
+                    target = (l2, w2, e2)
+                why = "kerb" if target else "twin"
+                break
+            if world.in_house(Point(P)):
+                why = "house"; break
+            d = world.lot_dist(P)
+            if abs(d - v0) > EXT_FRONT:
+                bad += 1.0
+                if bad > EXT_BAD:
+                    why = "frontage"; path.append(P); break
+            else:
+                bad = 0.0; good = len(path) + 1
+            path.append(P)
+        if why == "frontage" or (why == "max" and bad > 0):
+            path = path[:good]
+        if target is None and why in ("kerb", "twin"):
+            path = path[:max(len(path) - 2, 0)]
+        if target is not None:
+            path = path[:max(len(path) - 6, 0)]  # a gentle taper onto the next piece, not a step
+        if not path:
+            continue
+        if target is None and why not in ("junction",):
+            # a run that closes nothing (it stops where the frontage changes, at a house, beside another kerb or after
+            # EXT_MAX) only moves the open end and was the least accurate drawn line (checker rounds 1-2): not drawn
+            stats["extend_open_" + why] = stats.get("extend_open_" + why, 0) + 1
+            continue
+        run = np.vstack([e[None], np.array(path)] + ([target[2][None]] if target else []))
+        L = LineString(run)
+        if L.length < EXT_MIN:
+            continue
+        others = [int(k) for k in KT.query(L, predicate="intersects") if int(k) not in (li, target[0] if target else -1)]
+        if others or world.through_house(L) or world.crosses_road(LineString(run[1:-1]) if len(run) > 3 else L.interpolate(0.5, normalized=True)):
+            stats["extend_reject"] = stats.get("extend_reject", 0) + 1
+            continue
+        if RUNS is not None:
+            RUNS.append(("extend", "join" if target else why, run.copy()))
+        if target:
+            links[(li, w)] = (target[0], target[1], run, L.length); links[(target[0], target[1])] = (li, w, run[::-1], L.length)
+            used |= {(li, w), (target[0], target[1])}
+            stats["extend_join"] = stats.get("extend_join", 0) + 1
+        else:
+            m = len(items) + len(made)
+            made.append({"p": run.copy(), "i": items[li]["i"], "filled": float(L.length)})
+            links[(li, w)] = (m, 0, np.array([e, e]), 0.0); links[(m, 0)] = (li, w, np.array([e, e]), 0.0)
+            used.add((li, w))
+            stats["extend_" + why] = stats.get("extend_" + why, 0) + 1
+        stats["extend_n"] = stats.get("extend_n", 0) + 1
+        stats["extend_m"] = stats.get("extend_m", 0.0) + L.length
+    return _assemble(items + made, links)
+
+
+TURN_RUN = 20.0      # m drawn along the side street past a turned corner (extend then carries it on)
+
+
+def turn(items, world, stats):
+    """Rule 3d (Jacky 6 Nov 2026: council kerbs are clean, closed curves): a kerb that stops at the mouth of a side street on its
+    own side turns the corner into that side street, as the council lines do. The side street's kerb on this corner is its traced
+    kerb when there is one (its end facing the corner is joined), else drawn from the side street's own property frontage moved
+    out by this kerb's verge. The corner is round by road type (6 / 9 / 12 m); kept only with properties inside the turn, no house
+    lot cut, no other kerb or centreline crossed."""
+    import kerbaudit as ka
+    roads = [(g, fh) for g, fh in getattr(world, "roads_fh", []) if fh not in ka.SKIP_FH]
+    if not roads or not items:
+        return items
+    geoms = [g for g, _ in roads]
+    rt = STRtree(geoms)
+    nodes = {}
+    for ri, g in enumerate(geoms):
+        c = np.asarray(g.coords)
+        for w, p in ((0, c[0]), (1, c[-1])):
+            nodes.setdefault(tuple(np.round(p / 0.5).astype(int)), []).append((ri, w))
+
+    def tangent(g, t):
+        a = np.asarray(g.interpolate(max(t - 1.5, 0)).coords[0]); b = np.asarray(g.interpolate(min(t + 1.5, g.length)).coords[0])
+        d = b - a; n = np.hypot(*d)
+        return d / n if n > 1e-9 else np.array([1.0, 0.0])
+
+    def leaving(ri, w):
+        g = geoms[ri]
+        a = np.asarray(g.coords[0 if w == 0 else -1]); b = np.asarray(g.interpolate(min(15.0, g.length) if w == 0 else max(g.length - 15.0, 0)).coords[0])
+        d = b - a; n = np.hypot(*d)
+        return d / n if n > 1e-9 else np.array([1.0, 0.0])
+
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    KG = [LineString(it["p"]) if len(it["p"]) > 1 else Point(0, 0) for it in items]
+    KT = STRtree(KG)
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1)
+            if lens[li] >= LINK_MIN and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 1.0]
+    from scipy.spatial import cKDTree
+    ET = cKDTree(np.array([_end(items[li]["p"], w)[0] for li, w in ends])) if ends else None
+    links, made, used = {}, [], set()
+    pend = None  # a kerb cut back for a corner that was then not made: given its end back
+    for li in ends + [None]:
+        if pend is not None:
+            items[pend[0]], lens[pend[0]] = pend[1], pend[2]; pend = None
+        if li is None:
+            break
+        li, w = li
+        if (li, w) in used:
+            continue
+        e, h = _end(items[li]["p"], w, 8.0)
+        best = None
+        for k in rt.query(Point(e).buffer(20)):
+            g = geoms[int(k)]; t = g.project(Point(e)); c = np.asarray(g.interpolate(t).coords[0]); tg = tangent(g, t)
+            if abs(tg @ h) < np.cos(np.radians(25)):
+                continue
+            off = float(tg[0] * (e - c)[1] - tg[1] * (e - c)[0])
+            if 2.0 <= abs(off) <= 20.0 and (best is None or abs(off) < abs(best[2])):
+                best = (int(k), t, off, 1.0 if tg @ h > 0 else -1.0)
+        if best is None:
+            continue
+        ri, t, off, sd = best
+        g = geoms[ri]
+        rem = (g.length - t) if sd > 0 else t
+        if rem > abs(off) + 12.0:
+            continue  # not at a junction
+        if rem < abs(off) + 1.0:
+            # the kerb runs on into the junction (past the side street's kerb line): cut it back to where the corner starts
+            cut = abs(off) + 1.0 - rem
+            if lens[li] - cut < LINK_MIN:
+                continue
+            p_ = items[li]["p"]; pend = (li, items[li], lens[li])
+            p_ = _cut(p_, lens[li] - cut, keep_start=True) if w == 1 else _cut(p_, cut, keep_start=False)
+            items[li] = dict(items[li], p=p_); lens[li] -= cut
+            e, h = _end(p_, w, 8.0)
+            t = g.project(Point(e)); rem = (g.length - t) if sd > 0 else t
+            stats["turn_cutback"] = stats.get("turn_cutback", 0) + 1
+        J = np.asarray(g.coords[-1 if sd > 0 else 0])
+        dvec = sd * tangent(g, min(max(t, 0), g.length))
+        side = (e - (J - dvec * rem)); side = side - (side @ dvec) * dvec; side = side / max(np.hypot(*side), 1e-9)
+        here = [(r2, w2) for r2, w2 in nodes.get(tuple(np.round(J / 0.5).astype(int)), []) if r2 != ri]
+        if any(geoms[int(k)].distance(Point(J)) < 0.8 and all(int(k) != r2 for r2, _ in here) and int(k) != ri
+               for k in rt.query(Point(J).buffer(0.8))):
+            continue  # our road ends on another's middle: a T, handled by the corner rules
+        sides = [(leaving(r2, w2) @ side, r2, w2) for r2, w2 in here if leaving(r2, w2) @ side > 0.5]
+        if not sides:
+            continue
+        _, r2, w2 = max(sides)
+        u2 = leaving(r2, w2); g2 = geoms[r2]
+        n2 = np.array([-u2[1], u2[0]])
+        if n2 @ (-dvec) < 0:
+            n2 = -n2  # normal of the side street pointing to this corner
+        if g2.length < 15:
+            continue
+        rank = min(ka.road_rank(roads[ri][1]), ka.road_rank(roads[r2][1]))
+        # the side street's kerb on this corner: traced (a free end facing the corner) or from its frontage
+        target = None
+        w_tr = None
+        for k in ET.query_ball_point(J, 45.0):
+            l2, ww2 = ends[k]
+            if l2 == li or (l2, ww2) in used:
+                continue
+            e2, h2 = _end(items[l2]["p"], ww2, 6.0)
+            along, lat = (e2 - J) @ u2, (e2 - J) @ n2
+            if along < 2 or along > 45 or lat < 2 or lat > 20 or h2 @ (-u2) < np.cos(np.radians(25)):
+                continue
+            if target is None or along < target[0]:
+                target = (along, l2, ww2, e2, h2)
+        v0 = world.lot_dist(e)
+        if target is None:
+            if v0 > 10:
+                continue
+            fr = []
+            for s_ in np.arange(8.0, min(40.0, g2.length), 4.0):
+                cp = J + u2 * s_
+                ray = LineString([cp, cp + n2 * 30])
+                hs = [world.lots[int(k)].distance(Point(cp)) for k in world.ltree.query(ray, predicate="intersects")]
+                if hs:
+                    fr.append(min(hs) - v0)
+            if len(fr) < 3:
+                continue
+            w_side = float(np.median(fr))
+            if w_side < 2.0 or w_side > 15.0:
+                continue
+            # a lane or walkway between houses is no street with kerbs
+            wid = []
+            for s_ in np.arange(8.0, min(40.0, g2.length), 6.0):
+                cp = J + u2 * s_; d_ = []
+                for sg in (1, -1):
+                    ray = LineString([cp, cp + n2 * sg * 20])
+                    hs = [world.lots[int(k)].distance(Point(cp)) for k in world.ltree.query(ray, predicate="intersects")]
+                    d_.append(min(hs) if hs else 20.0)
+                wid.append(sum(d_))
+            if wid and np.median(wid) < FILL_RESERVE:
+                continue
+            e2 = J + n2 * w_side + u2 * TURN_RUN; h2 = -u2
+        else:
+            e2, h2 = target[3], target[4]
+        R = BLOCK_R[rank]
+        conn = None
+        for r in (R, R / 2, 3.0):
+            c_ = _corner(e, h, e2, h2, rmax=r)
+            if c_ is None or len(c_) < 3 or _sharp(h, c_) or (target is not None and _sharp(-h2, c_[::-1])):
+                continue
+            gc = LineString(c_)
+            mid = c_[len(c_) // 2]
+            ctr = np.mean(c_, axis=0)
+            # properties inside the turn (towards the block), the road outside
+            nin = (e + e2) / 2 - mid; nn = np.hypot(*nin)
+            if nn > 0.5 and world.lot_dist(mid + 3 * nin / nn) >= world.lot_dist(mid - 3 * nin / nn):
+                continue
+            inner = LineString(c_[1:-1]) if len(c_) > 3 else gc.interpolate(0.5, normalized=True)
+            if world.through_house(gc) or world.crosses_road(inner):
+                continue
+            if any(int(k) not in (li, target[1] if target else -1) for k in KT.query(inner, predicate="intersects")):
+                continue
+            if target is None:
+                # a drawn side-street kerb must not double a kerb already there, nor sit inside a house lot
+                q_ = [gc.interpolate(f, normalized=True) for f in np.linspace(0.3, 1.0, 12)]
+                dbl = np.mean([any(int(k) != li and KG[int(k)].distance(x) <= EXT_TWIN for k in KT.query(x.buffer(EXT_TWIN))) for x in q_])
+                if dbl > 0.25 or any(world.in_house(x) for x in q_):
+                    continue
+            conn = c_; break
+        if conn is None:
+            stats["turn_reject"] = stats.get("turn_reject", 0) + 1
+            continue
+        pend = None  # corner made: the cut stays
+        L = float(LineString(conn).length)
+        if RUNS is not None:
+            RUNS.append(("turn", "join" if target else "drawn", conn.copy()))
+        if target:
+            links[(li, w)] = (target[1], target[2], conn, L); links[(target[1], target[2])] = (li, w, conn[::-1], L)
+            used |= {(li, w), (target[1], target[2])}
+            stats["turn_join"] = stats.get("turn_join", 0) + 1
+        else:
+            m = len(items) + len(made)
+            made.append({"p": conn.copy(), "i": items[li]["i"], "filled": L})
+            links[(li, w)] = (m, 0, np.array([e, e]), 0.0); links[(m, 0)] = (li, w, np.array([e, e]), 0.0)
+            used.add((li, w))
+            stats["turn_drawn"] = stats.get("turn_drawn", 0) + 1
+        stats["turn_n"] = stats.get("turn_n", 0) + 1
+        stats["turn_m"] = stats.get("turn_m", 0.0) + L
+    return _assemble(items + made, links)
+
+
+WELD = 1.5            # m, two kerb ends this close that carry on each other's line are one kerb
+
+
+GAP_MAX = 40.0        # m, a gap in one kerb line (trees, parked cars, shadow) closed late with a straight or a taper
+GAP_LAT = 3.0         # m sideways between the two ends (the photo trace drifts under trees)
+GAP_ANG = np.radians(25)
+
+
+def gaps(items, world, stats):
+    """Rule 3e: after the other rules, two free ends of the same kerb line still facing each other across a gap (both point at
+    the other end, the lines run on the same heading, at most GAP_LAT m apart sideways) are joined: nothing else can be there.
+    Never across a street centreline, through a house lot or across another kerb."""
+    from scipy.spatial import cKDTree
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1)
+            if lens[li] >= LINK_MIN and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 1.0]
+    if len(ends) < 2:
+        return items
+    E = [_end(items[li]["p"], w, 8.0) for li, w in ends]
+    KG = [LineString(it["p"]) if len(it["p"]) > 1 else Point(0, 0) for it in items]
+    KT = STRtree(KG)
+    T = cKDTree(np.array([e for e, _ in E]))
+    cand = []
+    for a, b in T.query_pairs(GAP_MAX):
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if la == lb:
+            continue
+        (ea, ua), (eb, ub) = E[a], E[b]
+        d = eb - ea; g = np.hypot(*d)
+        if g < 1.0:
+            continue
+        if ua @ (d / g) < np.cos(GAP_ANG) or ub @ (-d / g) < np.cos(GAP_ANG) or ua @ (-ub) < np.cos(np.radians(20)):
+            continue
+        if abs(ua[0] * d[1] - ua[1] * d[0]) > GAP_LAT:
+            continue
+        conn = np.array([ea, eb]); ls = LineString(conn)
+        if _sharp(ua, conn, np.radians(20)) or _sharp(ub, conn[::-1], np.radians(20)):
+            continue
+        if world.crosses_road(ls) or world.through_house(ls):
+            continue
+        if any(int(k) not in (la, lb) for k in KT.query(ls, predicate="intersects")):
+            continue
+        cand.append((g, a, b, conn))
+    cand.sort(key=lambda c: c[0])
+    links, used = {}, set()
+    for g, a, b, conn in cand:
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if _same_chain(links, la, lb):
+            continue
+        links[(la, wa)] = (lb, wb, conn, g); links[(lb, wb)] = (la, wa, conn[::-1], g)
+        used |= {a, b}
+        stats["gap_n"] = stats.get("gap_n", 0) + 1; stats["gap_m"] = stats.get("gap_m", 0.0) + g
+        if RUNS is not None:
+            RUNS.append(("gap", "join", conn.copy()))
+    return _assemble(items, links)
+
+
+CLOSE_LOOP = 20.0     # m, a long kerb whose own two ends face each other this close is a block loop left open
+LOOP_MIN = 60.0       # m, only kerbs at least this long close on themselves
+TEE_REACH = 10.0      # m, a kerb end that runs into another kerb's side within this is carried on to touch it
+CLOSE_LAT = 5.0       # m sideways for a same-line gap (wider than gaps: the last pass)
+CLOSE_ANG = np.radians(35)
+LANE_GAP = 10.0       # m, a same-line gap this short is a lane or driveway crossing even where a centreline crosses it (a side
+                      # street's mouth with its two round corners is wider)
+
+
+def close(items, world, stats):
+    """Last pass on open ends (Jacky 7 Nov 2026: "still got many gaps, they all can be connected"). Three cases a person closes
+    without thinking: (1) a long kerb round a block whose own two ends face each other within CLOSE_LOOP m (the loop's last
+    corner or gap); (2) an end that runs into the side of another kerb within TEE_REACH m (a T): carried on straight until it
+    touches; (3) a same-line gap (up to GAP_MAX m, CLOSE_LAT m sideways) also where a road centreline crosses it, as long as the
+    properties behind do not open (a driveway, a lane with a crossing, not a side street). Never through a house lot or across
+    another kerb; corners are rounded."""
+    from scipy.spatial import cKDTree
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    KG = [LineString(it["p"]) if len(it["p"]) > 1 else Point(0, 0) for it in items]
+    KT = STRtree(KG)
+
+    def free(li, w):
+        e = items[li]["p"][0 if w == 0 else -1]
+        return not any(int(k) != li and KG[int(k)].distance(Point(e)) <= 2.0 for k in KT.query(Point(e).buffer(2.0)))
+
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1)
+            if lens[li] >= LINK_MIN and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 0.05 and free(li, w)]
+    if not ends:
+        return items
+    E = [_end(items[li]["p"], w, 8.0) for li, w in ends]
+    T = cKDTree(np.array([e for e, _ in E]))
+    links, used = {}, set()
+
+    def ok(conn, mine):
+        ls = LineString(conn)
+        if world.through_house(ls):
+            return False
+        inner = LineString(conn[1:-1]) if len(conn) > 3 else ls.interpolate(0.5, normalized=True)
+        return not any(int(k) not in mine for k in KT.query(inner, predicate="intersects"))
+
+    # (1) block loops left open
+    for k, (li, w) in enumerate(ends):
+        if w != 0 or lens[li] < LOOP_MIN or k in used:
+            continue
+        k2 = next((j for j, x in enumerate(ends) if x == (li, 1)), None)
+        if k2 is None:
+            continue
+        (ea, ua), (eb, ub) = E[k], E[k2]
+        g = np.hypot(*(eb - ea))
+        if g > CLOSE_LOOP:
+            continue
+        if g < 0.05:
+            conn = np.array([ea, eb])
+        else:
+            d = (eb - ea) / g
+            if g > 3.0 and (ua @ d < -0.2 or ub @ -d < -0.2):
+                continue  # (ends under 3 m apart close whatever their heading: the loop's last metre)
+            conn = _corner(ea, ua, eb, ub, rmax=6.0) if abs(_turn(ua, -ub)) > np.radians(30) else None
+            if conn is None or _sharp(ua, conn, np.radians(60)):
+                conn = np.array([ea, eb])
+        if not ok(conn, (li,)) or (g > 0.05 and world.crosses_road(LineString(conn)) and g > 6):
+            continue
+        L = float(LineString(conn).length)
+        links[(li, 0)] = (li, 1, conn, L); links[(li, 1)] = (li, 0, conn[::-1], L)
+        used |= {k, k2}
+        stats["close_loop"] = stats.get("close_loop", 0) + 1
+    # (3) same-line gaps, looser than rule gaps, a centreline crossing allowed where nothing opens behind
+    cand = []
+    for a, b in T.query_pairs(GAP_MAX):
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if la == lb:
+            continue
+        (ea, ua), (eb, ub) = E[a], E[b]
+        d = eb - ea; g = np.hypot(*d)
+        if g < 0.05:
+            cand.append((g, a, b, np.array([ea, eb]))); continue
+        if ua @ (d / g) < np.cos(CLOSE_ANG) or ub @ (-d / g) < np.cos(CLOSE_ANG) or ua @ (-ub) < np.cos(np.radians(25)):
+            continue
+        if abs(ua[0] * d[1] - ua[1] * d[0]) > CLOSE_LAT:
+            continue
+        conn = np.array([ea, eb]); ls = LineString(conn)
+        if world.crosses_road(ls) and g > LANE_GAP:
+            x = [ls.project(q) for r in world.rtree.query(ls, predicate="intersects")
+                 for q in getattr(ls.intersection(world.roads[int(r)]), "geoms", [ls.intersection(world.roads[int(r)])]) if q.geom_type == "Point"]
+            if not x or any(_opening(ls, t, world) for t in x):
+                continue  # a real side street opens here: the gap is its mouth
+        if not ok(conn, (la, lb)):
+            continue
+        cand.append((g, a, b, conn))
+    cand.sort(key=lambda c: c[0])
+    for g, a, b, conn in cand:
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if _same_chain(links, la, lb):
+            continue
+        L = float(LineString(conn).length)
+        links[(la, wa)] = (lb, wb, conn, L); links[(lb, wb)] = (la, wa, conn[::-1], L)
+        used |= {a, b}
+        stats["close_gap"] = stats.get("close_gap", 0) + 1
+        if RUNS is not None:
+            RUNS.append(("close", "gap", conn.copy()))
+    # (2) T: an end that runs into the side of another kerb just ahead is carried on until it touches
+    for k, (li, w) in enumerate(ends):
+        if k in used:
+            continue
+        e, u = E[k]
+        ray = LineString([e, e + u * TEE_REACH])
+        best = None
+        for j in KT.query(ray, predicate="intersects"):
+            j = int(j)
+            if j == li:
+                continue
+            x = ray.intersection(KG[j])
+            for q in getattr(x, "geoms", [x]):
+                if q.geom_type != "Point":
+                    continue
+                t = ray.project(q)
+                gj = KG[j]; tj = gj.project(q)
+                a_ = np.asarray(gj.interpolate(max(tj - 1.5, 0)).coords[0]); b_ = np.asarray(gj.interpolate(min(tj + 1.5, gj.length)).coords[0])
+                dj = b_ - a_; nj = np.hypot(*dj)
+                if nj < 0.5 or abs(dj @ u) / nj > np.cos(np.radians(40)):
+                    continue  # runs alongside, not a T
+                if best is None or t < best[0]:
+                    best = (t, np.asarray(q.coords[0]))
+        if best is None or best[0] < 0.3:
+            continue
+        conn = np.array([e, best[1]])
+        if world.through_house(LineString(conn)) or world.crosses_road(LineString(conn)):
+            continue
+        p = items[li]["p"]
+        items[li] = dict(items[li], p=np.vstack([p, best[1][None]]) if w == 1 else np.vstack([best[1][None], p]),
+                         filled=items[li]["filled"] + best[0])
+        used.add(k)
+        stats["close_tee"] = stats.get("close_tee", 0) + 1
+        if RUNS is not None:
+            RUNS.append(("close", "tee", conn.copy()))
+    return _assemble(items, links) if links else items
+
+
+STUB_LEN = 30.0       # m, a piece shorter than this that runs mostly beside another kerb is a leftover double
+
+
+def stubs(items, stats):
+    """Short pieces that mostly double another kerb (1-4.5 m alongside) are leftovers of a stopped run or a lane line: dropped."""
+    G = [LineString(it["p"]) if len(it["p"]) > 1 else None for it in items]
+    T = STRtree([g for g in G if g is not None]); I = [i for i, g in enumerate(G) if g is not None]
+    keep = []
+    for i, it in enumerate(items):
+        g = G[i]
+        if g is None or g.length >= STUB_LEN:
+            keep.append(it); continue
+        q = [g.interpolate(f, normalized=True) for f in np.linspace(0.05, 0.95, 8)]
+        dbl = np.mean([any(I[int(k)] != i and 1.0 <= G[I[int(k)]].distance(x) <= EXT_TWIN for k in T.query(x.buffer(EXT_TWIN)))
+                       for x in q])
+        if dbl > 0.5:
+            drawn = it["filled"] >= 0.5 * g.length
+            if not drawn:
+                # a kerb seen in the photo goes only when the line beside it is a longer kerb also seen in the photo
+                nb = [I[int(k)] for k in T.query(g.buffer(EXT_TWIN)) if I[int(k)] != i]
+                drawn = any(G[j].length > g.length and items[j]["filled"] < 0.5 * G[j].length for j in nb)
+            if drawn:
+                stats["stub_n"] = stats.get("stub_n", 0) + 1; continue
+        keep.append(it)
+    return keep
+
+
+def weld(items, stats):
+    """Last rule: two kerb ends that touch and run on the same line are one kerb (no break in the drawing)."""
+    from scipy.spatial import cKDTree
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1) if len(items[li]["p"]) > 1
+            and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 1.0]
+    if len(ends) < 2:
+        return items
+    E = [_end(items[li]["p"], w, 3.0) for li, w in ends]
+    T = cKDTree(np.array([e for e, _ in E]))
+    cand = []
+    for a, b in T.query_pairs(WELD):
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if la == lb:
+            continue
+        if E[a][1] @ E[b][1] < -np.cos(np.radians(30)):
+            cand.append((np.hypot(*(E[a][0] - E[b][0])), a, b))
+    cand.sort(); links = {}; used = set()
+    for g, a, b in cand:
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if _same_chain(links, la, lb):
+            continue
+        conn = np.array([E[a][0], E[b][0]])
+        links[(la, wa)] = (lb, wb, conn, g); links[(lb, wb)] = (la, wa, conn[::-1], g)
+        used |= {a, b}
+        stats["weld_n"] = stats.get("weld_n", 0) + 1
+    return _assemble(items, links)
 
 
 BLOCK_R = {1: 12.0, 2: 9.0, 3: 6.0}  # m, round corner radius by road rank (main, collector, local)
@@ -921,7 +1620,7 @@ def drop(items, stats):
     return keep
 
 
-def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "blocks", "caps", "fragments", "drop")):
+def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "extend", "turn", "gaps", "blocks", "caps", "fragments", "drop", "close", "weld")):
     if "mouths" in rules:
         items = mouths(items, world, stats)
     if "join" in rules:
@@ -931,6 +1630,13 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "bloc
         items = corners(items, world, stats)
     if "fill" in rules:
         items = fill(items, world, stats)
+    if "extend" in rules:
+        items = extend(items, world, stats)
+    if "turn" in rules:
+        items = turn(items, world, stats)
+        items = extend(items, world, stats)  # carry the turned kerbs on along their side streets
+    if "gaps" in rules:
+        items = gaps(items, world, stats)
     if "blocks" in rules:
         items = blocks(items, world, stats)
     if "caps" in rules:
@@ -939,6 +1645,12 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "bloc
         items = fragments(items, stats)
     if "drop" in rules:
         items = drop(items, stats)
+    if "weld" in rules:
+        items = stubs(items, stats)
+        items = weld(items, stats)
+    if "close" in rules:
+        items = close(items, world, stats)  # after weld: welded pieces make new near-loops
+        items = weld(items, stats)
     stats.pop("_conn", None) if not stats.get("_keep") else None
     for k in list(stats):
         if k.endswith("_m"):
