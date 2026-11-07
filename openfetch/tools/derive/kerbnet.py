@@ -769,7 +769,7 @@ CORNER_SEE = 20.0  # m, a street centreline this near a crossing, between two of
 ARM_DROP = 30.0    # m, a road-side arm shorter than this goes; a longer one is cut back ARM_CUT m from the crossing
 ARM_CUT = 3.0
 X_END = 0.8        # m, a crossing this close to a kerb end is a join, not a crossing (the reviewer counts 1.0)
-T_TOUCH, T_ANG = 1.0, 35.0  # m, deg: a kerb end this near another kerb's middle, coming in steeper than this, is a T
+T_TOUCH, T_ANG = 2.5, 35.0  # m, deg: a kerb end this near another kerb's middle, coming in steeper than this, is a T
 LOOP_DROP = 40.0   # m, a kerb that crosses itself round a loop shorter than this has a knot: the loop goes
 
 
@@ -795,7 +795,7 @@ def _xings(G):
                     if p.geom_type != "Point":
                         continue
                     t1 = cum[k] + Point(c[k]).distance(p); t2 = cum[m] + Point(c[m]).distance(p)
-                    if t2 - t1 < 0.5:
+                    if t2 - t1 < 0.05:
                         continue
                     if a.coords[0] == a.coords[-1] and t1 < X_END and a.length - t2 < X_END:
                         continue
@@ -1215,7 +1215,7 @@ def mouths(out, streets, stats, tracks=()):
                     continue
                 if not _through(p, g, st, geoms):
                     continue
-                if is_track and not _turns_back(g, g.project(p)):
+                if not _turns_back(g, g.project(p)):    # straight across a mouth: left (cutting it opens the corner)
                     continue
                 band = s.buffer(MOUTH_W).intersection(p.buffer(3 * MOUTH_W))
                 cut = band if cut is None else cut.union(band)
@@ -1227,7 +1227,7 @@ def mouths(out, streets, stats, tracks=()):
     return res
 
 
-GAP_JOIN, GAP_AHEAD, GAP_TURN = 10.0, 15.0, 110.0   # m, m, deg: two free kerb ends this close, facing each other or meeting ahead within GAP_AHEAD, join
+GAP_JOIN, GAP_AHEAD, GAP_TURN, GAP_BACK = 10.0, 15.0, 110.0, 8.0   # m, m, deg, m: two free kerb ends this close, facing each other or meeting ahead within GAP_AHEAD, join
 
 
 def gapjoin(out, streets, stats):
@@ -1254,18 +1254,31 @@ def gapjoin(out, streets, stats):
     cand = []
     for a, b in (cKDTree(P).query_pairs(GAP_JOIN) if len(P) else []):
         (i1, j1, e1, h1), (i2, j2, e2, h2) = ends[a], ends[b]
-        d = e2 - e1; L = np.hypot(*d)
-        if L < 0.3 or h1 @ d <= 0 or h2 @ (-d) <= 0:
+        d = e2 - e1; L = np.hypot(*d); trim = (0.0, 0.0)
+        if L < 0.3:
             continue
         if np.degrees(np.arccos(np.clip(h1 @ (-h2), -1, 1))) > GAP_TURN:   # a hairpin or V, not a corner
             continue
         A = np.c_[h1, -h2]
         if abs(np.linalg.det(A)) > 0.2:
             s1, s2 = np.linalg.solve(A, d)
-            if not (2.0 < s1 < GAP_AHEAD and 2.0 < s2 < GAP_AHEAD and 0.4 < s1 / s2 < 2.5):
+            # an end already at or past the corner point (a kerb cut at a side street's mouth, a side kerb stopping on the
+            # main kerb's line) is pulled back so the two meet in a round corner of about CORNER_R
+            if not (-GAP_BACK < s1 < GAP_AHEAD and -GAP_BACK < s2 < GAP_AHEAD):
                 continue
-            path = _bez(e1, e1 + s1 * h1, e2, 12)
+            t1, t2 = max(0.0, 4.0 - s1), max(0.0, 4.0 - s2)
+            if t1 > 0.4 * G[i1].length or t2 > 0.4 * G[i2].length:
+                continue
+            g1 = G[i1]; g2 = G[i2]
+            f1 = np.asarray(g1.interpolate(t1 if j1 == 0 else g1.length - t1).coords[0])
+            f2 = np.asarray(g2.interpolate(t2 if j2 == 0 else g2.length - t2).coords[0])
+            X = e1 + s1 * h1; s1, s2 = np.hypot(*(X - f1)), np.hypot(*(X - f2))
+            if not (0.4 < s1 / max(s2, 1e-6) < 2.5) or (h1 @ (X - f1) <= 0) or (h2 @ (X - f2) <= 0):
+                continue
+            path = _bez(f1, X, f2, 12); trim = (t1, t2)
         else:
+            if h1 @ d <= 0 or h2 @ (-d) <= 0:
+                continue
             if np.degrees(np.arccos(np.clip(h1 @ (-h2), -1, 1))) > 30 or abs(h1[0] * d[1] - h1[1] * d[0]) > max(3.0, 0.6 * L):
                 continue
             t = np.linspace(0, 1, 12)[:, None]; c1, c2 = e1 + h1 * L / 3, e2 + h2 * L / 3
@@ -1275,10 +1288,13 @@ def gapjoin(out, streets, stats):
             continue
         if any(G[int(k)].crosses(w) for k in tree.query(w) if int(k) not in (i1, i2)):
             continue
-        cand.append((L, a, b, path))
-    for L, a, b, path in sorted(cand, key=lambda x: x[0]):
+        cand.append((L, a, b, path, trim))
+    for L, a, b, path, trim in sorted(cand, key=lambda x: x[0]):
         if a in used or b in used:
             continue
+        for (i_, j_), t_ in ((ends[a][:2], trim[0]), (ends[b][:2], trim[1])):
+            if t_ > 0:
+                g_ = G[i_]; G[i_] = substring(g_, t_, g_.length) if j_ == 0 else substring(g_, 0, g_.length - t_)
         used.update((a, b)); joins.append((ends[a][:2], ends[b][:2], path)); CORNER_LOG.append(("gap", *map(float, path[len(path) // 2])))
     # merge: each line's coords, oriented, joined through the paths
     parent = list(range(len(G))); seqs = {i: [np.asarray(g.coords)] for i, g in enumerate(G)}
