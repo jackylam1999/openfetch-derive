@@ -14,6 +14,6 @@ Follows kerbs-more-real-kerbs.md (Jacky chose "Draw whole suburbs", 7 Nov 10:06Z
 1. Per suburb, busiest first: `kerbapply.py fetch C:\kerb\ship SUBURB`, then `dem` for boxes with LiDAR, then
    `draw C:\kerb\ship <pc-16-1 model> 0.8 SUBURB` with KERB_CFG side-street-eval.json. Boxes without LiDAR ship "partial".
 2. Merge the new boxes' traced lines with the 2026-11-05 traced lines (kerbs-nsw.geojson.gz), drop shared-box duplicates.
-3. Cloud: kerbregular.py run -> kerbnet.py (branch nz1mnq a0499a5 or later; owned by thread "Fix kerb corners for version d"
+3. Cloud: kerbregular.py run -> kerbnet.py (branch claude/project-thread-12v8yq 706d1da or later, candidate until its reviewer pass; owned by thread "Fix kerb corners for version d"
    since 7 Nov 10:13Z, do not edit) -> kerbreview.py (must pass) -> kerbs-check.py -> kerbcover.py per suburb.
 4. Main: version folder + catalog + deployer "next combined preview" line only after the reviewer passes; no own deploy.
