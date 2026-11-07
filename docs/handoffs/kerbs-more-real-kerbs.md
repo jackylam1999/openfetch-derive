@@ -35,3 +35,6 @@ says where the missing real kerb actually is and what to do next. Waiting on Jac
 ## Files
 - openfetch/tools/derive/kerbcover.py (this branch): coverage per suburb, no truth needed; rerun on every new version.
 - Picture sheet: project files kerbs/more-kerbs-misses-2026-11-07.jpg (red council, cyan OpenFetch, 120 m tiles).
+
+## Decision
+Jacky 7 Nov 10:06Z chose "Draw whole suburbs" (item 1). The build goes to a fresh PC + cloud thread; it starts from this note.
