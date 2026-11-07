@@ -1,0 +1,45 @@
+[
+ {
+  "id": "J1",
+  "x": 315508.7,
+  "y": 6256479.8,
+  "r": 20,
+  "kinds": [
+   "self",
+   "poke",
+   "cross",
+   "fold"
+  ],
+  "words": "spot 4: line crosses itself at a T corner, short tail pokes through the main-road kerb (Jacky: intersection)",
+  "version": "2026-11-07-b",
+  "by": "Jacky"
+ },
+ {
+  "id": "J2",
+  "x": 315180.3,
+  "y": 6256725.3,
+  "r": 20,
+  "kinds": [
+   "fold",
+   "dup",
+   "inside"
+  ],
+  "words": "spot 7: line folds back on itself, 2-3 strands 1.5-2 m apart (Jacky: parallel line, kerb within a kerb)",
+  "version": "2026-11-07-b",
+  "by": "Jacky"
+ },
+ {
+  "id": "J3",
+  "x": 336933.3,
+  "y": 6245699.1,
+  "r": 20,
+  "kinds": [
+   "beside",
+   "dup",
+   "inside"
+  ],
+  "words": "spot 9 / tile 2: real kerb end stops open beside the bus-lane line 2.5 m away (Jacky: parallel line, open curve)",
+  "version": "2026-11-07-b",
+  "by": "Jacky"
+ }
+]
