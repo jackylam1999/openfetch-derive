@@ -264,6 +264,9 @@ def check(a):
         while r > lines[i].length: r -= lines[i].length; i += 1
         p = lines[i].interpolate(r); rand.append({'kind': 'random', 'x': p.x, 'y': p.y, 'size': 0})
     pick = pick[:12] + rand
+    for c in (json.load(open(opt.get('cases', CASES))) if os.path.exists(opt.get('cases', CASES)) else []):
+        if c['kinds'] == ['random']:                    # a visual-only case (no geometry rule knows it): re-judged every version
+            pick.append({'kind': 'case ' + c['id'], 'x': c['x'], 'y': c['y'], 'size': 0})
     tree = STRtree(lines)
     sheet(lines, tree, pick, os.path.join(out, 'review-sheet.jpg'), n=len(pick), use_photo='--no-photo' not in a)
     best = {}
@@ -290,6 +293,7 @@ def visual(a):
     cases = json.load(open(CASES)) if os.path.exists(CASES) else []
     for v in wrong:
         s = rv['sheet_spots'][v['tile'] - 1]
+        if s['kind'].startswith('case '): continue
         if not any(math.hypot(s['x'] - c['x'], s['y'] - c['y']) < 10 for c in cases):
             cases.append({'id': f"V{len(cases) + 1}", 'x': round(s['x'], 1), 'y': round(s['y'], 1), 'r': 15,
                           'kinds': [s['kind']], 'words': 'visual reviewer: ' + v.get('why', ''), 'version': rv['source'],
