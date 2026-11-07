@@ -673,5 +673,5 @@ def lots(a, url="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land
 
 if __name__ == "__main__":
     roads = lambda a: lots(a, "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme_multiCRS/FeatureServer/5/query",
-                           "OBJECTID,functionhierarchy")
+                           "OBJECTID,functionhierarchy,roadontype")   # roadontype 2 bridge, 3 tunnel: kerbnet.py
     {"run": run, "lots": lots, "roads": roads}[sys.argv[1]](sys.argv[2:])

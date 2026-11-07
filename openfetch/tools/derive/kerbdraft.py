@@ -20,7 +20,9 @@ Town Hall / Waterloo picture): trace the way a person does when the kerb cannot 
      dead   a dead end is capped by straights and two equal round corners on the side kerbs' own headings (no jogs)
   4. cap    a kerb end that runs into a property (house lot, not a road lot) stops at the lot edge
   5. drop   short pieces still on their own after 1-4 (broken bits nobody can use, e.g. tram stops and medians in the CBD)
-  6. weld   two ends that touch and carry on each other's line become one kerb
+  6. close  last pass on open ends: block loops left open are closed, an end running into another kerb's side within 10 m is
+            carried on to touch it, same-line gaps (40 m, 5 m sideways) are joined also across a driveway or lane line
+  7. weld   two ends that touch and carry on each other's line become one kerb
   Mouths: a kerb is cut at a side street only where the properties behind it open (not at driveways, footpath lines or roads on
   bridges: 941 wrong 8 m cuts in version 2026-11-06-e), and road centrelines of tracks and paths (functionhierarchy 8-11) are
   not streets for any rule.
@@ -1290,6 +1292,148 @@ def gaps(items, world, stats):
     return _assemble(items, links)
 
 
+CLOSE_LOOP = 20.0     # m, a long kerb whose own two ends face each other this close is a block loop left open
+LOOP_MIN = 60.0       # m, only kerbs at least this long close on themselves
+TEE_REACH = 10.0      # m, a kerb end that runs into another kerb's side within this is carried on to touch it
+CLOSE_LAT = 5.0       # m sideways for a same-line gap (wider than gaps: the last pass)
+CLOSE_ANG = np.radians(35)
+LANE_GAP = 10.0       # m, a same-line gap this short is a lane or driveway crossing even where a centreline crosses it (a side
+                      # street's mouth with its two round corners is wider)
+
+
+def close(items, world, stats):
+    """Last pass on open ends (Jacky 7 Nov 2026: "still got many gaps, they all can be connected"). Three cases a person closes
+    without thinking: (1) a long kerb round a block whose own two ends face each other within CLOSE_LOOP m (the loop's last
+    corner or gap); (2) an end that runs into the side of another kerb within TEE_REACH m (a T): carried on straight until it
+    touches; (3) a same-line gap (up to GAP_MAX m, CLOSE_LAT m sideways) also where a road centreline crosses it, as long as the
+    properties behind do not open (a driveway, a lane with a crossing, not a side street). Never through a house lot or across
+    another kerb; corners are rounded."""
+    from scipy.spatial import cKDTree
+    lens = [LineString(it["p"]).length if len(it["p"]) > 1 else 0 for it in items]
+    KG = [LineString(it["p"]) if len(it["p"]) > 1 else Point(0, 0) for it in items]
+    KT = STRtree(KG)
+
+    def free(li, w):
+        e = items[li]["p"][0 if w == 0 else -1]
+        return not any(int(k) != li and KG[int(k)].distance(Point(e)) <= 2.0 for k in KT.query(Point(e).buffer(2.0)))
+
+    ends = [(li, w) for li in range(len(items)) for w in (0, 1)
+            if lens[li] >= LINK_MIN and np.hypot(*(items[li]["p"][0] - items[li]["p"][-1])) > 0.05 and free(li, w)]
+    if not ends:
+        return items
+    E = [_end(items[li]["p"], w, 8.0) for li, w in ends]
+    T = cKDTree(np.array([e for e, _ in E]))
+    links, used = {}, set()
+
+    def ok(conn, mine):
+        ls = LineString(conn)
+        if world.through_house(ls):
+            return False
+        inner = LineString(conn[1:-1]) if len(conn) > 3 else ls.interpolate(0.5, normalized=True)
+        return not any(int(k) not in mine for k in KT.query(inner, predicate="intersects"))
+
+    # (1) block loops left open
+    for k, (li, w) in enumerate(ends):
+        if w != 0 or lens[li] < LOOP_MIN or k in used:
+            continue
+        k2 = next((j for j, x in enumerate(ends) if x == (li, 1)), None)
+        if k2 is None:
+            continue
+        (ea, ua), (eb, ub) = E[k], E[k2]
+        g = np.hypot(*(eb - ea))
+        if g > CLOSE_LOOP:
+            continue
+        if g < 0.05:
+            conn = np.array([ea, eb])
+        else:
+            d = (eb - ea) / g
+            if g > 3.0 and (ua @ d < -0.2 or ub @ -d < -0.2):
+                continue  # (ends under 3 m apart close whatever their heading: the loop's last metre)
+            conn = _corner(ea, ua, eb, ub, rmax=6.0) if abs(_turn(ua, -ub)) > np.radians(30) else None
+            if conn is None or _sharp(ua, conn, np.radians(60)):
+                conn = np.array([ea, eb])
+        if not ok(conn, (li,)) or (g > 0.05 and world.crosses_road(LineString(conn)) and g > 6):
+            continue
+        L = float(LineString(conn).length)
+        links[(li, 0)] = (li, 1, conn, L); links[(li, 1)] = (li, 0, conn[::-1], L)
+        used |= {k, k2}
+        stats["close_loop"] = stats.get("close_loop", 0) + 1
+    # (3) same-line gaps, looser than rule gaps, a centreline crossing allowed where nothing opens behind
+    cand = []
+    for a, b in T.query_pairs(GAP_MAX):
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if la == lb:
+            continue
+        (ea, ua), (eb, ub) = E[a], E[b]
+        d = eb - ea; g = np.hypot(*d)
+        if g < 0.05:
+            cand.append((g, a, b, np.array([ea, eb]))); continue
+        if ua @ (d / g) < np.cos(CLOSE_ANG) or ub @ (-d / g) < np.cos(CLOSE_ANG) or ua @ (-ub) < np.cos(np.radians(25)):
+            continue
+        if abs(ua[0] * d[1] - ua[1] * d[0]) > CLOSE_LAT:
+            continue
+        conn = np.array([ea, eb]); ls = LineString(conn)
+        if world.crosses_road(ls) and g > LANE_GAP:
+            x = [ls.project(q) for r in world.rtree.query(ls, predicate="intersects")
+                 for q in getattr(ls.intersection(world.roads[int(r)]), "geoms", [ls.intersection(world.roads[int(r)])]) if q.geom_type == "Point"]
+            if not x or any(_opening(ls, t, world) for t in x):
+                continue  # a real side street opens here: the gap is its mouth
+        if not ok(conn, (la, lb)):
+            continue
+        cand.append((g, a, b, conn))
+    cand.sort(key=lambda c: c[0])
+    for g, a, b, conn in cand:
+        if a in used or b in used:
+            continue
+        (la, wa), (lb, wb) = ends[a], ends[b]
+        if _same_chain(links, la, lb):
+            continue
+        L = float(LineString(conn).length)
+        links[(la, wa)] = (lb, wb, conn, L); links[(lb, wb)] = (la, wa, conn[::-1], L)
+        used |= {a, b}
+        stats["close_gap"] = stats.get("close_gap", 0) + 1
+        if RUNS is not None:
+            RUNS.append(("close", "gap", conn.copy()))
+    # (2) T: an end that runs into the side of another kerb just ahead is carried on until it touches
+    for k, (li, w) in enumerate(ends):
+        if k in used:
+            continue
+        e, u = E[k]
+        ray = LineString([e, e + u * TEE_REACH])
+        best = None
+        for j in KT.query(ray, predicate="intersects"):
+            j = int(j)
+            if j == li:
+                continue
+            x = ray.intersection(KG[j])
+            for q in getattr(x, "geoms", [x]):
+                if q.geom_type != "Point":
+                    continue
+                t = ray.project(q)
+                gj = KG[j]; tj = gj.project(q)
+                a_ = np.asarray(gj.interpolate(max(tj - 1.5, 0)).coords[0]); b_ = np.asarray(gj.interpolate(min(tj + 1.5, gj.length)).coords[0])
+                dj = b_ - a_; nj = np.hypot(*dj)
+                if nj < 0.5 or abs(dj @ u) / nj > np.cos(np.radians(40)):
+                    continue  # runs alongside, not a T
+                if best is None or t < best[0]:
+                    best = (t, np.asarray(q.coords[0]))
+        if best is None or best[0] < 0.3:
+            continue
+        conn = np.array([e, best[1]])
+        if world.through_house(LineString(conn)) or world.crosses_road(LineString(conn)):
+            continue
+        p = items[li]["p"]
+        items[li] = dict(items[li], p=np.vstack([p, best[1][None]]) if w == 1 else np.vstack([best[1][None], p]),
+                         filled=items[li]["filled"] + best[0])
+        used.add(k)
+        stats["close_tee"] = stats.get("close_tee", 0) + 1
+        if RUNS is not None:
+            RUNS.append(("close", "tee", conn.copy()))
+    return _assemble(items, links) if links else items
+
+
 STUB_LEN = 30.0       # m, a piece shorter than this that runs mostly beside another kerb is a leftover double
 
 
@@ -1476,7 +1620,7 @@ def drop(items, stats):
     return keep
 
 
-def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "extend", "turn", "gaps", "blocks", "caps", "fragments", "drop", "weld")):
+def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "extend", "turn", "gaps", "blocks", "caps", "fragments", "drop", "close", "weld")):
     if "mouths" in rules:
         items = mouths(items, world, stats)
     if "join" in rules:
@@ -1503,6 +1647,9 @@ def draft(items, world, stats, rules=("mouths", "join", "corners", "fill", "exte
         items = drop(items, stats)
     if "weld" in rules:
         items = stubs(items, stats)
+        items = weld(items, stats)
+    if "close" in rules:
+        items = close(items, world, stats)  # after weld: welded pieces make new near-loops
         items = weld(items, stats)
     stats.pop("_conn", None) if not stats.get("_keep") else None
     for k in list(stats):
