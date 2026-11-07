@@ -377,5 +377,161 @@
   "words": "visual reviewer: kerbs joined by a U-loop across the road where it continues; stray line runs through the car park",
   "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
   "by": "visual reviewer"
+ },
+ {
+  "id": "V32",
+  "x": 324945.9,
+  "y": 6249885.6,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: both kerbs of the side street west of the intersection missing; corner lines stop as short hooks",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V33",
+  "x": 323862.5,
+  "y": 6256010.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: roundabout island and west-side kerbs around the roundabout missing",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V34",
+  "x": 338488.2,
+  "y": 6241849.5,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: raised traffic island in the intersection not drawn",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V35",
+  "x": 333027.6,
+  "y": 6244985.8,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: north kerb is a straight line drifting about 3 m onto the verge/footpath at the west end",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V36",
+  "x": 336580.4,
+  "y": 6245084.8,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: east kerb line drifts about 3 m into the carriageway toward the south",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V37",
+  "x": 317727.3,
+  "y": 6253345.7,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: top intersection corner is a sharp V, not rounded",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V38",
+  "x": 313256.6,
+  "y": 6252970.5,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: two kerb lines run through a tree/grass strip with no visible road",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V39",
+  "x": 314095.8,
+  "y": 6254181.9,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: NW and SW intersection corners left open, kerb lines don't meet",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V40",
+  "x": 305426.1,
+  "y": 6189979.2,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: line starts mid-bridge and wanders across the deck into grass; freeway edges missing; stray curve in grass",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V41",
+  "x": 333979.9,
+  "y": 6251790.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: ramp and freeway kerb lines end loose at the merge nose, not closed",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V42",
+  "x": 323465.2,
+  "y": 6255282.9,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: west kerb drifts several metres off the road into the trees at the north",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V43",
+  "x": 334782.4,
+  "y": 6246340.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: median kerb stops at the gantry, short stub in trees top right, line ends loose in the median",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V44",
+  "x": 331024.3,
+  "y": 6246472.3,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: south kerb fragmented with gaps and a hook, runs through parked cars, stops short at west",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
  }
 ]

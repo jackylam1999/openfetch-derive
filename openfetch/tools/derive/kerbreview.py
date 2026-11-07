@@ -260,11 +260,14 @@ def check(a):
     pick += [s for s in spots if s not in pick]
     import random
     rnd, rand = random.Random(os.path.basename(src)), []; tot = sum(ln.length for ln in lines)
-    for _ in range(8):
+    for _ in range(8 if len(spots) >= 12 else 16):      # few flags left: look at more ordinary places
         r, i = rnd.uniform(0, tot), 0
         while r > lines[i].length: r -= lines[i].length; i += 1
         p = lines[i].interpolate(r); rand.append({'kind': 'random', 'x': p.x, 'y': p.y, 'size': 0})
     pick = pick[:12] + rand
+    if opt.get('prev') and os.path.exists(opt['prev']):   # the last version's worst spots: fixed, or only deleted?
+        was = json.load(open(opt['prev'])).get('sheet_spots', [])
+        pick += [dict(s, kind='was ' + s['kind']) for s in was if s['kind'] in KINDS][:8]
     for c in (json.load(open(opt.get('cases', CASES))) if os.path.exists(opt.get('cases', CASES)) else []):
         if c['kinds'] == ['random']:                    # a visual-only case (no geometry rule knows it): re-judged every version
             pick.append({'kind': 'case ' + c['id'], 'x': c['x'], 'y': c['y'], 'size': 0})
@@ -295,6 +298,7 @@ def visual(a):
     for v in wrong:
         s = rv['sheet_spots'][v['tile'] - 1]
         if s['kind'].startswith('case '): continue
+        if s['kind'].startswith('was '): s = dict(s, kind=s['kind'][4:])
         if not any(math.hypot(s['x'] - c['x'], s['y'] - c['y']) < 10 for c in cases):
             cases.append({'id': f"V{len(cases) + 1}", 'x': round(s['x'], 1), 'y': round(s['y'], 1), 'r': 15,
                           'kinds': [s['kind']], 'words': 'visual reviewer: ' + v.get('why', ''), 'version': rv['source'],
