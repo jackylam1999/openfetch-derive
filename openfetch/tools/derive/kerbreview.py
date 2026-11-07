@@ -25,7 +25,8 @@ Kinds (all in metres, EPSG 7856; every one is a shape council kerb lines do not 
   beside   a free kerb end sits within BESIDE_D of another kerb that runs parallel to it for BESIDE_LEN (stops beside a line)
   loop     a closed kerb ring smaller than LOOP_AREA m2
 Fails: any spot within r of a case's point (regression, hard); a kind's rate per km over its cap, where the cap is the lower of its
-starting bar (CAP: about one spot per 20-100 km; 7 Nov 2026 a hand check of 12 random flagged spots in 2026-11-07-b found
+starting bar (CAP: none at all, fold one per 100 km (7 Nov 2026 2026-11-07-c passed looser caps of one per 20-100 km, yet
+every flagged spot on its sheet was a real defect, 12 of 12, so any flag now fails); 7 Nov 2026 a hand check of 12 random flagged spots in 2026-11-07-b found
 all 12 really wrong, while Parramatta's council lines only trip dup / inside / cross where the council stores the same kerb twice
 or a kerb and its gutter 0.5 m apart, so the council is not used as the bar here) and the best rate any earlier passing version
 reached plus RATCHET (so a version can never be worse than the best already shipped).
@@ -48,7 +49,7 @@ DUP_D, DUP_ANG, DUP_LEN = 2.0, 20.0, 8.0
 INSIDE_D, INSIDE_SHARE, BESIDE_D, BESIDE_LEN, LOOP_AREA = 2.5, 0.8, 3.5, 10.0, 30.0
 END_TOUCH = 1.0                       # a crossing this close to a kerb end is a join, not a crossing
 KINDS = ('cross', 'poke', 'self', 'fold', 'dup', 'inside', 'beside', 'loop')
-CAP = {'cross': 0.02, 'poke': 0.02, 'self': 0.01, 'fold': 0.05, 'dup': 0.03, 'inside': 0.03, 'beside': 0.05, 'loop': 0.01}
+CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.01, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'loop': 0.0}
 RATCHET = 0.10                        # a later version may be at most 10 % worse than the best passing one, per kind
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = os.path.join(HERE, 'kerbreview-cases.json')
