@@ -25,7 +25,7 @@ Kinds (all in metres, EPSG 7856; every one is a shape council kerb lines do not 
   beside   a free kerb end sits within BESIDE_D of another kerb that runs parallel to it for BESIDE_LEN (stops beside a line)
   near     a kerb end NEAR_D or closer to another kerb without touching it (a corner or join left open)
   merge    a kerb end slides into another kerb at under 30 deg, running within 3 m of it for MERGE_LEN (a Y)
-           (near and merge are counted, not capped yet: 7 Nov 2026 d had 1,588 near, 11 merge, precision not checked)
+           (near and merge are counted, not capped: 7 Nov 2026 e: merge 5 of 10 judged wrong, 2 unsure; fold cap now 0, both e folds wrong)
   loop     a closed kerb ring smaller than LOOP_AREA m2
 Fails: any spot within r of a case's point (regression, hard); a kind's rate per km over its cap, where the cap is the lower of its
 starting bar (CAP: none at all, fold one per 100 km (7 Nov 2026 2026-11-07-c passed looser caps of one per 20-100 km, yet
@@ -53,7 +53,7 @@ INSIDE_D, INSIDE_SHARE, BESIDE_D, BESIDE_LEN, LOOP_AREA = 2.5, 0.8, 3.5, 10.0, 3
 NEAR_D, MERGE_LEN = 5.0, 8.0         # near: a kerb end 1-5 m from another kerb (a join left open); merge: slides into another line
 END_TOUCH = 1.0                       # a crossing this close to a kerb end is a join, not a crossing
 KINDS = ('cross', 'poke', 'self', 'fold', 'dup', 'inside', 'beside', 'near', 'merge', 'loop')
-CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.01, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'near': 99, 'merge': 99, 'loop': 0.0}   # near, merge: measured only until a visual run confirms them
+CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.0, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'near': 99, 'merge': 99, 'loop': 0.0}   # near, merge: measured only until a visual run confirms them
 RATCHET = 0.10                        # a later version may be at most 10 % worse than the best passing one, per kind
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = os.path.join(HERE, 'kerbreview-cases.json')
