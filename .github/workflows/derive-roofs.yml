@@ -12,6 +12,7 @@ on:
       name: {description: 'Short name for the order, e.g. north-shore', required: true}
       zip_url: {description: 'ELVIS zip link (https://elvis-downloads.s3.amazonaws.com/DATA_....zip)', required: true}
       only: {description: 'Optional pilot box in MGA56 metres: xmin ymin xmax ymax (blank = every tile)', required: false, default: ''}
+      epsg: {description: 'MGA zone of the LiDAR tiles: 7856 (zone 56, default) or 7855 (zone 55, e.g. Albury)', required: false, default: '7856'}
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -51,6 +52,7 @@ jobs:
           NAME: ${{ inputs.name }}
           URL: ${{ inputs.zip_url }}
           BOX: ${{ matrix.box }}
+          MGA_EPSG: ${{ inputs.epsg }}
       - if: always()
         run: grep -E "Maximum resident|Elapsed" time.log || true
       - if: always()

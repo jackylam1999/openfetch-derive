@@ -4,7 +4,7 @@
 Usage: python3 tools/derive/pipeline.py NAME xmin ymin xmax ymax OUTDIR tile.laz [...] [--ref reference.geojson]
        [--from community|trace|snap|gapfill]   (reuse saved outputs of earlier steps)
 
-Box in MGA56 metres (EPSG 7856). Steps: community shapes (community.py) -> trace (roofs.py --mode br) -> move
+Box in MGA56 metres (EPSG 7856; set MGA_EPSG=7855 for MGA zone 55 tiles). Steps: community shapes (community.py) -> trace (roofs.py --mode br) -> move
 community shapes onto the LiDAR (snap_pilot.py) -> NSW cadastre lots (lots.py) -> add traces only where nobody drew, cut
 along lot lines (gapfill.py) -> gates ->
 OUTDIR/report.md + OUTDIR/check.png. Exit code 1 when a FAIL gate trips: then nothing from this box is shown or used.
@@ -143,7 +143,7 @@ def main():
     if redo("community", "community.geojson"):
         print(run([sys.executable, os.path.join(HERE, "community.py"), *map(str, wide), P("community.geojson")]).strip())
     if redo("trace", "traced.geojson"):
-        print(run([sys.executable, os.path.join(HERE, "roofs.py"), P("traced.geojson"), *files, "--bbox", *map(str, wide), "--mode", "br", "--epsg", "7856"]).strip().splitlines()[-1])
+        print(run([sys.executable, os.path.join(HERE, "roofs.py"), P("traced.geojson"), *files, "--bbox", *map(str, wide), "--mode", "br", "--epsg", os.environ.get("MGA_EPSG", "7856")]).strip().splitlines()[-1])
     if redo("snap", "snapped.geojson"):
         print(run([sys.executable, os.path.join(HERE, "snap_pilot.py"), P("community.geojson"), P("snapped.geojson"), *files], {"BOX": " ".join(map(str, wide))}).strip().splitlines()[-1])
     if redo("community", "lots.geojson"):  # lot lines change rarely: fetched once per box, like the community shapes
