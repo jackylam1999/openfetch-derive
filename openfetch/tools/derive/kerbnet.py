@@ -43,6 +43,8 @@ CORE_MIN_W = 5.0   # m, mean width (2 x area / perimeter) under which a block co
 GUIDE_CUTS = (0.0, 4.0, 8.0)  # m, a join that spikes is tried again from this far back along the traced end
 LINE_MAX, LINE_LAT, LINE_ANG = 80.0, 1.5, 10.0  # m, m, deg: the same kerb carrying on straight ahead is joined
 FOLLOW, MERGE_ANG = 10.0, 25.0  # m, deg: a join may end mid-kerb only on a kerb the loop follows on, entering within 25 deg
+INSIDE, BESIDE = 2.7, 3.7   # m, kerbreview.py's inside / beside distances plus a margin
+JOIN_RUN = 12.0    # m, the end of a join running into a kerb may lie close beside it
 SOFT_SIGMA = 1.5   # m, final smoothing of every line (soften)
 CROSSOVER = 15.0   # m, a fill shorter than this from the middle of one kerb to the middle of another is a crossover
 DEAD_CLEAR = 30.0  # m, a dangling centreline end this near another road is a data gap, not a dead end
@@ -380,6 +382,107 @@ def crosses_mid(t, w, tol=1.0):
     pts = [x] if x.geom_type == "Point" else [g for g in getattr(x, "geoms", [x])]
     return any(min(g.distance(a), g.distance(b)) > tol for g in pts)
 
+
+def untangle(T, stats=None, self_near=2.5, other_near=1.2, gap=8.0, tail=12.0):
+    """Traced kerbs as a person would draw them (Jacky 7 Nov 2026: "some have parallel line, some have intersection, some have kerb
+    within a kerb"): stitching photo pieces left lines that fold back alongside themselves, cross themselves at corners, run a
+    second strand inside another kerb, or poke a short tail through the kerb they meet. A kerb never does any of that, so:
+    - a stretch of a line within self_near m of an earlier stretch of the same line (more than gap m back along it) is a fold-back
+      and goes; a stretch within other_near m of a longer kerb, heading the same way, is a strand inside that kerb and goes
+      (medians and islands, 1 m apart or more, stay);
+    - where two kerbs cross, the side of either one that ends within tail m of the crossing is cut at the crossing;
+    leftovers shorter than KEEP_MIN m go."""
+    stats = stats if stats is not None else {}
+    G = [LineString(c) for c in T if len(c) > 1]
+    G = [g for g in G if g.length > 0]
+    order = sorted(range(len(G)), key=lambda i: -G[i].length)
+    tree = STRtree(G); keep = []; kept = set(); cuts = []; CUT = {}
+    for i in order:
+        g = G[i]; L = g.length; closed = g.coords[0] == g.coords[-1] or Point(g.coords[0]).distance(Point(g.coords[-1])) < 0.5
+        ts = np.arange(0.5, L, 1.0)
+        if len(ts) < 2:
+            continue
+        P = np.array([g.interpolate(t).coords[0] for t in ts])
+        bad = np.zeros(len(ts), bool)
+        # fold-backs: near an earlier part of itself
+        from scipy.spatial import cKDTree
+        for a_, b_ in cKDTree(P).query_pairs(self_near):
+            d_ = abs(ts[a_] - ts[b_]); d_ = min(d_, L - d_) if closed else d_
+            if d_ > gap:
+                bad[max(a_, b_)] = True
+        # strands inside a longer kerb already kept
+        for k in [int(x) for x in tree.query(g.buffer(other_near))]:
+            if k == i or k not in kept:
+                continue
+            h = G[k]
+            # a join that runs into this kerb at its end is meant to merge with it: its last JOIN_RUN m are not a strand
+            t_s = h.distance(Point(g.coords[0])) <= 1.0; t_e = h.distance(Point(g.coords[-1])) <= 1.0
+            for n, (t, q) in enumerate(zip(ts, P)):
+                if bad[n] or h.distance(Point(q)) >= other_near:
+                    continue
+                if (t_s and t < JOIN_RUN) or (t_e and L - t < JOIN_RUN):
+                    continue
+                if abs(tangent(g, t) @ tangent(h, h.project(Point(q)))) >= PAR:
+                    bad[n] = True
+        if bad.any():
+            stats["untangle_m"] = stats.get("untangle_m", 0) + int(bad.sum())
+            runs = []; st = None
+            for n in range(len(ts)):
+                if not bad[n] and st is None:
+                    st = n
+                if (bad[n] or n == len(ts) - 1) and st is not None:
+                    e = n if not bad[n] else n - 1
+                    a0 = 0.0 if st == 0 else ts[st] - 0.5; a1 = L if e == len(ts) - 1 else ts[e] + 0.5
+                    if a1 - a0 >= KEEP_MIN:
+                        runs.append(substring(g, a0, a1)); cuts.append((a0 > 0, a1 < L))
+                    st = None
+            for r, cu in zip(runs, cuts[-len(runs):] if runs else []):
+                G.append(r); keep.append(len(G) - 1); CUT[len(G) - 1] = cu
+        else:
+            keep.append(i)
+        kept.add(i)
+    out = [G[i] for i in keep]
+    # a cut end lies on the strand that was taken out, beside the kerb (or the part of itself) it doubled: it carries on into
+    # that kerb, so the cut leaves a merge, not a new open end
+    ct = STRtree(out)
+    for n, i in enumerate(keep):
+        if i not in CUT:
+            continue
+        c = np.asarray(out[n].coords)
+        for j, was_cut in ((0, CUT[i][0]), (-1, CUT[i][1])):
+            if not was_cut:
+                continue
+            e = Point(c[j])
+            cand = [int(x) for x in ct.query(e.buffer(self_near + 0.5))]
+            cand = [k for k in cand if (k != n and out[k].distance(e) <= max(self_near, other_near) + 0.5)]
+            if not cand:
+                continue
+            k = min(cand, key=lambda k: out[k].distance(e)); q = np.asarray(out[k].interpolate(out[k].project(e)).coords[0])
+            if np.hypot(*(q - c[j])) > 0.05:
+                c = np.vstack([q, c]) if j == 0 else np.vstack([c, q])
+                stats["untangle_rejoined"] = stats.get("untangle_rejoined", 0) + 1
+        out[n] = LineString(c)
+    # tails poking through a kerb they meet
+    tr = STRtree(out); changed = True; rounds = 0
+    while changed and rounds < 3:
+        changed = False; rounds += 1
+        for i in range(len(out)):
+            g = out[i]
+            for k in [int(x) for x in tr.query(g)]:
+                if k == i or not out[k].crosses(g):
+                    continue
+                x = out[k].intersection(g)
+                for q in [x] if x.geom_type == "Point" else [q for q in getattr(x, "geoms", []) if q.geom_type == "Point"]:
+                    t = g.project(q)
+                    if 0.3 < t < tail and g.length - t > KEEP_MIN:
+                        g = substring(g, t, g.length); changed = True; stats["untangle_tail"] = stats.get("untangle_tail", 0) + 1
+                    elif 0.3 < g.length - t < tail and t > KEEP_MIN:
+                        g = substring(g, 0, t); changed = True; stats["untangle_tail"] = stats.get("untangle_tail", 0) + 1
+            out[i] = g
+        tr = STRtree(out)
+    return [np.asarray(g.coords) for g in out if g.length >= KEEP_MIN]
+
+
 def fill(traced, loops, streets=(), area=None, stats=None):
     """The traced kerbs kept exactly as seen, plus the parts of each block loop where nothing was traced (more than DUP m from
     every traced kerb), each at least FILL_MIN m long and with its ends snapped onto the traced kerb it meets: the photo stays
@@ -451,7 +554,7 @@ def guide(lines, loops, streets=(), stats=None):
     near_ids = lambda geom: [int(x) for x in tree.query(geom)] + [x for x in ADD if G[x].intersects(geom)]
     done = 0
 
-    def walk(i, j, e, hd, lp, te):
+    def walk(i, j, e, hd, lp, te, skip=-1):
         """The join from end e (heading hd) of kerb i along loop lp: (path, line), or why it is not drawn. It may end only where
         it meets another kerb's end, or where it runs into a kerb the loop then FOLLOWS (the same kerb line): a kerb the loop only
         passes (the kerb across a narrow carriageway, a median) is not this kerb, and joining it would make a V or a second
@@ -460,9 +563,11 @@ def guide(lines, loops, streets=(), stats=None):
         at = lambda x: lp.interpolate((t0 + sg * x) % lp.length)
         path = [e]; hit = None
         for step in np.arange(GUIDE_START, GUIDE_MAX, 1.0):
+            if skip >= 0 and not 0.0 <= t0 + sg * step <= lp.length:
+                break   # the line it runs beside has ended
             q = at(step); path.append(np.asarray(q.coords[0]))
             # its own kerb counts only far along it from the end (closing its own loop), never the stretch it came from
-            near = [m for m in near_ids(q.buffer(DUP)) if G[m].distance(q) <= DUP
+            near = [m for m in near_ids(q.buffer(DUP)) if G[m].distance(q) <= DUP and m != skip
                     and not (m == i and abs(G[i].project(q) - te) < 30.0)]
             if near:
                 m = min(near, key=lambda m: G[m].distance(q)); hit = np.asarray(G[m].interpolate(G[m].project(q)).coords[0])
@@ -477,7 +582,22 @@ def guide(lines, loops, streets=(), stats=None):
             # (the V at tile 2, Jacky 7 Nov 2026: "there should not be two parallel line")
             back = [np.asarray(G[i].interpolate(te + x if j == 0 else te - x).coords[0]) for x in (5.0, 10.0, 15.0)]
             if G[i].length > 20.0 and all(hk.distance(Point(b)) <= TWIN for b in back):
-                return "parallel"
+                if skip >= 0 or not hk.geom_type == "LineString":
+                    return "parallel"
+                # carry the kerb on beside that one at its own distance (Jacky 7 Nov: "you should just continue tracing it")
+                # until it meets the next kerb; never join the line beside it
+                off = e - np.asarray(hk.interpolate(hk.project(Point(e))).coords[0]); dd = np.hypot(*off)
+                if dd < 0.5:
+                    return "parallel"
+                side = "left" if (tangent(hk, hk.project(Point(e))) @ np.array([off[1], -off[0]])) < 0 else "right"
+                try:
+                    pl = hk.parallel_offset(dd, side, join_style=2)
+                except Exception:
+                    return "parallel"
+                if pl.geom_type != "LineString" or pl.length < 5:
+                    return "parallel"
+                r2 = walk(i, j, e, hd, pl, te, skip=m)
+                return r2 if isinstance(r2, tuple) else "parallel"
         if not at_end:
             # the same kerb: the loop keeps running along it for FOLLOW m after the meeting point
             fol = [hk.distance(at(step + x)) <= DUP + 0.5 for x in np.arange(1.0, FOLLOW + 1.0, 1.0)]
@@ -606,6 +726,44 @@ def soften(c, sigma=SOFT_SIGMA, step=0.5):
     return np.asarray(LineString(Q).simplify(0.05).coords)
 
 
+def final_clean(out, stats):
+    """The finished lines checked once more for what a kerb never does (the same shapes openfetch-derive kerbreview.py fails):
+    fold-backs and strands (untangle, a little wider than the reviewer's 2.5 / 2.0 m so a cut edge does not trip it), a line
+    lying mostly within INSIDE m of longer kerbs (a kerb within a kerb), and a free end stopping beside a parallel kerb (cut back
+    until it is clear of it)."""
+    st = {}
+    out = untangle(out, st, self_near=3.0, other_near=2.3, tail=0.0)   # tails: only on traced input (here they cut joins at corners)
+    stats.update({"final_" + k: v for k, v in st.items()})
+    G = sorted([LineString(c) for c in out], key=lambda g: -g.length); tree = STRtree(G); keep = []; kept = set()
+    for i, g in enumerate(G):
+        others = [G[k] for k in (int(x) for x in tree.query(g.buffer(INSIDE))) if k in kept]
+        if others:
+            ts = np.arange(0.5, g.length, 1.0)
+            near = sum(1 for t in ts if any(o.distance(g.interpolate(t)) < INSIDE for o in others))
+            if near >= 0.7 * len(ts):
+                stats["final_inside"] = stats.get("final_inside", 0) + 1; continue
+        keep.append(g); kept.add(i)
+    G = keep; tree = STRtree(G); n_cut = 0
+    for i in range(len(G)):
+        g = G[i]
+        for j in (0, -1):
+            for _ in range(40):
+                L = g.length
+                if L < KEEP_MIN:
+                    break
+                e = Point(g.coords[j]); t = 0.0 if j == 0 else L
+                near = [G[k] for k in (int(x) for x in tree.query(e.buffer(BESIDE))) if k != i]
+                if not near or any(o.distance(e) < 1.0 for o in near):
+                    break
+                tg = tangent(g, min(max(t, 1.0), L - 1.0))
+                if not any(o.distance(e) < BESIDE and abs(tangent(o, o.project(e)) @ tg) >= PAR for o in near):
+                    break
+                g = substring(g, 1.0, L) if j == 0 else substring(g, 0, L - 1.0); n_cut += 1
+        G[i] = g
+    stats["final_beside_m"] = n_cut
+    return [np.asarray(g.coords) for g in G if g.length >= KEEP_MIN]
+
+
 def props(o, kind, traced_path, roads, _c={}):
     """Feature properties as the published layer has them: a traced kerb keeps its own (road, source, areas, ...); a piece the
     street layout added gets source "street offset", the road type of the nearest street and the areas of the nearest kerb."""
@@ -647,6 +805,8 @@ def main(a):
     elif "--traced-only-area" in a:
         area = ka.traced_area(ka.Kerbs(traced))
     st = {}
+    if "--no-untangle" not in a:
+        traced = untangle(traced, st)
     out = build(traced, lots, roads, area, st)
     loops = [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5]
     if "--loops" not in a:
@@ -657,6 +817,18 @@ def main(a):
         kind = ["traced"] * n_tr + ["block fill"] * (n_fi - n_tr) + ["block guide"] * (len(out) - n_fi)
         if "--no-soften" not in a:
             out = [soften(o) for o in out]
+        if "--no-untangle" not in a:
+            tr_t = STRtree([LineString(o) for o, k in zip(out, kind) if k == "traced"])
+            out = final_clean(out, st)
+            # ends the clean-up opened (a jog or stub taken out at a corner) are joined again by the same rules, then checked again
+            st2 = {}; n0 = len(out)
+            out = guide(out, loops, [g for g, fh in roads if fh not in ka.SKIP_FH], st2)
+            out = out[:n0] + [soften(o) for o in out[n0:]]
+            st["reguide_closed"] = st2.get("guide_closed", 0)
+            st3 = {}; out = final_clean(out, st3); st["reclean"] = sum(v for v in st3.values())
+            # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
+            kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
+                    else "block guide" for o in out]
     else:
         kind = ["block loop"] * len(out)
     feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
