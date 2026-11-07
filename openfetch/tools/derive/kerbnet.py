@@ -521,6 +521,27 @@ def guide(lines, loops, streets=(), stats=None):
     return out
 
 
+def props(o, kind, traced_path, roads, _c={}):
+    """Feature properties as the published layer has them: a traced kerb keeps its own (road, source, areas, ...); a piece the
+    street layout added gets source "street offset", the road type of the nearest street and the areas of the nearest kerb."""
+    if "t" not in _c:
+        to = Transformer.from_crs(4326, 7856, always_xy=True).transform
+        fs = [f for f in json.load(open(traced_path))["features"] if f.get("geometry") and len(f["geometry"]["coordinates"]) > 1]
+        _c["g"] = [LineString([to(*q[:2]) for q in f["geometry"]["coordinates"]]) for f in fs]
+        _c["p"] = [f.get("properties") or {} for f in fs]; _c["t"] = STRtree(_c["g"])
+        _c["r"] = [(g, fh) for g, fh in roads if fh not in ka.SKIP_FH]; _c["rt"] = STRtree([g for g, _ in _c["r"]])
+    g = LineString(o); m = g.interpolate(0.5, normalized=True)
+    near = _c["p"][int(_c["t"].nearest(m))]
+    if kind in ("traced", "block loop"):
+        pr = dict(near)
+    else:
+        fh = _c["r"][int(_c["rt"].nearest(m))][1]
+        pr = {"road": "lane" if fh == 7 else {1: "main", 2: "collector", 3: "local"}[ka.road_rank(fh)], "source": "street offset",
+              "areas": near.get("areas", ""), "shape": "regular"}
+    pr["length_m"] = round(g.length, 1)
+    return pr
+
+
 def main(a):
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
     traced = ka.read_kerbs(a[0])
@@ -547,11 +568,11 @@ def main(a):
         out = fill(traced, [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5],
                    [g for g, fh in roads if fh not in ka.SKIP_FH], area, st)
         n_tr = len(out) - st["fill_pieces"]; n_fi = len(out)
-        out = guide(out, loops, NET, st)
+        out = guide(out, loops, [g for g, fh in roads if fh not in ka.SKIP_FH], st)   # no join across any street, lanes included
         kind = ["traced"] * n_tr + ["block fill"] * (n_fi - n_tr) + ["block guide"] * (len(out) - n_fi)
     else:
         kind = ["block loop"] * len(out)
-    feats = [{"type": "Feature", "properties": {"source": k},
+    feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
               "geometry": {"type": "LineString", "coordinates": [[round(v, 7) for v in back(x, y)] for x, y in o]}}
              for o, k in zip(out, kind)]
     json.dump({"type": "FeatureCollection", "features": feats}, open(a[3], "w"))
