@@ -533,5 +533,125 @@
   "words": "visual reviewer: south kerb fragmented with gaps and a hook, runs through parked cars, stops short at west",
   "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
   "by": "visual reviewer"
+ },
+ {
+  "id": "V45",
+  "x": 337442.2,
+  "y": 6247053.2,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: two lines cross each other in a plus shape through tree canopy",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V46",
+  "x": 332369.9,
+  "y": 6247179.3,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: corner curve runs into a line that carries on through the footpath/park past the junction, plus a stray curve through the park",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V47",
+  "x": 334884.9,
+  "y": 6250056.0,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: vertical line runs straight through the junction and crosses the other kerb line",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V48",
+  "x": 328290.5,
+  "y": 6246090.0,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: line hooks up into the gap between buildings and dead-ends against a roof; not a kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V49",
+  "x": 329360.0,
+  "y": 6246334.3,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: corner arc bulges out over the footpath and pedestrian crossing instead of following the kerb; separate line ends just short of it",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V50",
+  "x": 314085.1,
+  "y": 6254243.7,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: wavy line cuts through the middle of the angle-parked cars, metres off the kerb at the back of the bays",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V51",
+  "x": 314074.9,
+  "y": 6254243.5,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: same place as 9: wobbly line through the parked cars, not on the kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V52",
+  "x": 325879.8,
+  "y": 6249699.7,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: kerb kinks diagonally into the junction instead of rounding the corner; the north kerb stops separately, so the corner is open",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V53",
+  "x": 325243.8,
+  "y": 6255922.8,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: east line drifts about 3 m onto the grass verge in the lower half of the tile",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V54",
+  "x": 337938.1,
+  "y": 6247094.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: kerbs missing on the north-east corner: no east kerb north of the junction and no north kerb along the side street",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
  }
 ]
