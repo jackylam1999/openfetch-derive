@@ -15,7 +15,7 @@ Here the street layout decides where kerbs ARE and the photo decides where exact
      not kerbs; Jacky 7 Nov 2026), doubles a traced kerb, or turns sharper than SMOOTH_TURN per SMOOTH_STEP (no spikes, Vs).
 
     python3 kerbnet.py traced.json(lon/lat) lots_dir roads_dir out.json [--box x0 y0 x1 y1] [--traced-only-area] [--loops]
-        [--keep-motorway] [--lot-guide]   (motorway stretches are taken out unless --keep-motorway; --lot-guide is a tested-off option)
+        [--keep-motorway] [--local-only] [--lot-guide]   (motorway stretches are taken out unless --keep-motorway; --lot-guide is a tested-off option)
 
 Default output: traced kerbs + loop parts that fill their gaps (fill()); --loops writes the fused block loops instead.
 """
@@ -306,20 +306,20 @@ def lot_drift(traced, lots, roads, stats, area=None):
     return out
 
 
-def no_motorway(out, roads, stats):
+def no_motorway(out, roads, stats, drop=(1,)):
     """Motorways and their ramps (functionhierarchy 1) have barriers and edge lines, not kerbs (Jacky 7 Nov 2026: "some are highway
     not kerb"; reviewer d tiles 12, 13, 15: lines on a freeway bridge deck, a ramp nose, a freeway median). Any stretch of a line
     whose nearest street is a motorway is taken out; leftovers shorter than KEEP_MIN go."""
     streets = [(g, fh) for g, fh in roads if fh not in ka.SKIP_FH]
-    if not any(fh == 1 for _, fh in streets):
+    if not any(fh in drop for _, fh in streets):
         return out
     st = STRtree([g for g, _ in streets]); res = []; cut = 0.0
     for o in out:
         g = LineString(o)
-        if not any(streets[int(k)][1] == 1 for k in st.query(g.buffer(40))):
+        if not any(streets[int(k)][1] in drop for k in st.query(g.buffer(40))):
             res.append(o); continue
         n = max(2, int(g.length // 1.0) + 1); ts = np.linspace(0, g.length, n)
-        mw = np.array([streets[int(st.nearest(g.interpolate(t)))][1] == 1 for t in ts])
+        mw = np.array([streets[int(st.nearest(g.interpolate(t)))][1] in drop for t in ts])
         if not mw.any():
             res.append(o); continue
         i = 0
@@ -333,7 +333,7 @@ def no_motorway(out, roads, stats):
             elif b - a >= KEEP_MIN:
                 res.append(np.asarray(substring(g, a, b).coords) if (a > 0 or b < g.length) else o)
             i = j + 1
-    stats["motorway_cut_m"] = int(cut)
+    stats["motorway_cut_m" if tuple(drop) == (1,) else "scope_cut_m"] = int(cut)
     return res
 
 
@@ -1642,6 +1642,11 @@ def main(a):
             out = tidy(out, st)
             if "--keep-motorway" not in a:
                 out = no_motorway(out, roads, st)
+            if "--local-only" in a:
+                # Jacky 7 Nov 2026 (go for "local and collector streets only"): main roads, motorways, their medians and
+                # islands are not drawn; any stretch whose nearest street is functionhierarchy 1-4 is taken out
+                out = no_motorway(out, roads, st, drop=(1, 2, 3, 4))
+                st5 = {}; out = unhook(tidy(out, st5), st5); st["scope_tidy"] = {k: v for k, v in st5.items() if v}
             # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
             kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                     else "block guide" for o in out]
