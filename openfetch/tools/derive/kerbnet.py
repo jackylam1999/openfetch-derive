@@ -33,6 +33,7 @@ from shapely.prepared import prep
 from shapely.strtree import STRtree
 
 import kerbaudit as ka
+import kerbg
 import kerbregular as kr
 
 R_BY_RANK = {1: 9.0, 2: 6.0, 3: 4.0}   # m, corner radius by the busiest road at the block
@@ -667,6 +668,7 @@ def unmerge(out, stats):
 
 
 TUNNELS = []   # roadontype 3 centrelines (filled in main)
+OVER_STREETS = []   # street (fh 1-7) centrelines on a bridge or in a tunnel (filled in main)
 
 
 def on_ground(roads, over):
@@ -2008,6 +2010,8 @@ def main(a):
             if pr.get("roadontype") in (2, 3) and f.get("geometry") and pr.get("OBJECTID") not in seen:
                 seen.add(pr.get("OBJECTID")); g = shape(f["geometry"])
                 BRIDGES.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
+                if pr.get("functionhierarchy") not in ka.SKIP_FH:
+                    OVER_STREETS.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
                 if pr.get("roadontype") == 3:
                     TUNNELS.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
     area = None
@@ -2048,6 +2052,10 @@ def main(a):
             # crossings and T's become round corners, kerbs across a street go, open corners and short breaks are joined,
             # hooks and doubles are cut; the same shapes kerbreview.py fails
             streets = [g for g, fh in ground if fh not in ka.SKIP_FH] + street_links(ground)
+            if "--dump-pre" in a:
+                import pickle; pickle.dump((out, st, loops), open(a[a.index("--dump-pre") + 1], "wb"))
+            if "--from-pre" in a:
+                import pickle; out, st, _ = pickle.load(open(a[a.index("--from-pre") + 1], "rb"))
             if "--no-across" not in a:
                 out = across(out, ground, st)
             out = corners(out, streets, st)
@@ -2074,6 +2082,9 @@ def main(a):
             out = snap_near(out, st)
             st7 = {}; out = endpairs(out, streets, st7); st["end_pairs2"] = st7.get("end_pairs", 0)
             out = deknot(unfold(unhook(deknot(out, st), st), st), {})
+            if "--no-g" not in a:
+                # version g (8 Nov 2026, f review 20 of 47 tiles wrong): forks, tails, doubles, strays, square corners, dead-end caps
+                st8 = {}; out = kerbg.clean(out, streets, OVER_STREETS, lots, st8); st["g"] = st8
             # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
             kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                     else "block guide" for o in out]
