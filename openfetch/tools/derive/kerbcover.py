@@ -1,6 +1,6 @@
 """How much of each shipped suburb's streets has an OpenFetch kerb at all (no truth lines needed).
 
-  python3 -I kerbcover.py <version> <suburb,suburb,...> [workdir]
+  python3 -I kerbcover.py <version | lines.geojson> <suburb,suburb,...> [workdir]
 
 Reads the published kerb tiles (openfetch-data.pages.dev/nsw-kerbs-<version>), the NSW suburb polygon and NSW road
 centrelines (function hierarchy 2-6). Samples every 5 m of centreline inside the suburb; covered = a kerb within 15 m.
@@ -49,9 +49,18 @@ def kerbs(folder, version):
     return out
 
 
+def local(fn):
+    """Kerb lines from a WGS84 GeoJSON file (e.g. traced lines before publishing)."""
+    out = []
+    for f in json.load(open(fn))['features']:
+        g = shape(f['geometry'])
+        out += [mga(p) for p in getattr(g, 'geoms', [g]) if p.length > 0]
+    return out
+
+
 def main(version, subs, work):
     os.makedirs(f'{work}/c', exist_ok=True)
-    K = kerbs(f'{work}/c', version); kt = STRtree(K)
+    K = local(version) if version.endswith(('.json', '.geojson')) else kerbs(f'{work}/c', version); kt = STRtree(K)
     sl = collections.Counter()
     for k in K:
         c = k.centroid; sl[(int(c.x // 1000), int(c.y // 1000))] += k.length
