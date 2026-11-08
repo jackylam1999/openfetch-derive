@@ -457,14 +457,15 @@ def lot_tails(out, lots, stats):
     return res
 
 
-PAIR_REACH, PAIR_CUTS, PAIR_AHEAD = 15.0, (0.0, 3.0, 6.0, 9.0, 12.0), 15.0   # m
+PAIR_REACH, PAIR_CUTS, PAIR_AHEAD, PAIR_STRAIGHT = 15.0, (0.0, 3.0, 6.0, 9.0, 12.0), 15.0, 30.0   # m
 
 
 def endpairs(out, streets, stats):
     """Two free kerb ends left within PAIR_REACH m of each other that no join could close because one of them hooks or wanders off
     at its tip (version e review: a line hooking up between buildings beside the corner it should turn, a corner arc bulging over
     the footpath next to the kerb it should meet, a wavy end through parked cars). Each end is cut back by up to 12 m until the two
-    meet ahead in a round corner or run straight on into each other, with the same limits as gapjoin: never across a street
+    meet ahead in a round corner or run straight on into each other (a broken straight kerb, up to PAIR_STRAIGHT m; Jacky 8 Nov 2026:
+    "I can already tell there are broken lines"), with the same limits as gapjoin: never across a street
     centreline or another kerb, no hairpins; the least cut-back wins."""
     G = [LineString(c) for c in out]; tree = STRtree(G); st = STRtree(streets) if streets else None
     ends = []
@@ -483,7 +484,7 @@ def endpairs(out, streets, stats):
         e = np.asarray(g.interpolate(t).coords[0]); q = np.asarray(g.interpolate(t + 3.0 if j == 0 else t - 3.0).coords[0])
         h = e - q; return e, h / max(np.hypot(*h), 1e-9)
     cand = []
-    for a, b in (cKDTree(P).query_pairs(PAIR_REACH) if len(P) else []):
+    for a, b in (cKDTree(P).query_pairs(PAIR_STRAIGHT) if len(P) else []):
         (i1, j1), (i2, j2) = ends[a], ends[b]
         best = None
         for c1 in PAIR_CUTS:
@@ -497,6 +498,8 @@ def endpairs(out, streets, stats):
                     continue
                 A = np.c_[h1, -h2]
                 if abs(np.linalg.det(A)) > 0.2:
+                    if L > PAIR_REACH:
+                        continue
                     s1, s2 = np.linalg.solve(A, d)
                     if not (0.5 < s1 < PAIR_AHEAD and 0.5 < s2 < PAIR_AHEAD and 0.4 < s1 / s2 < 2.5):
                         continue
@@ -606,6 +609,19 @@ def unmerge(out, stats):
         out = res
     stats["unmerge_cut"] = n; stats["unmerge_drop"] = d
     return out
+
+
+TUNNELS = []   # roadontype 3 centrelines (filled in main)
+
+
+def on_ground(roads, over):
+    """roads without the pieces lying on one of `over` (bridges and tunnels, or tunnels only): version f review note 8 Nov 2026,
+    the WestConnex tunnel (fh 1, roadontype 3) runs right under local streets in Erskineville, so a test against every centreline
+    took the local kerbs above it for a motorway's or a street mouth's."""
+    if not over:
+        return list(roads)
+    ot = STRtree(over)
+    return [(g, fh) for g, fh in roads if not any(over[int(k)].buffer(0.5).contains(g) for k in ot.query(g))]
 
 
 def street_links(roads):
@@ -1936,6 +1952,8 @@ def main(a):
             if pr.get("roadontype") in (2, 3) and f.get("geometry") and pr.get("OBJECTID") not in seen:
                 seen.add(pr.get("OBJECTID")); g = shape(f["geometry"])
                 BRIDGES.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
+                if pr.get("roadontype") == 3:
+                    TUNNELS.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
     area = None
     global LOT_GUIDE
     LOT_GUIDE = "--lot-guide" in a
@@ -1970,11 +1988,12 @@ def main(a):
             # version d (Jacky 7 Nov 2026 via the kerb reviewer: X crossings at corners, knots, hooks, doubles, open corners):
             # crossings and T's become round corners, kerbs across a street go, open corners and short breaks are joined,
             # hooks and doubles are cut; the same shapes kerbreview.py fails
-            streets = [g for g, fh in roads if fh not in ka.SKIP_FH] + street_links(roads)
+            ground = on_ground(roads, BRIDGES); level = on_ground(roads, TUNNELS)
+            streets = [g for g, fh in ground if fh not in ka.SKIP_FH] + street_links(ground)
             if "--no-across" not in a:
-                out = across(out, roads, st)
+                out = across(out, ground, st)
             out = corners(out, streets, st)
-            out = mouths(out, [g for g, fh in roads if fh not in ka.SKIP_FH and fh != 7], st, [g for g, fh in roads if fh == 9])
+            out = mouths(out, [g for g, fh in ground if fh not in ka.SKIP_FH and fh != 7], st, [g for g, fh in ground if fh == 9])
             out = gapjoin(out, streets, st)
             if ACROSS_ENDS:
                 st6 = {}; out = gapjoin(out, streets, st6, MOUTH_JOIN, MOUTH_AHEAD, ACROSS_ENDS); st["mouth_corners"] = st6.get("gap_joined", 0)
@@ -1983,12 +2002,12 @@ def main(a):
             out = unhook(out, st)
             out = tidy(out, st)
             if "--keep-motorway" not in a:
-                out = no_motorway(out, roads, st)
+                out = no_motorway(out, level, st)
             if "--local-only" in a:
                 # Jacky 7 Nov 2026 (go for "local and collector streets only"): main roads, motorways, their medians and
                 # islands are not drawn; any stretch whose nearest street is functionhierarchy 1-4 is taken out
-                out = no_motorway(out, roads, st, drop=(1, 2, 3, 4))
-                out = no_islands(out, roads, st)
+                out = no_motorway(out, level, st, drop=(1, 2, 3, 4))
+                out = no_islands(out, roads, st)   # no_islands leaves bridges and tunnels out itself
                 st5 = {}; out = unhook(tidy(out, st5), st5); st["scope_tidy"] = {k: v for k, v in st5.items() if v}
             out = lot_tails(out, lots, st)
             if "--keep-merge" not in a:   # after the scope cut: a cut can leave a Y
