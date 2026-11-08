@@ -17,3 +17,12 @@ Follows kerbs-more-real-kerbs.md (Jacky chose "Draw whole suburbs", 7 Nov 10:06Z
 3. Cloud: kerbregular.py run -> kerbnet.py (branch claude/project-thread-12v8yq 706d1da or later, candidate until its reviewer pass; owned by thread "Fix kerb corners for version d"
    since 7 Nov 10:13Z, do not edit) -> kerbreview.py (must pass) -> kerbs-check.py -> kerbcover.py per suburb.
 4. Main: version folder + catalog + deployer "next combined preview" line only after the reviewer passes; no own deploy.
+
+## State 8 Nov 2026 ~00:40Z
+- All 84 new boxes drawn with LiDAR (ELVIS DATA_3991 + DATA_3993). Old PC drew SYDNEY..MERRYLANDS; Jacky's NEW PC ("Jacky",
+  RTX 3070, C:\kerb same paths, setup in Drive kerbs\pc-move\README.md) drew the rest. 8,000 lines, 1,423 km raw.
+- Transfer: Drive connector download (auto-saved to a tool-results file, 10 MB limit per file) -> traced file split in 2 gz parts.
+- Merged + kerbregular (exact old r11 recipe, verified): project files derived-layers/kerbs/kerbnet-inputs-2026-11-07-whole.tgz
+  (nsw-r11.json 6,953 lines / 3,054 km, raw, 352 lot/road cells). Handed to thread "Fix local-street kerbs for version f".
+- kerbcover (raw lines, kerb within 15 m): 59.3 % -> 85.1 % of 1,081 km of street. Lowest after: Parramatta 64, Haymarket 69,
+  Auburn 72, Sydney 73, Maroubra 75, Wollongong 75.
