@@ -1,0 +1,10 @@
+{
+ "init": "C:/kerb/saved/lidar300.pt",
+ "variants": [
+  {
+   "name": "LiDAR only, 300 min (scored after the PC eval fix)",
+   "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 0, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 2}"
+  }
+ ]
+}

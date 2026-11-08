@@ -1,0 +1,813 @@
+[
+ {
+  "id": "J1",
+  "x": 315508.7,
+  "y": 6256479.8,
+  "r": 20,
+  "kinds": [
+   "self",
+   "poke",
+   "cross",
+   "fold"
+  ],
+  "words": "spot 4: line crosses itself at a T corner, short tail pokes through the main-road kerb (Jacky: intersection)",
+  "version": "2026-11-07-b",
+  "by": "Jacky"
+ },
+ {
+  "id": "J2",
+  "x": 315180.3,
+  "y": 6256725.3,
+  "r": 20,
+  "kinds": [
+   "fold",
+   "dup",
+   "inside"
+  ],
+  "words": "spot 7: line folds back on itself, 2-3 strands 1.5-2 m apart (Jacky: parallel line, kerb within a kerb)",
+  "version": "2026-11-07-b",
+  "by": "Jacky"
+ },
+ {
+  "id": "J3",
+  "x": 336933.3,
+  "y": 6245699.1,
+  "r": 20,
+  "kinds": [
+   "beside",
+   "dup",
+   "inside"
+  ],
+  "words": "spot 9 / tile 2: real kerb end stops open beside the bus-lane line 2.5 m away (Jacky: parallel line, open curve)",
+  "version": "2026-11-07-b",
+  "by": "Jacky"
+ },
+ {
+  "id": "V4",
+  "x": 333109.7,
+  "y": 6250600.2,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: side-street kerb crosses the main kerb at the corner instead of joining with a rounded corner; doubled line just north",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V5",
+  "x": 332766.5,
+  "y": 6247435.5,
+  "r": 15,
+  "kinds": [
+   "cross"
+  ],
+  "words": "visual reviewer: two kerb lines cross in an X at the corner, with a tail running on past",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V6",
+  "x": 306108.4,
+  "y": 6189670.8,
+  "r": 15,
+  "kinds": [
+   "inside"
+  ],
+  "words": "visual reviewer: second line runs parallel about 3 m behind the kerb, along the back of the footpath",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V7",
+  "x": 332624.7,
+  "y": 6247664.6,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: line runs through the verge and trees several metres off the visible kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V8",
+  "x": 333784.6,
+  "y": 6247499.0,
+  "r": 15,
+  "kinds": [
+   "poke"
+  ],
+  "words": "visual reviewer: two lines run parallel along the same kerb and merge with a short tail",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V9",
+  "x": 337765.8,
+  "y": 6255382.6,
+  "r": 15,
+  "kinds": [
+   "dup"
+  ],
+  "words": "visual reviewer: two parallel lines about 2 m apart along one kerb, with no road on the far side so not a median",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V10",
+  "x": 334003.0,
+  "y": 6246357.2,
+  "r": 15,
+  "kinds": [
+   "beside"
+  ],
+  "words": "visual reviewer: doubled kerb line with a short stub ending inside the corner",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V11",
+  "x": 333849.4,
+  "y": 6250932.3,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: two lines tangled at the corner, running parallel and crossing each other",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V12",
+  "x": 333906.5,
+  "y": 6250483.5,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: doubled corner kerb plus a loose stub strand beside it",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V13",
+  "x": 333994.2,
+  "y": 6250401.6,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: side-street line crosses the main kerb and pokes out into the road as a tail",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V14",
+  "x": 333917.2,
+  "y": 6251337.0,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: two lines pinch together and overlap in the middle of the road where there is no kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V15",
+  "x": 333989.1,
+  "y": 6251067.6,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: doubled lines on the corner cross over each other instead of one rounded corner",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V16",
+  "x": 332860.6,
+  "y": 6246448.1,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: south kerb has an angular stepped jog near the planters instead of a smooth line",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/b.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V17",
+  "x": 328024.4,
+  "y": 6248058.0,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: square unrounded corner with a small hook/knot where the street kerb meets the lane kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V18",
+  "x": 338324.0,
+  "y": 6255050.4,
+  "r": 15,
+  "kinds": [
+   "cross"
+  ],
+  "words": "visual reviewer: two kerb lines cross each other in an X on the footpath/road",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V19",
+  "x": 331128.4,
+  "y": 6247516.3,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: side-street kerb folds back into a short tail poking past the crossing kerb line",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V20",
+  "x": 306461.0,
+  "y": 6188699.6,
+  "r": 15,
+  "kinds": [
+   "poke"
+  ],
+  "words": "visual reviewer: lines cross in a plus sign; one kerb runs straight across the road through the island",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V21",
+  "x": 334220.8,
+  "y": 6249205.0,
+  "r": 15,
+  "kinds": [
+   "dup"
+  ],
+  "words": "visual reviewer: two lines merge and run on top of each other along the same platform edge",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V22",
+  "x": 338103.3,
+  "y": 6241928.5,
+  "r": 15,
+  "kinds": [
+   "beside"
+  ],
+  "words": "visual reviewer: short loose strand ends just beside the curved kerb instead of joining it",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V23",
+  "x": 334997.1,
+  "y": 6248912.0,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: two lines meet in a sharp spike with a little knot in the middle of the road under trees",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V24",
+  "x": 334098.8,
+  "y": 6250093.8,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: jagged zigzag kink cutting across the intersection where there is no kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V25",
+  "x": 331277.6,
+  "y": 6247802.2,
+  "r": 15,
+  "kinds": [
+   "cross"
+  ],
+  "words": "visual reviewer: several kerb lines tangle and cross at the corner instead of one rounded corner",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V26",
+  "x": 324614.0,
+  "y": 6250095.0,
+  "r": 15,
+  "kinds": [
+   "cross"
+  ],
+  "words": "visual reviewer: corner kerbs cross each other and the street kerb instead of closing as rounded corners",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V27",
+  "x": 306902.5,
+  "y": 6188576.7,
+  "r": 15,
+  "kinds": [
+   "cross"
+  ],
+  "words": "visual reviewer: two wavy lines cross in an X along the paved footpath, not on a real kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V28",
+  "x": 329956.0,
+  "y": 6245961.0,
+  "r": 15,
+  "kinds": [
+   "cross"
+  ],
+  "words": "visual reviewer: corner lines cross each other forming a tangle at the junction",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V29",
+  "x": 306084.7,
+  "y": 6188623.6,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: north kerb of the main road is broken with a gap at top left",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V30",
+  "x": 332243.4,
+  "y": 6247396.0,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: west kerb wobbles back and forth across the green bike lane instead of following the straight kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V31",
+  "x": 322685.9,
+  "y": 6254751.7,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: kerbs joined by a U-loop across the road where it continues; stray line runs through the car park",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/c.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V32",
+  "x": 324945.9,
+  "y": 6249885.6,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: both kerbs of the side street west of the intersection missing; corner lines stop as short hooks",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V33",
+  "x": 323862.5,
+  "y": 6256010.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: roundabout island and west-side kerbs around the roundabout missing",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V34",
+  "x": 338488.2,
+  "y": 6241849.5,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: raised traffic island in the intersection not drawn",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V35",
+  "x": 333027.6,
+  "y": 6244985.8,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: north kerb is a straight line drifting about 3 m onto the verge/footpath at the west end",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V36",
+  "x": 336580.4,
+  "y": 6245084.8,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: east kerb line drifts about 3 m into the carriageway toward the south",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V37",
+  "x": 317727.3,
+  "y": 6253345.7,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: top intersection corner is a sharp V, not rounded",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V38",
+  "x": 313256.6,
+  "y": 6252970.5,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: two kerb lines run through a tree/grass strip with no visible road",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V39",
+  "x": 314095.8,
+  "y": 6254181.9,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: NW and SW intersection corners left open, kerb lines don't meet",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V40",
+  "x": 305426.1,
+  "y": 6189979.2,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: line starts mid-bridge and wanders across the deck into grass; freeway edges missing; stray curve in grass",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V41",
+  "x": 333979.9,
+  "y": 6251790.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: ramp and freeway kerb lines end loose at the merge nose, not closed",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V42",
+  "x": 323465.2,
+  "y": 6255282.9,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: west kerb drifts several metres off the road into the trees at the north",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V43",
+  "x": 334782.4,
+  "y": 6246340.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: median kerb stops at the gantry, short stub in trees top right, line ends loose in the median",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V44",
+  "x": 331024.3,
+  "y": 6246472.3,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: south kerb fragmented with gaps and a hook, runs through parked cars, stops short at west",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/d.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V45",
+  "x": 337442.2,
+  "y": 6247053.2,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: two lines cross each other in a plus shape through tree canopy",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V46",
+  "x": 332369.9,
+  "y": 6247179.3,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: corner curve runs into a line that carries on through the footpath/park past the junction, plus a stray curve through the park",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V47",
+  "x": 334884.9,
+  "y": 6250056.0,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: vertical line runs straight through the junction and crosses the other kerb line",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V48",
+  "x": 328290.5,
+  "y": 6246090.0,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: line hooks up into the gap between buildings and dead-ends against a roof; not a kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V49",
+  "x": 329360.0,
+  "y": 6246334.3,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: corner arc bulges out over the footpath and pedestrian crossing instead of following the kerb; separate line ends just short of it",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V50",
+  "x": 314085.1,
+  "y": 6254243.7,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: wavy line cuts through the middle of the angle-parked cars, metres off the kerb at the back of the bays",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V51",
+  "x": 314074.9,
+  "y": 6254243.5,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: same place as 9: wobbly line through the parked cars, not on the kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V52",
+  "x": 325879.8,
+  "y": 6249699.7,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: kerb kinks diagonally into the junction instead of rounding the corner; the north kerb stops separately, so the corner is open",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V53",
+  "x": 325243.8,
+  "y": 6255922.8,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: east line drifts about 3 m onto the grass verge in the lower half of the tile",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V54",
+  "x": 337938.1,
+  "y": 6247094.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: kerbs missing on the north-east corner: no east kerb north of the junction and no north kerb along the side street",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/e.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V55",
+  "x": 314555.5,
+  "y": 6257216.2,
+  "r": 15,
+  "kinds": [
+   "self"
+  ],
+  "words": "visual reviewer: lone line running through a park under trees, no street there",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V56",
+  "x": 334048.9,
+  "y": 6252311.6,
+  "r": 15,
+  "kinds": [
+   "fold"
+  ],
+  "words": "visual reviewer: line folds back on itself in a loop across the parking area and crosses another line",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V57",
+  "x": 323692.3,
+  "y": 6256758.6,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: line leaves the kerb and cuts diagonally across the footpath and grass verge at the corner",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V58",
+  "x": 318288.0,
+  "y": 6252362.1,
+  "r": 15,
+  "kinds": [
+   "gap"
+  ],
+  "words": "visual reviewer: clear 25-30 m gap in a straight visible kerb beside the railway",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V59",
+  "x": 326632.5,
+  "y": 6247957.1,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: closed street end not closed: one kerb hooks and stops, the other runs on across the footpath to the cross street",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V60",
+  "x": 317964.5,
+  "y": 6253354.6,
+  "r": 15,
+  "kinds": [
+   "beside"
+  ],
+  "words": "visual reviewer: second strand starts at the circle and runs parallel beside the parking-bay kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V61",
+  "x": 335731.2,
+  "y": 6251088.2,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: lines cross at the corner with a short tail poking down into the driveway",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V62",
+  "x": 337955.8,
+  "y": 6247751.7,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: sharp square corner where the side street joins, under tree canopy",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V63",
+  "x": 317930.3,
+  "y": 6253368.0,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: lane kerb cuts across the junction and crosses the other lines in an X",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V64",
+  "x": 306388.9,
+  "y": 6189090.6,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: short doubled strand beside the lane kerb, plus a square T-joint with a tail at the main road",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V65",
+  "x": 336264.7,
+  "y": 6243097.7,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: Y-junction of lines, line along the arterial kerb, and an orphan fragment on the side street",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V66",
+  "x": 327319.8,
+  "y": 6247919.0,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: corner cut diagonally across the street mouth; the kerb then runs about 2 m into the road",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V67",
+  "x": 324789.2,
+  "y": 6250363.5,
+  "r": 15,
+  "kinds": [
+   "merge"
+  ],
+  "words": "visual reviewer: both kerbs stop dead in the open under trees; the left line runs over parked cars",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
+  "by": "visual reviewer"
+ }
+]

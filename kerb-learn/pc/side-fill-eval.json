@@ -1,0 +1,14 @@
+{
+ "variants": [
+  {
+   "name": "best model as it is (no fill), scored again",
+   "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 0, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1}"
+  },
+  {
+   "name": "best model + fill hidden kerbs from the lot frontage at the street's verge width (gapfill)",
+   "id": 1,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 0, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"gapfill\": 1}"
+  }
+ ]
+}
