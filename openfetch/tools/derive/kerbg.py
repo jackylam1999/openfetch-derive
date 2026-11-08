@@ -29,6 +29,7 @@ CLEAR = 5.3          # m, a cut-back end stays this far from the line it ran int
 TAIL = 10.0          # m, a branch this short past a junction with a free far end is a tail
 JOIN_TURN = 120.0     # deg, two arms meeting at a junction may carry on as one kerb up to this turn
 CAP_MIN, CAP_MAX, CAP_ANG, CAP_END = 3.0, 16.0, 40.0, 14.0   # m, m, deg, m
+LANE_MOUTH = 5.5   # m, a lane mouth this narrow may be closed by its two corners whatever they face
 LANE_CAP_MIN, LANE_CAP_MAX = 2.7, 8.0   # m: a cap narrower than the reviewer's fold (2.5 m) would fold
 FILLET_TURN, FILLET_ARM, FILLET_R = 50.0, 2.0, 4.0   # deg over +-m, m cut back each side
 
@@ -447,7 +448,7 @@ def caps(out, streets, stats, dead=True, dmin=CAP_MIN, dmax=CAP_MAX):
                 continue
             i2, k0, e2, h2 = ends[b]
             d = e.distance(e2)
-            if i2 == i or d < dmin or _ang(h, h2, axial=False) > CAP_ANG:
+            if i2 == i or d < dmin or _ang(h, h2, axial=False) > (CAP_ANG if dead or d > LANE_MOUTH else 100.0):   # i (h V82): lane mouth corners
                 continue
             u = np.array([e2.x - e.x, e2.y - e.y]) / d   # across, about square to the kerbs
             if abs(np.cos(h) * u[0] + np.sin(h) * u[1]) > (0.5 if dead else 1.01):   # i (h V69): a lane's ends may stop staggered
@@ -468,20 +469,37 @@ def caps(out, streets, stats, dead=True, dmin=CAP_MIN, dmax=CAP_MAX):
             continue
         p0 = np.array([e.x, e.y]); p1 = np.array([e2.x, e2.y]); k = 0.66 * d
         cap = _bez(p0, p0 + k * np.array([np.cos(h), np.sin(h)]), p1 + k * np.array([np.cos(h2), np.sin(h2)]), p1)
-        cl = LineString(cap)
         a_ = np.asarray(out[i]) if j0 == 1 else np.asarray(out[i])[::-1]
         b_ = np.asarray(out[i2]) if k0 == 0 else np.asarray(out[i2])[::-1]
+        if _ang(h, h2, axial=False) > CAP_ANG:
+            # two corners curling apart into a lane mouth (h V82): both curls are taken back until a straight piece across closes
+            # the mouth with no fold, as the street kerb runs past a lane with a laid-back crossing
+            got = None
+            for t in np.arange(0.0, 8.01, 0.5):
+                ga, gb = LineString(a_), LineString(b_)
+                if ga.length - t < KEEP_MIN or gb.length - t < KEEP_MIN:
+                    break
+                at = np.asarray(substring(ga, 0, ga.length - t).coords) if t else a_
+                bt = np.asarray(substring(gb, t, gb.length).coords) if t else b_
+                q0, q1 = at[-1], bt[0]; dq = np.hypot(*(q1 - q0))
+                if dq < 0.3:
+                    continue
+                c_ = np.linspace(q0, q1, max(3, int(dq) + 1)); jn = np.vstack([at, c_[1:-1], bt])
+                if LineString(jn).is_simple and not _folds_near(jn, len(at)):
+                    got = (c_, at, bt); break
+            if got is None:
+                continue
+            cap, a_, b_ = got
+        cl = LineString(cap)
         if not LineString(_join(_join(a_, cap), b_)).is_simple:
             continue
         if any(G[int(m)].crosses(cl) for m in tree.query(cl) if int(m) not in (i, i2)):
             continue
-        used.update((a, b)); pairs.append((i, j0, i2, k0, cap))
+        used.update((a, b)); pairs.append((i, j0, i2, k0, cap, a_, b_))
     if not pairs:
         return out
     drop = set(); add = []
-    for i, j0, i2, k0, cap in pairs:
-        a = np.asarray(out[i]) if j0 == 1 else np.asarray(out[i])[::-1]
-        b = np.asarray(out[i2]) if k0 == 0 else np.asarray(out[i2])[::-1]
+    for i, j0, i2, k0, cap, a, b in pairs:
         add.append(_join(_join(a, cap), b)); drop.update((i, i2))
     stats["caps" if dead else "lane_caps"] = stats.get("caps" if dead else "lane_caps", 0) + len(pairs)
     return [o for k, o in enumerate(out) if k not in drop] + add
@@ -886,7 +904,9 @@ def clean(out, streets, bridge_lines, lots, stats, tunnels=(), level=None, local
              ("besides", S(besides, stats)), ("folds", S(folds, stats)),
              ("short", lambda o: [c for c in o if _L(c).length >= KEEP_MIN]),   # i: a stub about to go must not hold an end shut
              ("near_ends", S(near_ends, streets, stats)),
-             ("corner_join", S(corner_join, streets, stats)), ("besides", S(besides, stats)), ("ring_shut", S(ring_shut, stats)), ("despike", S(despike, stats)), ("endtrim", S(endtrim, stats)), ("endfix", S(endfix, stats)),
+             ("corner_join", S(corner_join, streets, stats)),
+             ("lane_caps", S(caps, streets, stats, False, LANE_CAP_MIN, LANE_CAP_MAX)),   # corners flared since
+             ("besides", S(besides, stats)), ("ring_shut", S(ring_shut, stats)), ("despike", S(despike, stats)), ("endtrim", S(endtrim, stats)), ("endfix", S(endfix, stats)),
              ("ringseat", S(ringseat, stats)), ("ring_shut", S(ring_shut, stats))]
     import os
     trace = os.environ.get("KERBG_TRACE")
@@ -1607,3 +1627,16 @@ def ring_shut(out, stats):
         res.append(c)
     stats["ring_shut"] = n
     return res
+
+
+def _folds_near(c, k, reach=20.0):
+    """the reviewer's fold (two points of one line under FOLD_D_REV m apart, more than FOLD_ALONG m apart along it) within reach
+    m of vertex k"""
+    g = LineString(c); s0 = g.project(Point(c[min(k, len(c) - 1)]))
+    ts = np.arange(max(0.0, s0 - reach), min(g.length, s0 + reach), 1.0)
+    P = [g.interpolate(t) for t in ts]
+    for a in range(len(P)):
+        for b in range(a + 9, len(P)):
+            if P[a].distance(P[b]) < 2.6:
+                return True
+    return False
