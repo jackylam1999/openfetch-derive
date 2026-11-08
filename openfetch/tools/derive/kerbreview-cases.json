@@ -1085,5 +1085,137 @@
   "words": "Jacky 8 Nov 2026 13:43Z: 'one kerb line is missing too on the bottom right' of the good example (version h tile 47 / V54): west kerb of the north-south street, south of the rounded corner, missing for about 40 m",
   "version": "2026-11-08-h",
   "by": "Jacky"
+ },
+ {
+  "id": "V91",
+  "x": 306565.4,
+  "y": 6188642.4,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: short stub runs from the cul-de-sac head into the building roof; the lane north of the cul-de-sac has no kerbs",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V92",
+  "x": 329653.1,
+  "y": 6246421.4,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: the side street's south kerb is missing; small stub at the junction",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V93",
+  "x": 336526.5,
+  "y": 6253982.7,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: west kerb of the divided road has a ~20 m gap and the median nose is left open with a hook",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V94",
+  "x": 317465.3,
+  "y": 6256714.5,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lines run across an open depot/car-park forecourt with no kerb and end in a garden",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V95",
+  "x": 334858.8,
+  "y": 6249766.8,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: the lane's west kerb ends open at the building corner; lane kerb not continued or closed",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V96",
+  "x": 333121.9,
+  "y": 6251978.7,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: west kerb has a gap at the side lane with square cut ends; no corners, side lane has no kerbs",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V97",
+  "x": 315698.3,
+  "y": 6255909.4,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: ~5 m gap in the straight east kerb at a car-park driveway",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V98",
+  "x": 334071.3,
+  "y": 6250599.1,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: east kerb of the lane is missing north of the circle",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V99",
+  "x": 332031.5,
+  "y": 6248096.7,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: SE kerb of the main street is missing SW of the junction; side-street kerb ends mid-junction",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V100",
+  "x": 306378.9,
+  "y": 6188602.2,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: a line runs across the roof of the large white building and joins the kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V101",
+  "x": 329742.9,
+  "y": 6247336.1,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: main street's west kerb south of the side street is missing, and so is the side street's south kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
+  "by": "visual reviewer"
  }
 ]
