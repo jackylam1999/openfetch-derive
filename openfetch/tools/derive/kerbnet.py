@@ -27,7 +27,7 @@ import sys
 
 import numpy as np
 from pyproj import Transformer
-from shapely.geometry import LineString, Point, box
+from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import polygonize, unary_union, substring
 from shapely.prepared import prep
 from shapely.strtree import STRtree
@@ -351,7 +351,7 @@ def no_motorway(out, roads, stats, drop=(1,)):
     return res
 
 
-ACROSS_ANG, ACROSS_END, ACROSS_DEAD, ACROSS_EXTRA, ACROSS_LINK = 30.0, 3.0, 15.0, 2.0, 30.0   # deg, m, m, m, m
+ACROSS_ANG, ACROSS_END, ACROSS_DEAD, ACROSS_EXTRA, ACROSS_LINK = 30.0, 3.0, 15.0, 2.0, 15.0   # deg, m, m, m, m
 ACROSS_ENDS = []   # kerb ends across() opened at a street's mouth: gapjoin rounds them into corners with a longer reach
 MOUTH_JOIN, MOUTH_AHEAD = 20.0, 22.0   # m: reach for a corner from a mouth cut end
 
@@ -474,7 +474,7 @@ def endpairs(out, streets, stats):
             continue
         for j in (0, -1):
             e = Point(g.coords[j])
-            if any(G[int(k)].distance(e) < 1.0 for k in tree.query(e.buffer(1.0)) if int(k) != i):
+            if any(G[int(k)].distance(e) < 0.3 for k in tree.query(e.buffer(0.3)) if int(k) != i):
                 continue
             ends.append((i, j))
     from scipy.spatial import cKDTree
@@ -568,6 +568,61 @@ def snap_near(out, stats):
     return out
 
 
+KNOT_LOOP = 30.0   # m, a closed bit of a line shorter than this at a self-crossing is a knot
+
+
+def deknot(out, stats):
+    """Last pass: a line that crosses itself (the reviewer's "self") is noded at the crossing; small closed bits (knots, under
+    KNOT_LOOP m) go and the rest is merged back into lines; pieces under KEEP_MIN m go."""
+    from shapely.ops import linemerge
+    res = []; n = 0
+    for o in out:
+        g = LineString(o)
+        if g.is_simple or g.is_ring:
+            res.append(o); continue
+        n += 1
+        parts = [q for q in getattr(unary_union(g), "geoms", [unary_union(g)])]
+        keep = [q for q in parts if not (q.is_ring and q.length < KNOT_LOOP)]
+        m = linemerge(keep) if keep else None
+        for q in getattr(m, "geoms", [m]) if m is not None and not m.is_empty else []:
+            if q.length >= KEEP_MIN:
+                res.append(np.asarray(q.coords))
+    stats["deknot"] = n
+    return res
+
+
+FOLD_D, FOLD_ALONG, FOLD_MAX = 2.5, 8.0, 40.0   # m: kerbreview's fold; a fold-back stretch up to FOLD_MAX m is cut out
+
+
+def unfold(out, stats):
+    """Last pass for the reviewer's "fold" (a line back within FOLD_D m of itself more than FOLD_ALONG m further along) that unhook
+    did not catch: the stretch between the two close points is cut out when under FOLD_MAX m (a hook or spike), else the line is
+    split there."""
+    res = []; n = 0
+    for o in out:
+        g = LineString(o); ring = np.hypot(*(np.asarray(g.coords[0]) - g.coords[-1])) < 1.0
+        if ring and g.length > 4 and 2 * Polygon(g.coords).area / g.length < FOLD_D:
+            n += 1; continue                    # a closed sliver round parked cars or a kerb traced both ways: not a kerb
+        if g.length < FOLD_ALONG + 2 or ring:
+            res.append(o); continue
+        ts = np.arange(0, g.length, 1.0); P = np.array([g.interpolate(t).coords[0] for t in ts])
+        from scipy.spatial import cKDTree
+        hit = None
+        for a, b in sorted(cKDTree(P).query_pairs(FOLD_D)):
+            if ts[b] - ts[a] > FOLD_ALONG:
+                hit = (ts[a], ts[b]); break
+        if hit is None:
+            res.append(o); continue
+        n += 1; a, b = hit
+        if b - a > FOLD_MAX:
+            b = a + 0.5
+        for q in (substring(g, 0, a), substring(g, b, g.length)):
+            if q.length >= KEEP_MIN:
+                res.append(np.asarray(q.coords))
+    stats["unfold"] = n
+    return res
+
+
 def unmerge(out, stats):
     """A kerb end that slides into the middle of another kerb at a shallow angle, running within MERGE_NEAR m of it for MERGE_RUN m
     (a Y; the reviewer's "merge"). Version e review: 5 of the 10 merges checked were wrong, all the same way: a second line through
@@ -625,12 +680,13 @@ def on_ground(roads, over):
 
 
 def street_links(roads):
-    """A short piece coded as a track or path between two street pieces (e.g. 12 m of fh 9 in the middle of a junction, version e
+    """A short piece coded as a track (fh 9, up to ACROSS_LINK m; footpaths fh 10-11 between two streets are not streets, 8 Nov 2026
+    whole-suburb run: they opened 14 m gaps in straight kerbs) between two street pieces (e.g. 12 m of fh 9 in the middle of a junction, version e
     review V47) is the same street: kerbs neither cross it nor are joined across it."""
     streets = [g for g, fh in roads if fh not in ka.SKIP_FH]; st0 = STRtree(streets)
     def on_street(q):
         return any(streets[int(k)].distance(q) < 1.0 for k in st0.query(q.buffer(1.0)))
-    return [g for g, fh in roads if fh in ka.SKIP_FH and g.length <= ACROSS_LINK
+    return [g for g, fh in roads if fh == 9 and g.length <= ACROSS_LINK
             and on_street(Point(g.coords[0])) and on_street(Point(g.coords[-1]))]
 
 
@@ -1966,13 +2022,16 @@ def main(a):
         traced = untangle(traced, st)
     if LOT_GUIDE:
         traced = lot_drift(traced, lots, roads, st, area)
-    out = build(traced, lots, roads, area, st)
+    # streets on bridges or in tunnels are not on the ground: they neither split a block nor stop a kerb (Jacky 8 Nov 2026: "those
+    # rail line seems to be underground, and the kerb shouldn't be stopped" - the WestConnex tunnel, fh 1 roadontype 3)
+    ground = on_ground(roads, BRIDGES); level = on_ground(roads, TUNNELS)
+    out = build(traced, lots, ground, area, st)
     loops = [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5]
     if "--loops" not in a:
         out = fill(traced, [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5],
-                   [g for g, fh in roads if fh not in ka.SKIP_FH], area, st)
+                   [g for g, fh in ground if fh not in ka.SKIP_FH], area, st)
         n_tr = len(out) - st["fill_pieces"]; n_fi = len(out)
-        out = guide(out, loops, [g for g, fh in roads if fh not in ka.SKIP_FH], st)   # no join across any street, lanes included
+        out = guide(out, loops, [g for g, fh in ground if fh not in ka.SKIP_FH], st)   # no join across any street, lanes included
         kind = ["traced"] * n_tr + ["block fill"] * (n_fi - n_tr) + ["block guide"] * (len(out) - n_fi)
         if "--no-soften" not in a:
             out = [soften(o) for o in out]
@@ -1981,14 +2040,13 @@ def main(a):
             out = final_clean(out, st)
             # ends the clean-up opened (a jog or stub taken out at a corner) are joined again by the same rules, then checked again
             st2 = {}; n0 = len(out)
-            out = guide(out, loops, [g for g, fh in roads if fh not in ka.SKIP_FH], st2)
+            out = guide(out, loops, [g for g, fh in ground if fh not in ka.SKIP_FH], st2)
             out = out[:n0] + [soften(o) for o in out[n0:]]
             st["reguide_closed"] = st2.get("guide_closed", 0)
             st3 = {}; out = final_clean(out, st3); st["reclean"] = sum(v for v in st3.values())
             # version d (Jacky 7 Nov 2026 via the kerb reviewer: X crossings at corners, knots, hooks, doubles, open corners):
             # crossings and T's become round corners, kerbs across a street go, open corners and short breaks are joined,
             # hooks and doubles are cut; the same shapes kerbreview.py fails
-            ground = on_ground(roads, BRIDGES); level = on_ground(roads, TUNNELS)
             streets = [g for g, fh in ground if fh not in ka.SKIP_FH] + street_links(ground)
             if "--no-across" not in a:
                 out = across(out, ground, st)
@@ -2014,13 +2072,15 @@ def main(a):
                 out = unmerge(out, st)
             out = endpairs(out, streets, st)
             out = snap_near(out, st)
+            st7 = {}; out = endpairs(out, streets, st7); st["end_pairs2"] = st7.get("end_pairs", 0)
+            out = deknot(unfold(unhook(deknot(out, st), st), st), {})
             # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
             kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                     else "block guide" for o in out]
     else:
         kind = ["block loop"] * len(out)
     feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
-              "geometry": {"type": "LineString", "coordinates": [[round(v, 7) for v in back(x, y)] for x, y in o]}}
+              "geometry": {"type": "LineString", "coordinates": [[round(v, 8) for v in back(x, y)] for x, y in o]}}
              for o, k in zip(out, kind)]
     json.dump({"type": "FeatureCollection", "features": feats}, open(a[3], "w"))
     print("RESULT", json.dumps(st), len(feats))
