@@ -1,0 +1,9 @@
+{
+ "init": "C:/kerb/saved/best-pc-16-1.pt",
+ "variants": [
+  {"name": "context dropout 0.5 (lots, centreline, water blanked on half the chips), 150 min from pc-16-1, street 1", "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 150, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"street\": 1, \"cdrop\": 0.5}"},
+  {"name": "no map: photo + LiDAR only (nolot), 150 min from pc-16-1, street 1", "id": 1,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 150, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"street\": 1, \"nolot\": 1}"}
+ ]
+}

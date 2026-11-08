@@ -1,0 +1,10 @@
+{
+ "init": "C:/kerb/saved/best-pc-16-1.pt",
+ "variants": [
+  {
+   "name": "second scale input: 3x wider photo view (long misses: 78% of >40 m missed length has P<0.1)",
+   "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 150, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.3, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 1, \"pdrop\": 0.5, \"more\": 1, \"scale2\": 1}"
+  }
+ ]
+}
