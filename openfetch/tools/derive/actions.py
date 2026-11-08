@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """GitHub Actions side of batch.py: the same boxes, one runner job per LiDAR tile, LAZ read straight from an ELVIS zip link.
 
-  python3 actions.py plan URL plan.json [--only xmin ymin xmax ymax]   tiles in the zip -> boxes (prints the box ids as JSON)
+  python3 actions.py plan URL plan.json [--only xmin ymin xmax ymax] [--split N]   tiles in the zip -> boxes (prints the box ids as JSON)
+  --split N cuts every tile into N x N smaller boxes (for dense tiles whose job ran out of memory; points are clipped to the box).
   python3 actions.py box NAME URL plan.json BOX OUTDIR                 fetch the box's tiles, run pipeline.py, delete the LAZ
   python3 actions.py join NAME plan.json BOXESDIR OUTDIR               joined layer + summary, like batch.py
 
@@ -24,13 +25,31 @@ def header_box(z, name):
     return [round(xmin), round(ymin), round(xmax), round(ymax)]
 
 
-def plan(url, out, only=None):
+def cut(tiles, f, s, b, n):
+    """N x N sub-boxes of tile b, each reading only the same-year tiles within 50 m of it."""
+    w, h = (b[2] - b[0]) / n, (b[3] - b[1]) / n
+    out = {}
+    for i in range(n):
+        for j in range(n):
+            sb = [round(b[0] + i * w), round(b[1] + j * h), round(b[0] + (i + 1) * w), round(b[1] + (j + 1) * h)]
+            near = [t[0] for t in tiles if t[1] == s and t[2][0] < sb[2] + 50 and t[2][2] > sb[0] - 50 and t[2][1] < sb[3] + 50 and t[2][3] > sb[1] - 50]
+            out[f"{sb[0]}_{sb[1]}"] = {"tile": f, "survey": s, "bounds": sb, "near": near or [f]}
+    return out
+
+
+def plan(url, out, only=None, split=1):
     with RemoteZip(url) as z:
         names = [n for n in z.namelist() if n.lower().endswith(".laz")]
         tiles = newest([(n, survey(n), header_box(z, n)) for n in names])
+    all_tiles = tiles
     if only:
         tiles = [t for t in tiles if t[2][0] < only[2] and t[2][2] > only[0] and t[2][1] < only[3] and t[2][3] > only[1]]
-    boxes = {f"{b[0]}_{b[1]}": {"tile": f, "survey": s, "bounds": b, "near": neighbours(tiles, (f, s, b))} for f, s, b in tiles}
+    if split > 1:
+        boxes = {}
+        for f, s, b in (t for t in tiles if not only or (t[2][0] < only[2] and t[2][2] > only[0] and t[2][1] < only[3] and t[2][3] > only[1])):
+            boxes.update(cut(all_tiles, f, s, b, split))
+    else:
+        boxes = {f"{b[0]}_{b[1]}": {"tile": f, "survey": s, "bounds": b, "near": neighbours(tiles, (f, s, b))} for f, s, b in tiles}
     json.dump(boxes, open(out, "w"), indent=1)
     print(json.dumps(sorted(boxes)))
 
@@ -62,7 +81,8 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a[0] == "plan":
         only = [float(v) for v in a[a.index("--only") + 1:a.index("--only") + 5]] if "--only" in a else None
-        plan(a[1], a[2], only)
+        split = int(a[a.index("--split") + 1]) if "--split" in a else 1
+        plan(a[1], a[2], only, split)
     elif a[0] == "box":
         box(*a[1:6])
     elif a[0] == "join":
