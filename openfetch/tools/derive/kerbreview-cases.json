@@ -809,5 +809,149 @@
   "words": "visual reviewer: both kerbs stop dead in the open under trees; the left line runs over parked cars",
   "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/f.geojson.gz",
   "by": "visual reviewer"
+ },
+ {
+  "id": "V68",
+  "x": 338022.0,
+  "y": 6247128.2,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: street end: north kerb hooks diagonally across the road and stops 2 m short of the south kerb, end left open",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V69",
+  "x": 337606.6,
+  "y": 6245342.9,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane end left open: inner kerb stops beside the outer kerb, which runs on as a short tail",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V70",
+  "x": 339370.5,
+  "y": 6243216.5,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: street end: north kerb hooks down and stops 2.6 m from the south kerb, end not closed",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V71",
+  "x": 332232.1,
+  "y": 6246953.8,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: both kerbs stop mid-street; the street continues east with visible kerbs undrawn",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V72",
+  "x": 329917.7,
+  "y": 6245977.0,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane kerbs stop at the cross street with an inward hook across the lane; corners not turned or closed",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V73",
+  "x": 326588.5,
+  "y": 6248652.0,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane kerbs end unclosed side by side; one line curves on through the plaza/building edge",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V74",
+  "x": 331318.1,
+  "y": 6247743.4,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: corner at lane mouth not closed: street kerb stops, lane kerb ends 3.4 m away out in the road",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V75",
+  "x": 329767.6,
+  "y": 6247060.6,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: corner of car park road left open with a small hook; ends 3.5 m apart",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V76",
+  "x": 338822.4,
+  "y": 6244905.4,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane kerbs stop ~7 m short of the main road; north line sits on the building wall",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V77",
+  "x": 311109.2,
+  "y": 6254691.7,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: east kerb stops before the bend; outer kerb around the bend (~25 m) missing",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V78",
+  "x": 327854.5,
+  "y": 6248416.5,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: west kerb pokes as a stub into the main-road intersection; east kerb stops on the corner",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V79",
+  "x": 331989.0,
+  "y": 6257087.7,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: both kerbs stop 15-25 m short of the junction, street end missing",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/g.geojson.gz",
+  "by": "visual reviewer"
  }
 ]
