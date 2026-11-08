@@ -5,11 +5,13 @@ check-box threshold, street-offset pieces with the LiDAR step check), but on 1 k
 tagged with the road type of the nearest official centreline (NSW functionhierarchy 1-3 main, 4-5 collector, 6 local, 7+ lane).
 Run from openfetch/tools/derive with KERB_CFG set to the model's settings (as kerb-learn/pc/side-street-eval.json, minutes 0).
 
-  python kerbapply.py boxes AREA lon lat km                  (km x km of 1 km boxes on the MGA56 km grid nearest lon/lat;
-                                                             shared grid names, so areas that touch share boxes, JSON)
-  python kerbapply.py fetch out AREA lon lat km             (photo, lots, roads, water for each box; skips boxes already there)
+  python kerbapply.py boxes SUBURB                          (every 1 km MGA56 grid square the NSW suburb outline covers by more
+                                                             than 5 ha; shared grid names, so suburbs that touch share boxes, JSON)
+  python kerbapply.py fetch out SUBURB                      (photo, lots, roads, water for each box; skips boxes already there)
   python kerbapply.py dem out laz_dir                       (LiDAR ground grid per box from ELVIS .laz tiles, as lidar_kernel.py)
-  python kerbapply.py draw out model.pt thresh AREA lon lat km   (lines per box, clipped to the box, tagged; AREA.geojson in WGS84)
+  python kerbapply.py draw out model.pt thresh SUBURB       (lines per box, clipped to the box, tagged; SUBURB.geojson in WGS84)
+SUBURB is the NSW suburb name (Administrative Boundaries theme, e.g. PARRAMATTA). The old "AREA lon lat km" form (a km x km block
+around a point, 4-5 Nov ship run) still works: give lon lat km after the name.
 
 Output AREA.geojson: LineStrings in EPSG:4326, properties road (main / collector / local / lane), source (model / street offset),
 length_m. NSW Imagery and LiDAR (Spatial Services, CC BY 4.0), cadastre and transport themes (CC BY 4.0); output CC BY 4.0 (c) OpenFetch.
@@ -29,11 +31,43 @@ _q = kp.query
 kp.query = lambda u, *a, **k: [] if u is None else _q(u, *a, **k)
 
 
-def boxes(area, lon, lat, km):
+SUBURBS = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2/query"
+MIN_HA = 5.0  # a grid square is drawn when the suburb covers more than this much of it
+
+
+def suburb(name, cache="."):
+    """Suburb outline in EPSG:7856 (cached as <cache>/<NAME>.suburb.json)."""
+    import urllib.request, urllib.parse
+    from shapely.ops import unary_union
+    fn = os.path.join(cache, f"{name.upper()}.suburb.json")
+    if not os.path.exists(fn):
+        q = urllib.parse.urlencode({"where": f"suburbname='{name.upper()}'", "outSR": 7856, "f": "geojson"})
+        req = urllib.request.Request(f"{SUBURBS}?{q}", headers={"User-Agent": "openfetch-kerbapply"})
+        open(fn, "wb").write(urllib.request.urlopen(req, timeout=120).read())
+    fs = json.load(open(fn)).get("features") or []
+    if not fs:
+        raise SystemExit(f"no NSW suburb called {name}")
+    return unary_union([shape(f["geometry"]) for f in fs]).buffer(0)
+
+
+def boxes(area, lon=None, lat=None, km=None, cache="."):
+    """1 km boxes (name, x0, y0) on the MGA56 km grid: every square the suburb covers by > MIN_HA, or the old km x km block."""
+    if lon is None:
+        W = suburb(area, cache); x0, y0, x1, y1 = W.bounds; res = []
+        for i in range(int(x0 // 1000), int(x1 // 1000) + 1):
+            for j in range(int(y0 // 1000), int(y1 // 1000) + 1):
+                if W.intersection(sbox(i * 1000, j * 1000, i * 1000 + 1000, j * 1000 + 1000)).area > MIN_HA * 1e4:
+                    res.append((f"g{i}_{j}", i * 1000, j * 1000))
+        return res
     from pyproj import Transformer
     x, y = Transformer.from_crs(4326, 7856, always_xy=True).transform(lon, lat)
     h = km * 500.0; x0, y0 = int(round((x - h) / 1000) * 1000), int(round((y - h) / 1000) * 1000); k = int(np.ceil(km))
     return [(f"g{(x0 + 1000 * i) // 1000}_{(y0 + 1000 * j) // 1000}", x0 + 1000 * i, y0 + 1000 * j) for i in range(k) for j in range(k)]
+
+
+def _area(a):
+    """SUBURB [lon lat km] from the command line -> boxes() arguments."""
+    return (a[0], *map(float, a[1:4])) if len(a) >= 4 else (a[0],)
 
 
 def fetch_one(out, nm, x, y):
@@ -53,7 +87,7 @@ def fetch(a):
     from concurrent.futures import ThreadPoolExecutor
     out = a[0]; os.makedirs(out, exist_ok=True)
     with ThreadPoolExecutor(4) as ex:
-        list(ex.map(lambda b: fetch_one(out, *b), boxes(a[1], float(a[2]), float(a[3]), float(a[4]))))
+        list(ex.map(lambda b: fetch_one(out, *b), boxes(*_area(a[1:]), cache=out)))
 
 
 def dem(a):
@@ -105,7 +139,7 @@ def draw(a):
     net = kl.model(False); kl.load(net, mp); net = net.to(kl.DEV()).eval()
     to84 = Transformer.from_crs(7856, 4326, always_xy=True).transform
     feats = []; tot = {}
-    for nm, x, y in boxes(area, float(a[4]), float(a[5]), float(a[6])):
+    for nm, x, y in boxes(*_area(a[3:]), cache=out):
         if not os.path.exists(f"{out}/{nm}_meta.json"):
             print(nm, "not fetched", file=sys.stderr); continue
         kl.BX[nm] = (x, y)  # kerbstep.grids places the LiDAR grid by the box corner
@@ -135,4 +169,4 @@ def draw(a):
 
 
 if __name__ == "__main__":
-    {"boxes": lambda a: print(json.dumps(boxes(a[0], *map(float, a[1:4])))), "fetch": fetch, "dem": dem, "draw": draw}[sys.argv[1]](sys.argv[2:])
+    {"boxes": lambda a: print(json.dumps(boxes(*_area(a)))), "fetch": fetch, "dem": dem, "draw": draw}[sys.argv[1]](sys.argv[2:])

@@ -7,11 +7,12 @@ Reads the NSW Cadastre Lot layer 100 lots per request (its page limit) and write
 and `area` (m2, from the shape). A failed download writes an empty layer and says so: gapfill.py then falls back to the LiDAR
 (ground gaps, roof height steps) alone.
 """
-import sys, json, time, urllib.request, urllib.parse
+import sys, os, json, time, urllib.request, urllib.parse
 
 URL = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query"
 HDR = {"User-Agent": "Mozilla/5.0 openfetch-derive"}
 PAGE = 100
+EPSG = int(os.environ.get("MGA_EPSG", 7856))  # 7855 for MGA zone 55 boxes (Albury)
 
 
 def fetch(q):
@@ -28,7 +29,7 @@ def fetch(q):
 def main():
     from shapely.geometry import shape, mapping
     x0, y0, x1, y1 = map(float, sys.argv[1:5]); out = sys.argv[5]
-    base = {"geometry": f"{x0},{y0},{x1},{y1}", "geometryType": "esriGeometryEnvelope", "inSR": 7856, "outSR": 7856,
+    base = {"geometry": f"{x0},{y0},{x1},{y1}", "geometryType": "esriGeometryEnvelope", "inSR": EPSG, "outSR": EPSG,
             "spatialRel": "esriSpatialRelIntersects", "outFields": "lotidstring", "orderByFields": "OBJECTID",
             "resultRecordCount": PAGE, "f": "geojson"}
     feats, seen, off = [], set(), 0

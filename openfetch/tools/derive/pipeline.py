@@ -4,7 +4,7 @@
 Usage: python3 tools/derive/pipeline.py NAME xmin ymin xmax ymax OUTDIR tile.laz [...] [--ref reference.geojson]
        [--from community|trace|snap|gapfill]   (reuse saved outputs of earlier steps)
 
-Box in MGA56 metres (EPSG 7856). Steps: community shapes (community.py) -> trace (roofs.py --mode br) -> move
+Box in MGA56 metres (EPSG 7856; set MGA_EPSG=7855 for MGA zone 55 tiles). Steps: community shapes (community.py) -> trace (roofs.py --mode br) -> move
 community shapes onto the LiDAR (snap_pilot.py) -> NSW cadastre lots (lots.py) -> add traces only where nobody drew, cut
 along lot lines (gapfill.py) -> gates ->
 OUTDIR/report.md + OUTDIR/check.png. Exit code 1 when a FAIL gate trips: then nothing from this box is shown or used.
@@ -31,7 +31,10 @@ MAX_HEIGHT_BIAS = 0.3       # m, median roof height difference when the referenc
 # The raw trace joins neighbours under trees in every suburb (Greenwich 78 %), so its merge share is shown, not judged;
 # Merged gap houses in new estates (Gregory Hills) are cut along the cadastre lot lines in gapfill.py (lots.py).
 MIN_TRACE_FIND = 0.6        # share of community roof area the trace covers
-HOUSE_LOT = (100, 2000)     # m2, cadastre lots that hold one house; a traced gap may cover at most one of them
+HOUSE_LOT = (float(os.environ.get("LOT_MIN", 30)), 2000)  # m2, cadastre lots that hold one house (same as gapfill.py); a traced gap may cover at most one
+MIN_OSM_KEPT = 0.90         # share of hand-drawn OSM houses on LiDAR roof that the output keeps (RT1, 4 Nov 2026: Erskineville kept 30 % before)
+ONE_HOME = 250              # m2, an inner-city lot under this holds one terrace (gapfill.py ONE_HOME)
+MAX_ROWS = 0.01             # share of outlines that may still cover a terrace row (Paddington: 13.5 % before the row cut, 0.1 % after)
 
 
 def run(cmd, env=None):
@@ -140,7 +143,7 @@ def main():
     if redo("community", "community.geojson"):
         print(run([sys.executable, os.path.join(HERE, "community.py"), *map(str, wide), P("community.geojson")]).strip())
     if redo("trace", "traced.geojson"):
-        print(run([sys.executable, os.path.join(HERE, "roofs.py"), P("traced.geojson"), *files, "--bbox", *map(str, wide), "--mode", "br", "--epsg", "7856"]).strip().splitlines()[-1])
+        print(run([sys.executable, os.path.join(HERE, "roofs.py"), P("traced.geojson"), *files, "--bbox", *map(str, wide), "--mode", "br", "--epsg", os.environ.get("MGA_EPSG", "7856")]).strip().splitlines()[-1])
     if redo("snap", "snapped.geojson"):
         print(run([sys.executable, os.path.join(HERE, "snap_pilot.py"), P("community.geojson"), P("snapped.geojson"), *files], {"BOX": " ".join(map(str, wide))}).strip().splitlines()[-1])
     if redo("community", "lots.geojson"):  # lot lines change rarely: fetched once per box, like the community shapes
@@ -179,16 +182,44 @@ def main():
     allc = unary_union(comb + comm)  # community shapes without a LiDAR fit still show in the app
     houses = [g for g in traced if 40 <= g.area <= 1000 and g.area / g.minimum_rotated_rectangle.area >= 0.6 and inbox(g)]
     n_lost = sum(1 for g in houses if g.intersection(allc).area < 0.3 * g.area); lost = n_lost / max(1, len(houses))
-    gates.append(("FAIL", "LiDAR houses left out", not ok_trace or lost <= MAX_UNFILLED or n_lost <= 3, f"{100*lost:.1f} % of {len(houses)} house-like LiDAR roofs in no outline (max {100*MAX_UNFILLED:.0f} %)" + ("" if ok_trace else "; not judged, tracing off")))
+    off = ""
+    if ok_trace and lost > MAX_UNFILLED and n_lost > 3:
+        # dense inner-city boxes (Sydney CBD tile 2 Nov 2026: 9.2 % before the high-rise fix, 10.2 % after; the roofs left out are
+        # back wings and sheds of terraces): the box keeps its heights on OSM/Microsoft shapes and shows no traced gaps,
+        # instead of being left out whole (heights are what most of NSW lacks)
+        cj["features"] = [f for f in cj["features"] if f["properties"].get("kind") != "traced gap"]
+        json.dump(cj, open(P("combined.geojson"), "w")); comb = outlines(P("combined.geojson")); ok_trace = False; gaps = []
+        off = "; tracing turned off for this box, heights on OSM/Microsoft shapes only"
+    gates.append(("FAIL", "LiDAR houses left out", not ok_trace or lost <= MAX_UNFILLED or n_lost <= 3, f"{100*lost:.1f} % of {len(houses)} house-like LiDAR roofs in no outline (max {100*MAX_UNFILLED:.0f} %)" + (off or ("" if ok_trace else "; not judged, tracing off"))))
     # new estates: one traced gap must not join houses on separate lots (gapfill.py cuts along lot lines and drops the rest)
     lots = [g for g in outlines(P("lots.geojson")) if HOUSE_LOT[0] <= g.area <= HOUSE_LOT[1]]
     lt = STRtree(lots) if lots else None
     span = sum(1 for g in gaps if sum(1 for i in (lt.query(g) if lt else []) if lots[i].intersection(g).area >= max(15, 0.1 * g.area)) >= 2)
-    m = re.search(r"\((\d+) lots; (\d+) gaps over 2\+ house lots dropped; (\d+) traces split by the LiDAR\)", gf)
+    m = re.search(r"\((\d+) lots; (\d+) gaps over 2\+ house lots dropped; (\d+) traces split by the LiDAR", gf)
     gates.append(("FAIL", "one house lot per traced gap", span == 0,
                   f"{span} traced gaps cover 2+ house lots ({HOUSE_LOT[0]}-{HOUSE_LOT[1]} m2); "
                   + (f"{m.group(1)} cadastre lots, {m.group(2)} gaps dropped for joining lots, {m.group(3)} traces off-lot split by LiDAR" if m else "")
                   + ("" if lots else "; NO cadastre lots: merged houses not checked")))
+    # terrace rows (Paddington, 4 Nov 2026): no outline, traced or mapped, may stand for a whole row of houses; a row joins
+    # 3+ one-house lots (under ONE_HOME m2, each 40 % covered). gapfill.py cuts rows at lot lines and LiDAR party walls
+    small = [g for g in outlines(P("lots.geojson")) if g.area < ONE_HOME]
+    st = STRtree(small) if small else None
+    rows = sum(1 for g in comb if sum(1 for i in (st.query(g) if st else []) if small[i].intersection(g).area >= max(15, 0.4 * small[i].area)) >= 3)
+    gates.append(("FAIL", "terrace rows split into houses", rows <= MAX_ROWS * max(1, len(comb)),
+                  f"{rows} of {len(comb)} outlines still cover a row of 3+ house lots under {ONE_HOME} m2 (max {100*MAX_ROWS:.0f} %)"))
+    # hand-drawn OSM houses are the better judge where walls are shared (RT1, 4 Nov 2026): an OSM house lying on LiDAR roof
+    # (80 %+ of it, the snap_pilot.py KEEP_SHARED test) must still be in the output, by its OSM id or under another OSM
+    # outline drawn over the same house (OSM duplicates), not replaced by a traced strip
+    cfe = json.load(open(P("community.geojson")))["features"]
+    tr = STRtree(traced) if traced else None
+    on_roof = [(f["properties"]["id"], g) for f in cfe if f["properties"].get("src") == "osm" and inbox(g := shape(f["geometry"]))
+               and g.area >= 10 and sum(traced[i].intersection(g).area for i in (tr.query(g) if tr else [])) >= 0.8 * g.area]
+    of = [f for f in json.load(open(P("combined.geojson")))["features"] if f["properties"].get("src") == "osm"]
+    out_ids = {f["properties"].get("id") for f in of}
+    og = [shape(f["geometry"]) for f in of]; ot = STRtree(og) if og else None
+    kept = sum(1 for i, g in on_roof if i in out_ids or sum(og[j].intersection(g).area for j in (ot.query(g) if ot else [])) >= 0.5 * g.area)
+    gates.append(("FAIL", "OSM houses kept", not on_roof or kept >= MIN_OSM_KEPT * len(on_roof),
+                  f"{kept} of {len(on_roof)} OSM houses on LiDAR roof kept ({100*kept/max(1,len(on_roof)):.0f} %, min {100*MIN_OSM_KEPT:.0f} %)"))
     tiny = sum(1 for g in comb if g.area < 10)
     gates.append(("FAIL", "no tiny outlines", tiny == 0, f"{tiny} outlines under 10 m2"))
     nov = overlaps(comb)

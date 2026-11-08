@@ -2,12 +2,18 @@
 # Move each community footprint (shape unchanged) onto the LiDAR building mask: best shift within +-W m (W=5), 0.25 m steps.
 # 5 m, not 3: on steep Pittwater slopes Microsoft shapes sit 3-5 m off their roofs (27 Oct 2026).
 W=5
+THIN_W,THIN_H=4.0,12.0  # m: narrower (2 x area / perimeter) and taller than this is a neighbour's roof edge (tools/mirror/roofs-check.py)
+HIGH_RISE=25.0  # m: over this a shape is a tower block (same cap as gapfill.py and the app)
 import sys, json, numpy as np, laspy, glob, math
 from shapely.geometry import shape, mapping
 from shapely.affinity import translate
 from shapely import contains_xy
 src, out = sys.argv[1], sys.argv[2]; files = sys.argv[3:]
 import os
+KEEP_SHARED = os.environ.get('KEEP_SHARED', '1') == '1'  # roof-tracing round RT1: keep OSM shared-wall shapes on dense LiDAR
+# RT4 extra round: cap (m) on how far a hand-drawn OSM shape is moved unless the move clearly fits better (default on since RT6: 0.5 m, with SNAP_OSM_ONROOF=1)
+SNAP_OSM_MAX = float(os.environ.get('SNAP_OSM_MAX', '0.5'))
+SNAP_OSM_ONROOF = os.environ.get('SNAP_OSM_ONROOF', '1') == '1'  # ... and it also stays when 80 %+ of it is roof where drawn
 B=tuple(float(v) for v in os.environ.get("BOX","552861 6882513 553545 6883186").split())
 B=(B[0]-W-2,B[1]-W-2,B[2]+W+2,B[3]+W+2)  # wider than the shift window plus the ring
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
@@ -56,16 +62,22 @@ def scorer(g):
         # mean building share inside minus in the ring, for every shift at once (cells outside the grid count as empty)
         def share(P):
             if len(P[0])==0: return np.zeros(len(DX))
-            ci=((P[0][None,:]+DX[:,None]-x0)/cell).astype(int); ri=((y1-P[1][None,:]-DY[:,None])/cell).astype(int)
-            ok=(ci>=0)&(ci<nc)&(ri>=0)&(ri<nr); v=np.zeros(ci.shape,bool); v[ok]=bm[ri[ok],ci[ok]]
-            return (v.sum(1))/np.maximum(ok.sum(1),1)
+            # shifts in chunks of about 4 million (shift, point) pairs: a big factory roof has 200,000+ grid points, and all
+            # 1,681 shifts at once took 14 GB (Lidcombe 2020 jobs killed, 4 Nov 2026); results are the same
+            out=np.empty(len(DX)); n=max(1,4_000_000//len(P[0]))
+            for a in range(0,len(DX),n):
+                dx,dy=DX[a:a+n],DY[a:a+n]
+                ci=((P[0][None,:]+dx[:,None]-x0)/cell).astype(np.int32); ri=((y1-P[1][None,:]-dy[:,None])/cell).astype(np.int32)
+                ok=(ci>=0)&(ci<nc)&(ri>=0)&(ri<nr); v=np.zeros(ci.shape,bool); v[ok]=bm[ri[ok],ci[ok]]
+                out[a:a+n]=v.sum(1)/np.maximum(ok.sum(1),1)
+            return out
         if len(I[0])==0: return np.full(len(DX),-1.0)
         return share(I)-share(R)
     f.many=many
     return f
 def score(g): return scorer(g)()
 F=json.load(open(src))['features']; res=[]; shifts=[]
-G=[]; S=[]
+G=[]; S=[]; FS=[]
 for f in F:
     g=shape(f['geometry']); g=g if g.geom_type=='Polygon' else max(g.geoms,key=lambda q:q.area)
     if g.area<10: continue   # pillars, kiosks, map slivers: not a building outline worth keeping
@@ -80,7 +92,7 @@ for f in F:
     fine={(round(a+i,2),round(b+j,2)) for a,b in sh[ok] for i in np.arange(-0.75,0.76,0.25) for j in np.arange(-0.75,0.76,0.25) if abs(a+i)<=W and abs(b+j)<=W}
     sh,v,ok=pick(sorted(fine))
     k=ok[np.argmin(np.hypot(sh[ok,0],sh[ok,1]))]; best=(v[k],sh[k][0],sh[k][1])
-    G.append(g); S.append(best)
+    G.append(g); S.append(best); FS.append(f['properties'])
 # Microsoft's error comes from the imagery, so neighbours share it: use the median shift of well-fitting buildings within
 # 60 m (its own included) instead of each building's own, which trees, shadows or a neighbour's roof can pull off.
 C=np.array([[g.centroid.x,g.centroid.y] for g in G]); D=np.array([[b[1],b[2]] for b in S]); FIT=np.array([b[0] for b in S])
@@ -97,17 +109,44 @@ for i,g in enumerate(G):
         # walls (no shift can be judged, but the height can; Bowral 2014 town centre lost 239 such shapes). It takes its
         # neighbours' shift (the imagery error), or none. Not on dense LiDAR: there these are mostly Microsoft shapes
         # drawn smaller than their roof (Greenwich 2020: 1,330), and the traced roof that replaces them is better.
-        if not thin: continue
+        # KEEP_SHARED (default on since RT1, 4 Nov 2026; KEEP_SHARED=0 for the old rule): on dense LiDAR too, a hand-drawn OSM
+        # shape lying wholly on roof whose roof goes on past it is a terrace or shop with shared walls (Erskineville: 507 of
+        # 728 OSM shapes were dropped and lot-cut strips drawn over them). It keeps its outline and gets heights; gapfill.py
+        # adds nothing over it. Microsoft's machine shapes are still dropped: they join terrace rows (81 % span 2+ lots).
+        if not thin and not (KEEP_SHARED and FS[i].get('src')=='osm'): continue
         nd=(np.median(D[near],axis=0) if near.sum()>=3 else (0.0,0.0))
         cand=[(t,translate(g,*t)) for t in (tuple(nd),(0.0,0.0)) if scorer(translate(g,*t)).inside()>=0.8]
         if not cand: continue
         (dx,dy),g2=cand[0]; fit=0.0; shared=True
+    if FS[i].get('src')=='osm' and math.hypot(dx,dy)>SNAP_OSM_MAX:
+        # SNAP_OSM_MAX: a 4-5 m terrace moved 1-2 m by its neighbours' median no longer matches its own drawing (RT5: 107
+        # Sydney misses); it stays where it was drawn unless the move fits clearly better, or (shared walls) it is not on roof there
+        f0=score(g)
+        on=scorer(g).inside()>=0.8
+        if (shared and on) or (not shared and (f0>=fit-0.1 or (SNAP_OSM_ONROOF and on))):
+            dx,dy=0.0,0.0; g2=g; fit=fit if shared else f0
     shifts.append(math.hypot(dx,dy))
     zb=inside(g2,bx,by,bz)
     ring=g2.buffer(4).difference(g2.buffer(1)); zg=inside(ring,gx,gy,gz)
     p={}
     if len(zb)>=10 and len(zg)>=5: p={'h_max':round(float(np.percentile(zb,98)-np.median(zg)),2),'h_mean':round(float(zb.mean()-np.median(zg)),2)}
+    if p.get('h_max',0)>HIGH_RISE:
+        # a tower (Chatswood 2 Nov 2026, P-0098): heights only on a shape big enough to be a tower itself (a small or thin
+        # shape beside a tower, like a 19 m2 1.6 m wide part, would take the tower's roof), read 1.5 m inside its walls so a
+        # taller neighbour's edge does not set its height
+        p={'high_rise':True}; core=g2.buffer(-1.5)
+        if g2.area>=100 and not g2.buffer(-2.5).is_empty:
+            zb=inside(core,bx,by,bz)
+            if len(zb)>=10 and len(zg)>=5:
+                p.update({'h_max':round(float(np.percentile(zb,98)-np.median(zg)),2),'h_mean':round(float(zb.mean()-np.median(zg)),2)})
+    if p.get('h_max',0)>THIN_H and 2*g2.area/g2.length<THIN_W:
+        # a thin shape (wall, awning, narrow wing: Gosford pilot 26, Chatswood 23) whose top points are a taller neighbour's
+        # roof edge: the 90th percentile, or no height when that is still too tall
+        h90=float(np.percentile(zb,90)-np.median(zg))
+        if h90<=THIN_H: p['h_max']=round(h90,2)
+        else: p.pop('h_max',None); p.pop('h_mean',None)
     p['shift_m']=round(shifts[-1],2); p['fit']=round(fit,2)
+    p.update({k:FS[i][k] for k in ('id','src') if k in FS[i]})   # which community shape this is (pipeline gate: OSM houses kept)
     if shared: p['shared_walls']=True
     res.append({'type':'Feature','geometry':mapping(g2),'properties':p})
 # duplicates: OSM and Microsoft often draw the same building, and shifting can push neighbours into each other.
@@ -125,6 +164,8 @@ for r in res:
         g=g.buffer(0.05,join_style=2).buffer(-0.05,join_style=2); trimmed+=1
         if g.is_empty or g.area<10: dropped+=1; continue   # only a sliver left after trimming
         r['geometry']=mapping(g)
+        if r['properties'].get('h_max',0)>THIN_H and 2*g.area/g.length<THIN_W:  # trimmed into a thin strip: its height was read on the whole shape
+            r['properties'].pop('h_max',None); r['properties'].pop('h_mean',None)
     acc.append(g); kept.append(r)
 res=kept
 print('duplicates dropped',dropped,'overlaps trimmed',trimmed)
