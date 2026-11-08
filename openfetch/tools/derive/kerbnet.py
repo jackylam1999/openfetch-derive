@@ -2079,6 +2079,17 @@ def main(a):
                     else "block guide" for o in out]
     else:
         kind = ["block loop"] * len(out)
+    # a line that touches itself only after the trip to lon/lat and back (readers take lon/lat as GDA2020, 7844) is knotted there:
+    # untie it as it will be read (8 Nov 2026: 5 such self-touches in the whole-suburb run)
+    rd = Transformer.from_crs(7844, 7856, always_xy=True).transform; o2, k2 = [], []
+    for o, k in zip(out, kind):
+        q = np.array([rd(*[round(v, 8) for v in back(x, y)]) for x, y in o])
+        if LineString(q).is_simple or np.hypot(*(q[0] - q[-1])) < 0.01:
+            o2.append(o); k2.append(k); continue
+        fr = Transformer.from_crs(7856, 7844, always_xy=True).transform; to = Transformer.from_crs(4326, 7856, always_xy=True).transform
+        for c in deknot([q], {}):
+            o2.append(np.array([to(*fr(x, y)) for x, y in c])); k2.append(k)
+    out, kind = o2, k2
     feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
               "geometry": {"type": "LineString", "coordinates": [[round(v, 8) for v in back(x, y)] for x, y in o]}}
              for o, k in zip(out, kind)]
