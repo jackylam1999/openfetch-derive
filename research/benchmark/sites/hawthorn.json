@@ -24,6 +24,92 @@
     "address": [
       "23 LYNCH STREET HAWTHORN 3122"
     ],
+    "boundary_mga": [
+      [
+        326937.7,
+        5812173.85
+      ],
+      [
+        326928.2,
+        5812173.99
+      ],
+      [
+        326922.13,
+        5812174.08
+      ],
+      [
+        326883.63,
+        5812174.6
+      ],
+      [
+        326852.4,
+        5812175.53
+      ],
+      [
+        326846.57,
+        5812175.71
+      ],
+      [
+        326797.48,
+        5812179.31
+      ],
+      [
+        326802.74,
+        5812184.36
+      ],
+      [
+        326826.18,
+        5812180.11
+      ],
+      [
+        326852.69,
+        5812179.4
+      ],
+      [
+        326928.94,
+        5812179.2
+      ],
+      [
+        326938.26,
+        5812179.18
+      ],
+      [
+        326940.6,
+        5812179.18
+      ],
+      [
+        326958.72,
+        5812176.89
+      ],
+      [
+        326967.78,
+        5812175.74
+      ],
+      [
+        326981.24,
+        5812174.03
+      ],
+      [
+        326981.05,
+        5812172.56
+      ],
+      [
+        326967.48,
+        5812173.11
+      ],
+      [
+        326958.5,
+        5812173.47
+      ],
+      [
+        326955.96,
+        5812173.57
+      ],
+      [
+        326937.7,
+        5812173.85
+      ]
+    ],
     "corners_mga": {
       "NE": [
         326981.24,
@@ -68,11 +154,13 @@
       "EAO",
       "PO1"
     ],
-    "at": "lot centre",
+    "optional": [],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
     "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
   },
   "heritage": {
     "overlay": [],
+    "optional": [],
     "grading": null,
     "grading_status": "the council publishes no heritage gradings as open data",
     "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"

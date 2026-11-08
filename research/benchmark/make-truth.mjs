@@ -29,6 +29,7 @@ async function get(url, tries = 3){
 const qs = o => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(typeof v === 'object' ? JSON.stringify(v) : v)).join('&');
 const query = (layer, o) => get(layer + '/query?' + qs({f: 'json', outFields: '*', ...o}));
 const atPoint = (lon, lat) => ({geometry: lon + ',' + lat, geometryType: 'esriGeometryPoint', inSR: 4326, spatialRel: 'esriSpatialRelIntersects'});
+const onLot = (rings, sr) => ({geometry: JSON.stringify({rings, spatialReference: {wkid: sr}}), geometryType: 'esriGeometryPolygon', inSR: sr, spatialRel: 'esriSpatialRelIntersects'});
 const atXY = (x, y, sr) => ({geometry: x + ',' + y, geometryType: 'esriGeometryPoint', inSR: sr, spatialRel: 'esriSpatialRelIntersects'});
 
 function ringArea(r){ let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]); return a / 2; }
@@ -102,6 +103,8 @@ async function vic(site){
   const addr = (await query(VICMAP + '/Vicmap_Address/FeatureServer/0', {geometry: JSON.stringify({rings: lot.geometry.rings, spatialReference: {wkid: sr}}), geometryType: 'esriGeometryPolygon', inSR: sr, spatialRel: 'esriSpatialRelIntersects', returnGeometry: false, resultRecordCount: 50})).features.map(f => f.attributes);
   const zones = (await query(VICMAP + '/Vicmap_Planning/FeatureServer/3', {...atXY(lotC[0], lotC[1], sr), returnGeometry: false})).features.map(f => f.attributes.zone_code);
   const ovs = (await query(VICMAP + '/Vicmap_Planning/FeatureServer/2', {...atXY(lotC[0], lotC[1], sr), returnGeometry: false})).features.map(f => f.attributes.zone_code);
+  const ovsLot = (await query(VICMAP + '/Vicmap_Planning/FeatureServer/2', {...onLot(lot.geometry.rings, sr), returnGeometry: false})).features.map(f => f.attributes.zone_code);
+  const optional = [...new Set(ovsLot)].filter(c => !ovs.includes(c)).sort();
   const st = (await query(VICMAP + '/Vicmap_Transport/FeatureServer/2', {where: "feature_type_code='rail_station'", geometry: lotC.join(','), geometryType: 'esriGeometryPoint', inSR: sr, distance: 4000, units: 'esriSRUnit_Meter', outSR: sr})).features
     .map(f => ({name: f.attributes.name, distance_m: Math.round(dist([f.geometry.x, f.geometry.y], lotC))})).sort((a, b) => a.distance_m - b.distance_m);
   let tallest = {value_m: null, status: 'no official building height published here', source: null};
@@ -116,12 +119,13 @@ async function vic(site){
     lot: {id: A.parcel_spi || (A.parcel_lot_number + '\\' + A.parcel_plan_number), lot: A.parcel_lot_number, plan: A.parcel_plan_number, pfi: A.parcel_pfi,
       area_m2: Math.round(Math.abs(ringArea(ring))), area_basis: 'planar area of the Vicmap Parcel polygon in MGA 55 (GDA2020)',
       address: addr.map(a => a.ezi_address).filter(Boolean).sort().slice(0, 5),
+      boundary_mga: ring.map(xy),
       corners_mga: Object.fromEntries(Object.entries(corners(ring)).map(([k, p]) => [k, xy(p)])), centre_mga: xy(lotC), crs: 'EPSG:7855 GDA2020 MGA zone 55',
       source: 'Vicmap Property, Parcel Map Polygons (PARCEL_MP), DEECA, CC BY 4.0'},
     tallest_neighbour: {...tallest, radius_m: 100},
     zones: {codes: [...new Set(zones)].sort(), at: 'lot centre', source: 'Vicmap Planning, PLAN_ZONE, DTP, CC BY 4.0'},
-    overlays: {codes: [...new Set(ovs)].sort(), at: 'lot centre', source: 'Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0'},
-    heritage: {overlay: [...new Set(ho)].sort(), grading: null, grading_status: site.council === 'MELBOURNE' ? 'check the City of Melbourne heritage gradings by eye' : 'the council publishes no heritage gradings as open data',
+    overlays: {codes: [...new Set(ovs)].sort(), optional, at: 'lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not', source: 'Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0'},
+    heritage: {overlay: [...new Set(ho)].sort(), optional: optional.filter(c => /^HO\d/.test(c)), grading: null, grading_status: site.council === 'MELBOURNE' ? 'check the City of Melbourne heritage gradings by eye' : 'the council publishes no heritage gradings as open data',
       source: 'Vicmap Planning, PLAN_OVERLAY (HO codes)'},
     nearest_station: st[0] ? {...st[0], next: st[1] || null, source: 'Vicmap Transport, TR_RAIL_INFRASTRUCTURE rail_station, DTP, CC BY 4.0'} : null,
     official_kerb: {exists: kerbs.length > 0, datasets: kerbs, source: 'OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal'},
@@ -139,6 +143,14 @@ async function nsw(site){
   const zones = (await query(EPI + '/2', {...pt, returnGeometry: false})).features.map(f => f.attributes);
   const her = (await query(EPI + '/0', {...pt, returnGeometry: false})).features.map(f => f.attributes);
   const hob = (await query(EPI + '/5', {...pt, returnGeometry: false})).features.map(f => f.attributes);
+  // every primary LEP map with a value at the lot centre, by family; maps touching the lot but not its centre are optional
+  const MAPS = {FSR: 1, LRA: 3, LSZ: 4, HOB: 5}, families = [], optionalFam = [];
+  for (const [fam, id] of Object.entries(MAPS)){
+    const c = (await query(EPI + '/' + id, {...pt, returnGeometry: false, resultRecordCount: 5})).features.length;
+    const l = c ? 0 : (await query(EPI + '/' + id, {...onLot(lot.geometry.rings, sr), returnGeometry: false, resultRecordCount: 5})).features.length;
+    if (c) families.push(fam); else if (l) optionalFam.push(fam);
+  }
+  const fsr = (await query(EPI + '/1', {...pt, returnGeometry: false})).features.map(f => f.attributes);
   const st = (await query(SIX + '/NSW_FOI_Transport_Facilities/MapServer/1', {where: "generalname LIKE '%RAILWAY STATION'", geometry: lotC.join(','), geometryType: 'esriGeometryPoint', inSR: sr, distance: 4000, units: 'esriSRUnit_Meter', outSR: sr})).features
     .map(f => ({name: f.attributes.generalname || f.attributes.GENERALNAME || f.attributes.name, distance_m: Math.round(dist([f.geometry.x, f.geometry.y], lotC))})).sort((a, b) => a.distance_m - b.distance_m);
   const kerbs = officialKerbSources('nsw', site.council_file || site.council);
@@ -147,11 +159,12 @@ async function nsw(site){
     lot: {id: pick(A, /^lotidstring$/i), lot: pick(A, /^lotnumber$/i), section: pick(A, /^sectionnumber$/i) || null, plan: pick(A, /^planlabel$/i),
       area_m2: Math.round(Math.abs(ringArea(ring))), area_basis: 'planar area of the NSW Cadastre lot polygon in MGA 56 (GDA2020)',
       stated_area_m2: pick(A, /^planlotarea$/i) || null,
+      boundary_mga: ring.map(xy),
       corners_mga: Object.fromEntries(Object.entries(corners(ring)).map(([k, p]) => [k, xy(p)])), centre_mga: xy(lotC), crs: 'EPSG:7856 GDA2020 MGA zone 56',
       source: 'NSW Cadastre (Lot), DCS Spatial Services, CC BY 4.0'},
     tallest_neighbour: {value_m: null, status: 'no official building height published here', source: null, radius_m: 100},
     zones: {codes: [...new Set(zones.map(z => pick(z, /^SYM_CODE$/i)))].sort(), epi: [...new Set(zones.map(z => pick(z, /^EPI_NAME$/i)))], at: 'lot centre', source: 'NSW Planning Portal, EPI Land Zoning, DPHI, CC BY 4.0'},
-    overlays: {codes: hob.map(h => pick(h, /^MAX_B_H$/i) == null ? 'HOB ' + (pick(h, /^LAY_CLASS$/i) || 'none') : 'HOB ' + pick(h, /^MAX_B_H$/i) + ' ' + (pick(h, /^UNITS$/i) || '')).map(s => s.trim()), at: 'lot centre', source: 'NSW Planning Portal, EPI Height of Building, DPHI, CC BY 4.0'},
+    overlays: {families, optional_families: optionalFam, fsr: fsr.map(f => pick(f, /^FSR$/i) ?? pick(f, /^LAY_CLASS$/i)), maps_checked: 'EPI Primary Planning Layers: Floor Space Ratio, Land Reservation Acquisition, Lot Size, Height of Building (heritage items under heritage, zoning under zones)', codes: hob.map(h => pick(h, /^MAX_B_H$/i) == null ? 'HOB ' + (pick(h, /^LAY_CLASS$/i) || 'none') : 'HOB ' + pick(h, /^MAX_B_H$/i) + ' ' + (pick(h, /^UNITS$/i) || '')).map(s => s.trim()), at: 'lot centre', source: 'NSW Planning Portal, EPI Height of Building, DPHI, CC BY 4.0'},
     heritage: {items: her.map(h => ({id: pick(h, /^H_ID$/i), name: pick(h, /^H_NAME$/i), significance: pick(h, /^SIG$/i)})), grading: her.length ? her.map(h => pick(h, /^SIG$/i)).join(', ') : 'not a listed item',
       source: 'NSW Planning Portal, EPI Heritage, DPHI, CC BY 4.0'},
     nearest_station: st[0] ? {...st[0], next: st[1] || null, source: 'NSW Features of Interest, Train Station, DCS Spatial Services, CC BY 4.0'} : null,

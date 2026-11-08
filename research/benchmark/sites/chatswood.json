@@ -22,6 +22,76 @@
     "area_m2": 1617,
     "area_basis": "planar area of the NSW Cadastre lot polygon in MGA 56 (GDA2020)",
     "stated_area_m2": 1617.00619,
+    "boundary_mga": [
+      [
+        331542.38,
+        6258842.97
+      ],
+      [
+        331546.08,
+        6258844.43
+      ],
+      [
+        331565.73,
+        6258852.19
+      ],
+      [
+        331572.95,
+        6258819.26
+      ],
+      [
+        331573.28,
+        6258818.27
+      ],
+      [
+        331583.97,
+        6258786.15
+      ],
+      [
+        331584.53,
+        6258779.67
+      ],
+      [
+        331579.21,
+        6258777.58
+      ],
+      [
+        331566.84,
+        6258772.72
+      ],
+      [
+        331556.66,
+        6258805.43
+      ],
+      [
+        331554.2,
+        6258804.46
+      ],
+      [
+        331550.28,
+        6258817.52
+      ],
+      [
+        331551.42,
+        6258817.95
+      ],
+      [
+        331550.57,
+        6258820.13
+      ],
+      [
+        331550.53,
+        6258820.11
+      ],
+      [
+        331545.56,
+        6258832.95
+      ],
+      [
+        331542.38,
+        6258842.97
+      ]
+    ],
     "corners_mga": {
       "NE": [
         331565.73,
@@ -64,6 +134,12 @@
     "source": "NSW Planning Portal, EPI Land Zoning, DPHI, CC BY 4.0"
   },
   "overlays": {
+    "families": [
+      "HOB"
+    ],
+    "optional_families": [],
+    "fsr": [],
+    "maps_checked": "EPI Primary Planning Layers: Floor Space Ratio, Land Reservation Acquisition, Lot Size, Height of Building (heritage items under heritage, zoning under zones)",
     "codes": [
       "HOB 246.8 m(RL)"
     ],

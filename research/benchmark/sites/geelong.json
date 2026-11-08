@@ -24,6 +24,40 @@
     "address": [
       "59 GHERINGHAP STREET GEELONG 3220"
     ],
+    "boundary_mga": [
+      [
+        268421.4,
+        5774330.7
+      ],
+      [
+        268426.22,
+        5774345.24
+      ],
+      [
+        268435.52,
+        5774342.15
+      ],
+      [
+        268435.5,
+        5774342.1
+      ],
+      [
+        268455.14,
+        5774335.6
+      ],
+      [
+        268450.41,
+        5774321.32
+      ],
+      [
+        268435.48,
+        5774326.04
+      ],
+      [
+        268421.4,
+        5774330.7
+      ]
+    ],
     "corners_mga": {
       "NE": [
         268455.14,
@@ -72,11 +106,17 @@
     "codes": [
       "DDO36"
     ],
-    "at": "lot centre",
+    "optional": [
+      "HO1637"
+    ],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
     "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
   },
   "heritage": {
     "overlay": [],
+    "optional": [
+      "HO1637"
+    ],
     "grading": null,
     "grading_status": "the council publishes no heritage gradings as open data",
     "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"

@@ -1,0 +1,22 @@
+{"site":"chatswood","mode":"without","run":1,"date":"2026-11-08","model":"Sonnet (benchmark subagent)",
+ "cost":{"tool_calls":28,"minutes":13},
+ "facts":{"lot_id":"1//DP724850","lot_area_m2":1617,
+  "position":{"corners_mga":{"NE":[331565.3,6258850.8],"SE":[331584.1,6258778.2],"SW":[331566.4,6258771.3],"NW":[331541.9,6258841.5]},"centre_mga":[331562,6258810]},
+  "zones":["E2"],"overlays":["HOB","ASS5","SAP","ASF","SPA"],"heritage":{"overlay":[],"grading":null},
+  "nearest_station":{"name":"Chatswood Railway Station","distance_m":57},
+  "official_kerb":false,
+  "tallest_neighbour":{"height_m":null,"basis":"none given"}},
+ "reach":{"lot_id":true,"lot_area":true,"address":true,"lot_boundary":true,"footprints":false,"heights":false,"height_basis":false,"zones":true,"overlays":true,"heritage":true,"ground_levels":true,"kerbs":false,"street_trees":false,"transport":true,"shadows":false},
+ "numbers":[
+  {"what":"lot area","value":1617,"source":{"stamp":"NSW_Cadastre MapServer layer 9, lotnumber=1 AND plannumber=724850, fetched 2026-11-08"}},
+  {"what":"corner NE","value":[331565.3,6258850.8],"source":{"stamp":"NSW_Cadastre MapServer layer 9 geometry outSR 7856, 2026-11-08"}},
+  {"what":"corner SE","value":[331584.1,6258778.2],"source":{"stamp":"NSW_Cadastre MapServer layer 9 geometry outSR 7856, 2026-11-08"}},
+  {"what":"corner SW","value":[331566.4,6258771.3],"source":{"stamp":"NSW_Cadastre MapServer layer 9 geometry outSR 7856, 2026-11-08"}},
+  {"what":"corner NW","value":[331541.9,6258841.5],"source":{"stamp":"NSW_Cadastre MapServer layer 9 geometry outSR 7856, 2026-11-08"}},
+  {"what":"height limit RL","value":246.8,"source":{"stamp":"EPI_Primary_Planning_Layers layer 5 Height of Building, Willoughby LEP 2012 Amdt 34, 2026-11-08"}},
+  {"what":"ground level north end","value":102.3,"source":{"stamp":"NSW_5M_Elevation ImageServer Sydney-DEM-AHD_56_5m getSamples, 2026-11-08"}},
+  {"what":"ground level centre","value":100.9,"source":{"stamp":"NSW_5M_Elevation ImageServer Sydney-DEM-AHD_56_5m getSamples, 2026-11-08"}},
+  {"what":"ground level south end","value":99,"source":{"stamp":"NSW_5M_Elevation ImageServer Sydney-DEM-AHD_56_5m getSamples, 2026-11-08"}},
+  {"what":"station distance","value":57,"source":{"stamp":"NSW_Transport_Theme FeatureServer layer 0 TransportFacilityPoint, Chatswood Railway Station, 2026-11-08"}},
+  {"what":"bus interchange distance","value":139,"source":{"stamp":"NSW_Transport_Theme FeatureServer layer 0 TransportFacilityPoint, 2026-11-08"}}
+ ]}

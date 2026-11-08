@@ -24,6 +24,64 @@
     "address": [
       "147 HOPKINS STREET FOOTSCRAY 3011"
     ],
+    "boundary_mga": [
+      [
+        315113.56,
+        5814280.87
+      ],
+      [
+        315112.96,
+        5814281.56
+      ],
+      [
+        315110.26,
+        5814284.68
+      ],
+      [
+        315110.65,
+        5814287.97
+      ],
+      [
+        315113.53,
+        5814310.11
+      ],
+      [
+        315119.91,
+        5814309.35
+      ],
+      [
+        315117,
+        5814286.67
+      ],
+      [
+        315116.91,
+        5814286.68
+      ],
+      [
+        315116.59,
+        5814284.14
+      ],
+      [
+        315116.48,
+        5814284.15
+      ],
+      [
+        315115.85,
+        5814279.28
+      ],
+      [
+        315114.72,
+        5814279.41
+      ],
+      [
+        315114.89,
+        5814280.84
+      ],
+      [
+        315113.56,
+        5814280.87
+      ]
+    ],
     "corners_mga": {
       "NE": [
         315119.91,
@@ -68,13 +126,15 @@
       "HO3",
       "PO1"
     ],
-    "at": "lot centre",
+    "optional": [],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
     "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
   },
   "heritage": {
     "overlay": [
       "HO3"
     ],
+    "optional": [],
     "grading": null,
     "grading_status": "the council publishes no heritage gradings as open data",
     "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"

@@ -24,6 +24,32 @@
     "address": [
       "24 ARTHUR STREET PRESTON 3072"
     ],
+    "boundary_mga": [
+      [
+        323778.07,
+        5820813.72
+      ],
+      [
+        323780.47,
+        5820802.81
+      ],
+      [
+        323738.92,
+        5820807.21
+      ],
+      [
+        323737.57,
+        5820821.48
+      ],
+      [
+        323777.4,
+        5820817.26
+      ],
+      [
+        323778.07,
+        5820813.72
+      ]
+    ],
     "corners_mga": {
       "NE": [
         323777.4,
@@ -68,13 +94,15 @@
       "HO186",
       "ICO1"
     ],
-    "at": "lot centre",
+    "optional": [],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
     "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
   },
   "heritage": {
     "overlay": [
       "HO186"
     ],
+    "optional": [],
     "grading": null,
     "grading_status": "the council publishes no heritage gradings as open data",
     "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"

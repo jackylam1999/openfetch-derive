@@ -1,0 +1,18 @@
+{"site":"hawthorn","mode":"without","run":1,"date":"2026-11-08","model":"Sonnet (benchmark subagent)",
+"cost":{"tool_calls":19,"minutes":8},
+"facts":{"lot_id":"Lot 2 PS733527","lot_area_m2":1218,
+"position":{"corners_mga":{"NE":[326981,5812184],"SE":[326981,5812173],"SW":[326797,5812173],"NW":[326797,5812184]},"centre_mga":[326936.6,5812176.5]},
+"zones":["C1Z"],"overlays":["PO1","BFO2","EAO"],"heritage":{"overlay":[],"grading":null},
+"nearest_station":{"name":"Glenferrie Station","distance_m":200},
+"official_kerb":false,
+"tallest_neighbour":{"height_m":null,"basis":"none given"}},
+"reach":{"lot_id":true,"lot_area":true,"address":true,"lot_boundary":true,"footprints":true,"heights":false,"height_basis":false,"zones":true,"overlays":true,"heritage":true,"ground_levels":false,"kerbs":false,"street_trees":true,"transport":true,"shadows":true},
+"numbers":[
+{"what":"lot area","value":1218,"source":{"stamp":"Vicmap Parcel PARCEL_MP, ArcGIS FeatureServer, point query at address point, 2026-11-08"}},
+{"what":"corner NE","value":[326981,5812184],"source":{"stamp":"Vicmap Parcel PARCEL_MP ring envelope, 2026-11-08"}},
+{"what":"corner SE","value":[326981,5812173],"source":{"stamp":"Vicmap Parcel PARCEL_MP ring envelope, 2026-11-08"}},
+{"what":"corner SW","value":[326797,5812173],"source":{"stamp":"Vicmap Parcel PARCEL_MP ring envelope, 2026-11-08"}},
+{"what":"corner NW","value":[326797,5812184],"source":{"stamp":"Vicmap Parcel PARCEL_MP ring envelope, 2026-11-08"}},
+{"what":"address point","value":[326936.6,5812176.5],"source":{"stamp":"Vicmap Address, ArcGIS FeatureServer, 23 LYNCH STREET query, 2026-11-08"}},
+{"what":"station distance","value":200,"source":null}
+]}

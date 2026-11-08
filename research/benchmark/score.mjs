@@ -25,13 +25,18 @@ export function lotKey(s){
 }
 // overlay schedules and areas count as the code itself: "DDO61-A2", "DDO61 (Area 2)" -> DDO61
 const codeSet = a => [...new Set((a || []).map(c => norm(c).replace(/\s*\(AREA\s*\d+\)|-A\d+$/g, '').replace(/\s+/g, '')))].sort();
+// NSW LEP map families from an answer's codes in any spelling ("FSR 10:1", "FSR:10", "HOB:CA", "Height of Buildings")
+const LEP = {HOB: /HOB|HEIGHT/, FSR: /FSR|FLOOR SPACE/, LSZ: /LSZ|LOT SIZE|MLS/, LRA: /LRA|ACQUISITION|RESERVATION/};
+export const lepFamilies = a => Object.keys(LEP).filter(f => (a || []).some(c => LEP[f].test(norm(c)))).sort();
 const sameSet = (a, b) => JSON.stringify(codeSet(a)) === JSON.stringify(codeSet(b));
 const d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 // position error: mean distance from each answered corner to the truth corner of the same name (NE, SE, SW, NW), or the nearest one if unnamed; else the answered centre to the truth centre
 export function positionError(fact, truth){
-  const T = truth.lot.corners_mga, tc = Object.values(T);
+  const T = truth.lot.corners_mga, tc = Object.values(T), B = truth.lot.boundary_mga;
   const given = fact?.corners_mga ? Object.entries(fact.corners_mga).filter(([, p]) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) : [];
+  // with the whole boundary in the sheet: each answered corner's distance to the nearest real lot vertex, so which vertex an answer calls "NE" on an odd-shaped lot does not matter
+  if (given.length && B) return given.reduce((s, [, p]) => s + Math.min(...B.map(q => d2(p, q))), 0) / given.length;
   if (given.length) return given.reduce((s, [k, p]) => s + (T[k] ? d2(p, T[k]) : Math.min(...tc.map(q => d2(p, q)))), 0) / given.length;
   if (Array.isArray(fact?.centre_mga)) return d2(fact.centre_mga, truth.lot.centre_mga);
   return null;
@@ -50,17 +55,30 @@ export function check(key, f, t){
     case 'lot_area_m2': return facts.lot_area_m2 == null ? {ok: null} : {ok: Math.abs(facts.lot_area_m2 - t.lot.area_m2) <= TOL.area(t.lot.area_m2), why: facts.lot_area_m2 + ' vs ' + t.lot.area_m2 + ' m²'};
     case 'position': { const e = positionError(facts.position, t); return e == null ? {ok: null} : {ok: e <= TOL.position_m, error_m: +e.toFixed(2), why: e.toFixed(2) + ' m off the lot'}; }
     case 'zones': return facts.zones == null ? {ok: null} : {ok: sameSet(facts.zones, t.zones.codes), why: codeSet(facts.zones).join('/') + ' vs ' + t.zones.codes.join('/')};
-    case 'overlays': return facts.overlays == null ? {ok: null} : {ok: sameSet(facts.overlays, t.overlays.codes), why: codeSet(facts.overlays).join('/') + ' vs ' + t.overlays.codes.join('/')};
+    case 'overlays': {
+      if (facts.overlays == null) return {ok: null};
+      if (t.region === 'nsw' && t.overlays.families){
+        // NSW: the primary LEP maps compared by family; other maps an answer names (acid sulfate, flood, clauses) are not checked
+        const opt = t.overlays.optional_families || [], got = lepFamilies(facts.overlays).filter(f => !opt.includes(f)), want = t.overlays.families.filter(f => !opt.includes(f));
+        return {ok: sameSet(got, want), why: (got.join('/') || 'none') + ' vs ' + want.join('/') + ' (LEP map families)'};
+      }
+      const opt = codeSet(t.overlays.optional), drop = a => codeSet(a).filter(c => !opt.includes(c));
+      return {ok: sameSet(drop(facts.overlays), drop(t.overlays.codes)), why: drop(facts.overlays).join('/') + ' vs ' + drop(t.overlays.codes).join('/')};
+    }
     case 'heritage': {
       if (facts.heritage == null) return {ok: null};
       const h = facts.heritage, want = t.region === 'nsw' ? (t.heritage.items.length ? norm(t.heritage.grading) : null) : t.heritage.grading;
       const got = h.grading == null || /^(NONE|NOT (GRADED|LISTED|PUBLISHED)|NO GRADING)/.test(norm(h.grading)) ? null : norm(h.grading);
-      const hoOk = t.region === 'nsw' || sameSet(h.overlay || [], t.heritage.overlay);
-      return {ok: hoOk && (want == null ? got == null : got === norm(want)), why: 'grading ' + (got ?? 'none') + ' vs ' + (want ?? 'none') + (hoOk ? '' : ', HO ' + codeSet(h.overlay).join('/') + ' vs ' + t.heritage.overlay.join('/'))};
+      // NSW significance is compared by its level word: "Local significance", "LOCAL (ITEM - GENERAL)" and "Local" are the same
+      const lvl = g => t.region === 'nsw' && g ? (g.match(/\b(LOCAL|STATE|NATIONAL)\b/) || [g])[0] : g;
+      const opt = codeSet(t.heritage.optional), dropHo = a => codeSet(a).filter(c => !opt.includes(c));
+      const hoOk = t.region === 'nsw' || sameSet(dropHo(h.overlay || []), dropHo(t.heritage.overlay));
+      return {ok: hoOk && (want == null ? got == null : lvl(got) === lvl(norm(want))), why: 'grading ' + (got ?? 'none') + ' vs ' + (want ?? 'none') + (hoOk ? '' : ', HO ' + codeSet(h.overlay).join('/') + ' vs ' + t.heritage.overlay.join('/'))};
     }
     case 'nearest_station': {
       const s = facts.nearest_station; if (s == null || !t.nearest_station) return {ok: null};
-      const nameOk = norm(s.name).replace(/\s+STATION$/, '') === norm(t.nearest_station.name).replace(/\s+STATION$/, '');
+      const stn = n => norm(n).replace(/\s+(RAILWAY\s+|TRAIN\s+)?STATION$/, '');
+      const nameOk = stn(s.name) === stn(t.nearest_station.name);
       const distOk = s.distance_m == null || Math.abs(s.distance_m - t.nearest_station.distance_m) <= TOL.station(t.nearest_station.distance_m);
       return {ok: nameOk && distOk, why: s.name + ' ' + s.distance_m + ' m vs ' + t.nearest_station.name + ' ' + t.nearest_station.distance_m + ' m'};
     }
@@ -124,7 +142,7 @@ function selftest(){
   for (const p of Object.values(shifted.facts.position.corners_mga)){ p[0] += 1.2; p[1] += 0.9; }
   shifted.facts.zones = ['GRZ1']; shifted.facts.tallest_neighbour = {height_m: 12, basis: 'official'}; shifted.numbers.push({what: 'height', value: 12});
   const b = scoreRun(shifted, t), c = consistency([perfect, shifted]);
-  const ok = [a.truth.wrong === 0, a.reach === 15, a.trace === 100, b.truth.wrong === 3, Math.abs(b.truth.position_m - 1.5) < 0.01, b.trace === 50, c['footscray|with'] === 3,
+  const ok = [a.truth.wrong === 0, a.reach === 15, a.trace === 100, b.truth.wrong === 3, b.truth.position_m > 1.0 && b.truth.position_m <= 1.5, b.trace === 50, c['footscray|with'] === 3,
     lotKey('1\\TP128421') === lotKey('Lot 1 on TP 128421'), lotKey('1//DP724850') === lotKey('Lot 1 DP724850'), lotKey('CM3\\PS810967').endsWith('/PS810967'), lotKey('Lot 101 PS810967') === '101/PS810967'];
   ok.forEach((v, i) => { if (!v) { console.log('selftest ' + i + ' FAILED', JSON.stringify({a, b, c})); process.exitCode = 1; } });
   if (!process.exitCode) console.log('selftest OK (' + ok.length + ' checks)');
