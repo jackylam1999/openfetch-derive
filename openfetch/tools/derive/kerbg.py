@@ -113,8 +113,10 @@ def bridges(out, bridge_lines, stats):
         for k, t in enumerate(ts):
             p = g.interpolate(t)
             for b in bt.query(p, predicate="dwithin", distance=BRIDGE_W):
-                r = bridge_lines[int(b)]
-                if _ang(_hd(g, t), _hd(r, r.project(p), 1.0)) < BRIDGE_ANG:
+                r = bridge_lines[int(b)]; s_ = r.project(p)
+                if not (0.5 < s_ < r.length - 0.5):   # beside the approach, not the bridge itself (h: V16 cut 12 m too far)
+                    continue
+                if _ang(_hd(g, t), _hd(r, s_, 1.0)) < BRIDGE_ANG:
                     m[k] = True; break
         m = _runs(m, ts, 3.0)
         res += [o] if not m.any() else _keep_runs(g, m, ts, stats, "bridge_m")
@@ -301,6 +303,7 @@ def _join(a, b):
 
 
 JOIN_BACK = 1.5
+TEE_ANG = 35.0   # deg, an end meeting a line's middle at least this square is a T corner, kept
 
 
 def junctions(out, streets, stats):
@@ -351,6 +354,10 @@ def junctions(out, streets, stats):
                             c = _join(a, kc)
                             if LineString(c).is_simple:
                                 act = ("tail", i, j, c)
+            if act is None and len(near) == 1:
+                o = G[near[0]]; s_ = o.project(e)
+                if 1.0 < s_ < o.length - 1.0 and _ang(he, _hd(o, s_, 2.0)) >= TEE_ANG:
+                    continue   # h: a square T is a closed corner, kept (g cut it back and left a hole)
             if act is None:
                 act = ("cut", i, j0, max(_cutback(g, j0, G[k]) for k in near))
                 busy.add(i); busy.update(near)
@@ -810,8 +817,9 @@ def ringseat(out, stats):
     return res
 
 
-def clean(out, streets, bridge_lines, lots, stats):
+def clean(out, streets, bridge_lines, lots, stats, tunnels=()):
     OVER[:] = bridge_lines
+    bridge_lines = [b for b in bridge_lines if not any(b.equals(t) for t in tunnels)] if tunnels else bridge_lines
     out = [np.asarray(o) for o in out if len(o) > 1]
     out = bridges(out, bridge_lines, stats)
     out = streetless(out, streets, stats)
@@ -820,13 +828,24 @@ def clean(out, streets, bridge_lines, lots, stats):
     out = folds(out, stats)
     out = doubles(out, streets, lots, stats)
     out = junctions_all(out, streets, stats)
-    out = hooks(out, stats)
+    out = caps(out, streets, stats)
+    out = corner_join(out, streets, stats)
+    out = unroad(out, streets, stats)
+    out = extend(out, streets, stats)   # h: every cut is redrawn: free ends carried on along their street, then closed
+    out = close_near(out, streets, stats)
     out = caps(out, streets, stats)
     out = corner_join(out, streets, stats)
     out = fillets(out, stats)
     out = junctions_all(out, streets, stats)
     out = besides(out, stats)
-    out = tees(out, streets, stats)
+    out = close_near(out, streets, stats)
+    out = flare(out, streets, stats)
+    out = extend(out, streets, stats)   # ends opened again by the steps since
+    out = junctions_all(out, streets, stats)
+    out = close_near(out, streets, stats)
+    out = flare(out, streets, stats)
+    out = corner_join(out, streets, stats)
+    out = besides(out, stats)
     out = folds(out, stats)
     out = endtrim(out, stats)
     out = endfix(out, stats)
@@ -835,3 +854,332 @@ def clean(out, streets, bridge_lines, lots, stats):
         if isinstance(stats[k], float):
             stats[k] = int(stats[k])
     return [o for o in out if _L(o).length >= KEEP_MIN]
+
+
+EXT_MAX, EXT_STEP, EXT_HIT, EXT_MIN = 150.0, 1.0, 1.2, 2.0   # m
+EXT_OFF_LO, EXT_OFF_HI, EXT_TURN = 0.5, 12.0, 50.0   # m, m, deg
+EXT_MEET = 14.0   # m, a free end of the kerb alongside this far ahead is met with an S curve
+EXT_ACROSS = 2.2   # m, a kerb alongside this near on either side stops the walk (the reviewer's dup is 2 m)
+EXT_BESIDE = 3.0   # m, a kerb running alongside this near stops the walk (the reviewer's dup is 2 m, merge 3 m)
+
+
+def _unit(v):
+    n = np.hypot(*v)
+    return v / n if n > 1e-9 else v
+
+
+def _street_dir(r, s):
+    a = r.interpolate(max(0.0, s - 1.0)); b = r.interpolate(min(r.length, s + 1.0))
+    return _unit(np.array([b.x - a.x, b.y - a.y]))
+
+
+def _walk(e, h, i, streets, st, G, tree, maxlen=EXT_MAX):
+    """from a free end e heading h, carry the kerb on along its street at the offset it already has, until it meets another kerb
+    ('kerb'), reaches a cross street ('junction'), the street ends ('dead'), turns away ('turn') or EXT_MAX is reached ('far')"""
+    p = np.array([e.x, e.y]); u = np.array([np.cos(h), np.sin(h)])
+    k0 = int(st.nearest(e)); r0 = streets[k0]; d0 = r0.distance(e)
+    if not (EXT_OFF_LO <= d0 <= EXT_OFF_HI):
+        return None, "off"
+    pts = [p.copy()]; walked = 0.0; cur = k0
+    while walked < maxlen:
+        P = Point(*p); r = streets[cur]; s_ = r.project(P)
+        if s_ <= 0.05 or s_ >= r.length - 0.05:
+            nb = [int(k) for k in st.query(P, predicate="dwithin", distance=d0 + 3.0) if int(k) != cur]
+            nb = [k for k in nb if abs(streets[k].distance(P) - d0) < 2.0 and 0.05 < streets[k].project(P) < streets[k].length - 0.05]
+            if not nb:
+                return pts, "dead"
+            cur = nb[0]; r = streets[cur]; s_ = r.project(P)
+        t = _street_dir(r, s_)
+        if np.dot(t, u) < 0:
+            t = -t
+        if np.degrees(np.arccos(np.clip(np.dot(t, u), -1, 1))) > EXT_TURN:
+            return pts, "turn"
+        q = p + EXT_STEP * t; Q = Point(*q)
+        cands = [int(k) for k in st.query(Q, predicate="dwithin", distance=d0 + 2.0)]
+        best = min(cands, key=lambda k: streets[k].distance(Q)) if cands else cur
+        rq = streets[cur] if cur in cands else streets[best]
+        foot = rq.interpolate(rq.project(Q)); n = _unit(np.array([Q.x - foot.x, Q.y - foot.y]))
+        q = np.array([foot.x, foot.y]) + n * d0; Q = Point(*q)
+        for k in cands:   # another street this close: the kerb has reached the cross street's kerb line (a corner)
+            if k == cur:
+                continue
+            rk = streets[k]; sk = rk.project(Q)
+            if rk.distance(Q) < d0 + 1.0 and _ang(np.arctan2(t[1], t[0]), np.arctan2(*_street_dir(rk, sk)[::-1])) > 30:
+                return pts, "junction"
+        if any(b.distance(Q) < d0 + 2.0 for b in OVER):
+            return pts, "bridge"
+        hq = np.arctan2(t[1], t[0])
+        if any(_ang(hq, _hd(G[int(k)], G[int(k)].project(Q), 2.0)) < 25 and G[int(k)].distance(Q) > 0.05
+               and not len(st.query(LineString([Q, G[int(k)].interpolate(G[int(k)].project(Q))]), predicate="intersects"))
+               for k in tree.query(Q, predicate="dwithin", distance=EXT_BESIDE) if int(k) != i):
+            for k in tree.query(Q, predicate="dwithin", distance=EXT_BESIDE + EXT_MEET):   # the kerb ahead, drawn a little off line
+                k = int(k)
+                if k == i or _closed(np.asarray(G[k].coords)):
+                    continue
+                for c0 in (G[k].coords[0], G[k].coords[-1]):
+                    c0 = np.array(c0); dv = c0 - p; dl = np.hypot(*dv)
+                    if 0.5 < dl < EXT_MEET and np.dot(dv / dl, u) > 0.8 and _free(G, tree, k, Point(*c0)):
+                        tail = c0 + (np.array(G[k].interpolate(2.0 if np.allclose(c0, G[k].coords[0]) else G[k].length - 2.0).coords[0]) - c0)
+                        v1 = _unit(tail - c0)
+                        bz = _bez(p, p + dl / 3 * u, c0 - dl / 3 * v1, c0, 10)
+                        if not any(int(m) not in (i, k) and G[int(m)].intersects(LineString(bz)) for m in tree.query(LineString(bz))):
+                            return pts + list(bz[1:]), "kerb"
+            ks = [int(k) for k in tree.query(Q, predicate="dwithin", distance=EXT_BESIDE) if int(k) != i]
+            k = min(ks, key=lambda k: G[k].distance(Q)); o = G[k]; s2 = o.project(Q)
+            s3 = s2 + (4.0 if np.dot(_street_dir(o, s2), u) > 0 else -4.0)
+            if 0.0 <= s3 <= o.length:   # run into it a few metres on: one kerb (a tail it leaves behind goes in junctions())
+                f = o.interpolate(s3); c0 = np.array([f.x, f.y]); dl = np.hypot(*(c0 - p))
+                bz = _bez(p, p + dl / 3 * u, c0, c0, 8)
+                if not any(int(m) not in (i, k) and G[int(m)].intersects(LineString(bz)) for m in tree.query(LineString(bz))) \
+                        and not LineString(bz[:-1]).intersects(o):
+                    return pts + list(bz[1:]), "kerb"
+            return pts, "beside"   # another kerb runs alongside here: carrying on would double it
+        if len(pts) > 1 and any(_ang(hq, _hd(G[int(k)], G[int(k)].project(Q), 2.0)) < 25 and G[int(k)].distance(Q) > 0.05
+                                for k in tree.query(Q, predicate="dwithin", distance=EXT_ACROSS) if int(k) != i):
+            return pts, "narrow"   # the kerb across is this close: a footway or a median, not a street to line
+        hit = [int(k) for k in tree.query(Q, predicate="dwithin", distance=EXT_HIT) if int(k) != i]
+        if not hit and len(pts) > 6:
+            own = G[i] if i is not None else None
+            if own is not None and own.distance(Q) < EXT_HIT:
+                return pts, "self"
+        if hit:
+            k = min(hit, key=lambda k: G[k].distance(Q)); f = G[k].interpolate(G[k].project(Q))
+            pts.append(np.array([f.x, f.y])); return pts, "kerb"
+        if LineString([p, q]).intersects(G[i]) and len(pts) > 2:
+            return pts, "self"
+        pts.append(q); u = _unit(q - p); walked += EXT_STEP; p = q
+    return pts, "far"
+
+
+def _cells(q):
+    cx, cy = int(q.x // 3), int(q.y // 3)
+    return [(cx + a, cy + b) for a in (-1, 0, 1) for b in (-1, 0, 1)]
+
+
+def extend(out, streets, stats, maxlen=EXT_MAX, keep=("kerb", "junction", "dead", "far", "bridge", "turn", "narrow")):
+    """h (g left holes, 'deleted, not fixed', and kerbs stopping short of junctions, bends and bridges): every free end is carried
+    on along its street at its own offset until it meets a kerb, a cross street, a dead end or a bridge"""
+    st = STRtree(streets); n = 0; m = 0.0
+    for _ in range(3):
+        G = [_L(o) for o in out]; tree = STRtree(G); ends = _free_ends(out, G, tree, minlen=6.0); grow = {}; taken = {}
+        for i, j0, e, h in ends:
+            pts, why = _walk(e, h, i, streets, st, G, tree, maxlen)
+            if pts is None or why not in keep or len(pts) < 2:
+                continue
+            ext = LineString(pts)
+            if ext.length < EXT_MIN and why != "kerb":
+                continue
+            if ext.length < 0.05:
+                continue
+            if why != "kerb" and any(int(k) != i and G[int(k)].intersects(ext) for k in tree.query(ext)):
+                continue
+            if why == "kerb" and any(int(k) != i and G[int(k)].distance(Point(pts[-1])) > 0.05 and G[int(k)].intersects(LineString(pts[:-1]))
+                                     for k in tree.query(ext) if len(pts) > 2):
+                continue
+            smp = [ext.interpolate(t) for t in np.arange(0.5, ext.length, 1.0)]
+            if any(q.distance(z) < EXT_BESIDE for q in smp for c in _cells(q) for z in taken.get(c, ())):
+                continue   # another end's new piece already runs here this pass
+            for q in smp:
+                taken.setdefault((int(q.x // 3), int(q.y // 3)), []).append(q)
+            grow.setdefault(i, [None, None])[j0] = np.asarray(pts); n += 1; m += ext.length
+        if not grow:
+            break
+        res = []
+        for i, o in enumerate(out):
+            if i not in grow:
+                res.append(o); continue
+            c = np.asarray(o); a, b = grow[i]
+            if a is not None:
+                c = np.vstack([a[::-1][:-1], c])
+            if b is not None:
+                c = np.vstack([c, b[1:]])
+            if not LineString(c).is_simple:
+                c = np.asarray(o)
+                if b is not None and LineString(np.vstack([c, b[1:]])).is_simple:
+                    c = np.vstack([c, b[1:]])
+                elif a is not None and LineString(np.vstack([a[::-1][:-1], c])).is_simple:
+                    c = np.vstack([a[::-1][:-1], c])
+            res.append(c)
+        out = res
+    stats["extend"] = stats.get("extend", 0) + n; stats["extend_m"] = stats.get("extend_m", 0) + m
+    return out
+
+
+CLOSE_AHEAD = 10.0   # m, a kerb straight ahead of a free end this near is closed onto too
+CLOSE_D = 6.0   # m, a free end this near another kerb is closed onto it (the reviewer's near is 5 m)
+
+
+def close_near(out, streets, stats):
+    """h: a free end within CLOSE_D m of another kerb is closed onto it with a short round piece (a corner or a T), never cut back:
+    to the other kerb's end when that is within 3 m of the nearest point (one line), else onto its side. Not across a street
+    unless the street ends there (a dead-end cap), never across another kerb"""
+    st = STRtree(streets); n = 0
+    for _ in range(3):
+        G = [_L(o) for o in out]; tree = STRtree(G); ends = _free_ends(out, G, tree, minlen=3.0); done = {}; busy = set()
+        cand = []
+        for i, j0, e, h in ends:
+            for k in tree.query(e, predicate="dwithin", distance=CLOSE_AHEAD):
+                k = int(k)
+                if k == i:
+                    continue
+                o = G[k]; s_ = o.project(e); d = o.distance(e)
+                if d < TOUCH:
+                    continue
+                if d > CLOSE_D:   # farther off: only a kerb straight ahead of the end (the cross street's kerb at a mouth)
+                    f = o.interpolate(s_)
+                    if np.cos(h) * (f.x - e.x) / d + np.sin(h) * (f.y - e.y) / d < 0.8:
+                        continue
+                cand.append((d, i, j0, e, h, k, s_))
+        for d, i, j0, e, h, k, s_ in sorted(cand, key=lambda x: x[0]):
+            if (i, j0) in done or i in busy or k in busy:
+                continue
+            o = G[k]; p0 = np.array([e.x, e.y]); u0 = np.array([np.cos(h), np.sin(h)])
+            to_end = None
+            if not _closed(out[k]):
+                for k1, sv in ((0, 0.0), (1, o.length)):
+                    if abs(s_ - sv) < 3.0 and _free(G, tree, k, Point(o.coords[0 if k1 == 0 else -1])):
+                        to_end = k1
+            if to_end is not None:
+                q = o.coords[0 if to_end == 0 else -1]; p1 = np.array(q)
+                hb = _hd(o, 0.0 if to_end == 0 else o.length, 3.0) + (np.pi if to_end == 0 else 0.0)
+                u1 = np.array([np.cos(hb), np.sin(hb)])
+            else:
+                f = o.interpolate(s_); p1 = np.array([f.x, f.y]); u1 = None
+                if _ang(h, _hd(o, s_, 2.0)) < TEE_ANG:   # sliding into its side: a Y, not a corner
+                    continue
+            dd = np.hypot(*(p1 - p0))
+            if dd < 0.05:
+                continue
+            if np.dot(u0, (p1 - p0) / dd) < -0.2:   # behind the end: not where this kerb was going
+                continue
+            kk = dd / 3
+            curve = _bez(p0, p0 + kk * u0, p1 + (kk * u1 if u1 is not None else kk * 0.0 * u0), p1, 8)
+            cl = LineString(curve)
+            if len(st.query(cl, predicate="intersects")):
+                mid = cl.interpolate(0.5, normalized=True)
+                if not _end_dead(mid, streets, st, dd / 2 + CAP_END):
+                    continue
+            if any(int(m) not in (i, k) and G[int(m)].intersects(cl) for m in tree.query(cl)):
+                continue
+            if LineString(curve[:-1]).intersects(o) if len(curve) > 2 else False:
+                continue
+            a = np.asarray(out[i]) if j0 == 1 else np.asarray(out[i])[::-1]
+            if to_end is not None:
+                b = np.asarray(out[k]) if to_end == 0 else np.asarray(out[k])[::-1]
+                c = np.vstack([a, curve[1:-1], b])
+                if not LineString(c).is_simple:
+                    continue
+                done[(i, j0)] = ("join", k, c); busy.update((i, k))
+            else:
+                c = np.vstack([a, curve[1:]])
+                if not LineString(c).is_simple:
+                    continue
+                done[(i, j0)] = ("tee", None, c); busy.add(i)
+        if not done:
+            break
+        drop = set(); add = []
+        for (i, j0), (kind, k, c) in done.items():
+            drop.add(i); add.append(c); n += 1
+            if kind == "join":
+                drop.add(k)
+        out = [o for q, o in enumerate(out) if q not in drop] + add
+    stats["close_near"] = stats.get("close_near", 0) + n
+    return out
+
+
+FLARE_AHEAD, FLARE_R0, FLARE_R1 = 14.0, 2.0, 4.0   # m
+
+
+def flare(out, streets, stats):
+    """h: a narrow street's kerb that stops at the mouth onto a cross street with no kerb of its own side to turn into (a main road,
+    out of scope) is given its corner: a quarter circle turning away from its street, as a kerb return does, so the two kerbs of the
+    lane no longer end facing each other a few metres apart"""
+    st = STRtree(streets); n = 0
+    G = [_L(o) for o in out]; tree = STRtree(G); ends = _free_ends(out, G, tree, minlen=6.0); grow = {}
+    for i, j0, e, h in ends:
+        nr = [(G[int(k)].distance(e), int(k)) for k in tree.query(e, predicate="dwithin", distance=NEAR_D) if int(k) != i]
+        if not nr:
+            continue
+        own = int(st.nearest(e)); r0 = streets[own]; s0 = r0.project(e); hs = _hd(r0, s0, 2.0)
+        ahead = None
+        for t in np.arange(0.0, FLARE_AHEAD, 0.5):
+            q = Point(e.x + t * np.cos(h), e.y + t * np.sin(h))
+            for m in st.query(q, predicate="dwithin", distance=2.0):
+                m = int(m)
+                if m != own and _ang(hs, _hd(streets[m], streets[m].project(q), 2.0)) > 30:
+                    ahead = t; break
+            if ahead is not None:
+                break
+        if ahead is None:
+            continue
+        foot = r0.interpolate(s0); side = _unit(np.array([e.x - foot.x, e.y - foot.y]))
+        u = np.array([np.cos(h), np.sin(h)]); w = side - np.dot(side, u) * u
+        if np.hypot(*w) < 0.3:
+            continue
+        w = _unit(w); R0 = float(np.clip(ahead + 1.0, FLARE_R0, FLARE_R1)); p0 = np.array([e.x, e.y])
+        for R in (R0, 0.7 * R0, 0.45 * R0):
+            a = np.linspace(0, np.pi / 2, 12)[1:]
+            arc = p0 + R * (np.sin(a)[:, None] * u + (1 - np.cos(a))[:, None] * w)
+            cl = LineString(np.vstack([p0, arc]))
+            if len(st.query(cl, predicate="intersects")):
+                continue
+            hits = [cl.project(cl.intersection(G[int(m)]).representative_point()) for m in tree.query(cl)
+                    if int(m) != i and G[int(m)].intersects(cl)]
+            if hits:   # the corner meets the cross street's kerb: it ends on it (a closed corner)
+                t = min(hits)
+                if t < 0.3:
+                    break
+                arc = np.asarray(substring(cl, 0, t).coords)[1:]
+            grow.setdefault(i, [None, None])[j0] = arc
+            break
+    res = []
+    for i, o in enumerate(out):
+        c = np.asarray(o)
+        if i in grow:
+            a0, a1 = grow[i]
+            c2 = c
+            if a1 is not None:
+                c2 = np.vstack([c2, a1])
+            if a0 is not None:
+                c2 = np.vstack([a0[::-1], c2])
+            if LineString(c2).is_simple:
+                c = c2; n += (a0 is not None) + (a1 is not None)
+        res.append(c)
+    stats["flare"] = stats.get("flare", 0) + n
+    return res
+
+
+UNROAD_MIN, UNROAD_K, UNROAD_MAX = 2.5, 0.8, 25.0   # m, ratio, m
+
+
+def unroad(out, streets, stats):
+    """h: a free end lying in a cross street's carriageway (a kerb run on into the junction, or across a main road) is taken back
+    to that street's kerb line, where extend / close_near / flare then turn its corner"""
+    st = STRtree(streets); n = 0; m = 0.0
+    G = [_L(o) for o in out]; tree = STRtree(G); cut = {}
+    for i, j0, e, h in _free_ends(out, G, tree, minlen=UNROAD_MAX + KEEP_MIN):
+        g = G[i]; at = (lambda t: g.interpolate(t)) if j0 == 0 else (lambda t: g.interpolate(g.length - t))
+        ref = at(10.0); own = int(st.nearest(ref)); dref = streets[own].distance(ref); hs = _hd(streets[own], streets[own].project(ref), 2.0)
+        lim = max(UNROAD_MIN, UNROAD_K * dref)
+        def inroad(p):
+            for k in st.query(p, predicate="dwithin", distance=lim):
+                k = int(k); r = streets[k]
+                if k != own and r.distance(p) < lim and _ang(hs, _hd(r, r.project(p), 2.0)) > 30:
+                    return True
+            return False
+        t = 0.0
+        while t < UNROAD_MAX and inroad(at(t)):
+            t += 0.5
+        if t > 0:
+            cut.setdefault(i, [0.0, 0.0])[j0] = t
+    res = []
+    for i, o in enumerate(out):
+        if i not in cut:
+            res.append(o); continue
+        g = G[i]; a, b = cut[i][0], g.length - cut[i][1]
+        if b - a < KEEP_MIN:
+            res.append(o); continue
+        n += 1; m += g.length - (b - a)
+        res.append(np.asarray(substring(g, a, b).coords))
+    stats["unroad"] = n; stats["unroad_m"] = m
+    return res

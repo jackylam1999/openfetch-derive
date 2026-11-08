@@ -2082,9 +2082,11 @@ def main(a):
             out = snap_near(out, st)
             st7 = {}; out = endpairs(out, streets, st7); st["end_pairs2"] = st7.get("end_pairs", 0)
             out = deknot(unfold(unhook(deknot(out, st), st), st), {})
+            if "--dump-g" in a:
+                import pickle; pickle.dump((out, streets, OVER_STREETS, lots, st), open(a[a.index("--dump-g") + 1], "wb"))
             if "--no-g" not in a:
                 # version g (8 Nov 2026, f review 20 of 47 tiles wrong): forks, tails, doubles, strays, square corners, dead-end caps
-                st8 = {}; out = kerbg.clean(out, streets, OVER_STREETS, lots, st8); st["g"] = st8
+                st8 = {}; out = kerbg.clean(out, streets, OVER_STREETS, lots, st8, TUNNELS); st["g"] = st8
             # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
             kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                     else "block guide" for o in out]
