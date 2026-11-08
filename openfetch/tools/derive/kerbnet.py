@@ -26,6 +26,7 @@ import json
 import sys
 
 import numpy as np
+import shapely
 from pyproj import Transformer
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import polygonize, unary_union, substring
@@ -67,6 +68,9 @@ def tangent(g, t):
 
 
 FUSE = 3.0         # m, a traced kerb this close across the loop (and parallel) is where the kerb really is
+FUSE_K = 7         # samples (1 m apart) each side: the median then mean window that smooths the fused shift
+FUSE_WALL = None   # version k: (street centrelines, their STRtree) a fused loop may not be pulled across
+FUSE_T = None      # version k: the lines the loop is fused onto, when not the cleaned traced input (the raw traced kerbs)
 
 
 def fuse(loop, T, tt, stats):
@@ -92,6 +96,9 @@ def fuse(loop, T, tt, stats):
                 if abs(tangent(gk, gk.project(q)) @ tg[i]) < PAR:
                     continue
                 d = float((np.asarray(q.coords[0]) - P[i]) @ N[i])
+                if FUSE_WALL and abs(d) > 0.05 and any(FUSE_WALL[0][int(w)].intersects(LineString([P[i], q.coords[0]]))
+                                                       for w in FUSE_WALL[1].query(LineString([P[i], q.coords[0]]))):
+                    continue   # version k: never across a street centreline (the kerb on the street's other side)
                 if best is None or abs(d) < abs(best):
                     best = d
         if best is not None:
@@ -104,7 +111,7 @@ def fuse(loop, T, tt, stats):
     idx = np.where(seen)[0]
     x = np.r_[idx - len(s), idx, idx + len(s)]; y = np.r_[c[idx], c[idx], c[idx]]
     cc = np.interp(np.arange(len(s)), x, y)
-    k = 7
+    k = FUSE_K
     pad = np.r_[cc[-k:], cc, cc[:k]]
     cc = np.array([np.median(pad[i:i + 2 * k + 1]) for i in range(len(s))])
     pad = np.r_[cc[-k:], cc, cc[:k]]
@@ -327,14 +334,15 @@ def no_motorway(out, roads, stats, drop=(1,)):
         if not any(streets[int(k)][1] in drop for k in st.query(g.buffer(40))):
             res.append(o); continue
         n = max(2, int(g.length // 1.0) + 1); ts = np.linspace(0, g.length, n)
-        mw = np.array([streets[int(st.nearest(g.interpolate(t)))][1] in drop for t in ts])
+        P = shapely.points([g.interpolate(t).coords[0] for t in ts])
+        mw = np.array([streets[int(k)][1] in drop for k in st.nearest(P)])
         if near_w:
             # version e review V41: a ramp or service road nearer than the motorway kept a line on the motorway's edge; any stretch
             # within a main road's carriageway (SCOPE_W by its functionhierarchy) goes too, whatever street is nearest
             for k in st.query(g.buffer(max(near_w.values()))):
                 r, fh = streets[int(k)]
                 if fh in near_w:
-                    mw |= np.array([r.distance(g.interpolate(t)) < near_w[fh] for t in ts])
+                    mw |= shapely.distance(P, r) < near_w[fh]
         if not mw.any():
             res.append(o); continue
         i = 0
@@ -744,8 +752,42 @@ def across(out, roads, stats):
     return res
 
 
-def build(traced, lots, roads, area=None, stats=None):
-    """traced: list of Nx2 arrays (7856); lots: polygons; roads: [(LineString, fh)]. Returns list of Nx2 kerb lines."""
+CLOSE_EDGE = False  # version k (--skeleton): close the street network on the area's edge (see build)
+FAR_CUT = 18.0     # m, a loop stretch farther than this from every street centreline is no kerb (a block side on a railway or creek)
+NARROW_SEEN = 0.5  # share of a narrow street's length with a kerb seen each side that makes it a kerbed street, not a lane
+
+
+def cap_back(pc, j, w, ht, house, step=1.0):
+    """Metres to shorten street piece pc at its end j (0 or -1) so a disc of radius w there enters no house lot more than 0.5 m
+    (at most w: a turning bulb wider than the reserve keeps its disc)."""
+    L = pc.length
+    for s in np.arange(0.0, w + 0.01, step):
+        e = pc.interpolate(s if j == 0 else L - s)
+        d = e.buffer(w - 0.5, quad_segs=8)
+        if not any(house[int(q)].intersects(d) for q in ht.query(d)):
+            return float(s)
+    return 0.0
+
+
+def kerbed_both(g, T, tt, reach=6.0):
+    """Version k: a street whose lots sit under 7 m apart is still a kerbed street (not a lane) when the photo/LiDAR saw a kerb
+    along both its sides for NARROW_SEEN of its length (Parramatta 315530 6256560: the cadastre puts the lots 6.2 m apart, the
+    council and the photo both show two kerbs; dropping it as a lane merged the blocks and left the street undrawn)."""
+    hit = np.zeros(2); n = 0
+    for t in np.arange(2.0, g.length - 1.0, 4.0):
+        c = np.asarray(g.interpolate(t).coords[0]); tg = tangent(g, t); nv = np.array([-tg[1], tg[0]]); n += 1
+        for i, sg in enumerate((1, -1)):
+            ray = LineString([c + nv * sg * 1.0, c + nv * sg * reach])
+            for k in tt.query(ray, predicate="intersects"):
+                x = ray.intersection(T[int(k)]); gk = T[int(k)]
+                if any(q.geom_type == "Point" and abs(tangent(gk, gk.project(q)) @ tg) >= PAR for q in getattr(x, "geoms", [x])):
+                    hit[i] += 1; break
+    return n > 0 and (hit / n >= NARROW_SEEN).all()
+
+
+def build(traced, lots, roads, area=None, stats=None, keep_traced=True):
+    """traced: list of Nx2 arrays (7856); lots: polygons; roads: [(LineString, fh)]. Returns list of Nx2 kerb lines.
+    keep_traced=False (version k, skeleton): only the block loops; traced pieces off every loop are dropped."""
     stats = stats if stats is not None else {}
     streets = [(g, fh) for g, fh in roads if fh not in ka.SKIP_FH]
     if area is not None:
@@ -768,14 +810,26 @@ def build(traced, lots, roads, area=None, stats=None):
                 hs = [lots[int(k)].distance(Point(c)) for k in lt0.query(ray, predicate="intersects")]
                 d.append(min(hs) if hs else 20.0)
             wid.append(sum(d))
-        if wid and np.median(wid) < 7.0:
+        if wid and np.median(wid) < 7.0 and not (FUSE_T and kerbed_both(g, *FUSE_T)):
             stats["net_lane_narrow"] = stats.get("net_lane_narrow", 0) + 1; continue
         keep.append((g, fh))
     streets = close_gaps(keep, stats)
     NET[:] = [g for g, _ in streets] + BARRIER
     # node the network; remember each noded piece's road rank
-    noded = unary_union([g for g, _ in streets])
+    edge = []
+    if CLOSE_EDGE and area is not None:
+        # version k: blocks with a side that is no street (railway, creek, park, edge of the data) close on the area's edge, so
+        # they still make a face and a loop; the loop's stretches off every street are cut again in skeleton()
+        ab = area.buffer(250)
+        edge = [LineString(r.coords) for q in getattr(ab, "geoms", [ab]) for r in [q.exterior, *q.interiors]]
+    noded = unary_union([g for g, _ in streets] + edge)
     pieces = list(getattr(noded, "geoms", [noded]))
+    if edge:
+        et = unary_union(edge); sg = [g for g, _ in streets]; s_t = STRtree(sg)
+        closure = {i for i, p in enumerate(pieces) if et.distance(p.interpolate(0.5, normalized=True)) < 0.01
+                   and not any(sg[int(k)].distance(p.interpolate(0.5, normalized=True)) < 0.01 for k in s_t.query(p.interpolate(0.5, normalized=True).buffer(0.1)))}
+    else:
+        closure = set()
     st = STRtree([g for g, _ in streets])
     rank = []
     for p in pieces:
@@ -787,6 +841,9 @@ def build(traced, lots, roads, area=None, stats=None):
     for p in pieces:
         for e in (p.coords[0], p.coords[-1]):
             key = (round(e[0], 2), round(e[1], 2)); deg[key] = deg.get(key, 0) + 1
+    if CLOSE_EDGE:
+        global FUSE_WALL
+        sp = [p for i, p in enumerate(pieces) if i not in closure]; FUSE_WALL = (sp, STRtree(sp))
     faces = [f for f in polygonize(pieces) if f.area > 150]
     lt = STRtree(lots)
     # house lots (no street centreline runs through them): their street fronts are where the road reserve ends
@@ -838,7 +895,7 @@ def build(traced, lots, roads, area=None, stats=None):
             continue  # no properties: a median, a park strip or a rail corridor, not a street block
         blocks += 1
         inside = f.buffer(-0.5)
-        edge_ids = [int(k) for k in pt.query(f.buffer(0.3)) if pieces[int(k)].within(f.buffer(0.3))]
+        edge_ids = [int(k) for k in pt.query(f.buffer(0.3)) if pieces[int(k)].within(f.buffer(0.3)) and int(k) not in closure]
         bands = []
         lot_done = set()
         if LOT_GUIDE:
@@ -871,12 +928,21 @@ def build(traced, lots, roads, area=None, stats=None):
                 w = W_DEFAULT[rank[k]]; src = "default"
             stats["edge_" + src] = stats.get("edge_" + src, 0) + 1
             meas[("other", k)] = meas.get(("other", k), w)
+            ends = [Point(pc.coords[0]), Point(pc.coords[-1])]
+            dead = [deg[(round(e.x, 2), round(e.y, 2))] == 1 and not any(
+                pieces[int(j)].distance(e) < DEAD_CLEAR for j in pt.query(e.buffer(DEAD_CLEAR)) if int(j) != k) for e in ends]
+            if CLOSE_EDGE and ht is not None and any(dead):
+                # version k: a dead end's round cap stays inside the road reserve (Parramatta 315098 6256464: the centreline runs to
+                # the reserve's end and a disc there poked w m into the lot beyond); the street is shortened until it fits
+                s0 = cap_back(pc, 0, w, ht, house) if dead[0] else 0.0; s1 = cap_back(pc, -1, w, ht, house) if dead[1] else 0.0
+                if s0 + s1 > 0 and pc.length - s0 - s1 > 1.0:
+                    pc = substring(pc, s0, pc.length - s1); ends = [Point(pc.coords[0]), Point(pc.coords[-1])]
+                    stats["cap_back"] = stats.get("cap_back", 0) + 1
             bands.append(pc.buffer(w, cap_style="flat", join_style="mitre"))
-            for e in (Point(pc.coords[0]), Point(pc.coords[-1])):
+            for e, dd in zip(ends, dead):
                 # a disc at every node; at a dangling end only when it is a real dead end, not a centreline that stops short of
                 # another road (a gap in the road data: the disc would cut a round hole across that road)
-                if deg[(round(e.x, 2), round(e.y, 2))] == 1 and any(
-                        pieces[int(j)].distance(e) < DEAD_CLEAR for j in pt.query(e.buffer(DEAD_CLEAR)) if int(j) != k):
+                if deg.get((round(e.x, 2), round(e.y, 2)), 1) == 1 and not dd:
                     stats["dangling_no_disc"] = stats.get("dangling_no_disc", 0) + 1; continue
                 bands.append(e.buffer(w, quad_segs=8))
         if not bands:
@@ -898,11 +964,11 @@ def build(traced, lots, roads, area=None, stats=None):
                 sm = poly
             for pp in getattr(sm, "geoms", [sm]):
                 if pp.geom_type == "Polygon":
-                    out.append(fuse(np.asarray(pp.exterior.coords), T, tt, stats))
+                    out.append(fuse(np.asarray(pp.exterior.coords), *(FUSE_T or (T, tt)), stats))
     stats["blocks"] = blocks
     # traced kerb that is not part of any block kerb (lane kerbs, median islands, build-outs) is kept, part by part: the stretch
     # of a traced line more than DUP m from every block loop, at least KEEP_MIN m long, its ends snapped onto the loop it meets
-    if out and T:
+    if out and T and keep_traced:
         BK = [LineString(o) for o in out]; bt = STRtree(BK)
         kept = 0
         for g in T:
@@ -1997,6 +2063,92 @@ def props(o, kind, traced_path, roads, _c={}):
     return pr
 
 
+SKEL_FUSE, SKEL_K = 4.5, 2   # version k: fuse reach (m) and smoothing window (samples) when fusing onto the raw traced kerbs
+
+
+def keep_runs(o, bad, res, min_len=KEEP_MIN):
+    """Line o sampled every 1 m with bad[i] per sample: the good runs of min_len m or more go to res (a closed loop is opened at
+    its first bad sample, so a run across its start stays one line)."""
+    g = LineString(o); ts = np.linspace(0, g.length, len(bad))
+    if not bad.any():
+        res.append(o); return
+    if np.hypot(*(o[0] - o[-1])) < 0.5 and not bad[0]:
+        k = int(np.argmax(bad)); ts = np.r_[ts[k:], ts[1:k + 1] + g.length]; bad = np.r_[bad[k:], bad[1:k + 1]]
+        g = LineString(np.vstack([o[:-1], o[:-1], o[:1]]))
+    i = 0
+    while i < len(ts):
+        j = i
+        while j + 1 < len(ts) and bad[j + 1] == bad[i]:
+            j += 1
+        if not bad[i] and ts[j] - ts[i] >= min_len:
+            res.append(np.asarray(substring(g, ts[i], ts[j]).coords))
+        i = j + 1
+
+
+def _pts(o):
+    g = LineString(o); n = max(2, int(g.length // 1.0) + 1)
+    return g, np.linspace(0, g.length, n), shapely.points([g.interpolate(t).coords[0] for t in np.linspace(0, g.length, n)])
+
+
+def far_cut(out, streets, stats):
+    """Stretches of a line farther than FAR_CUT m from every street centreline go (leftovers under KEEP_MIN m too)."""
+    st = STRtree(streets); res = []
+    for o in out:
+        g, ts, P = _pts(o)
+        far = shapely.distance(P, np.asarray(streets, object)[st.nearest(P)]) > FAR_CUT
+        stats["far_cut_m"] = stats.get("far_cut_m", 0) + int(far.sum())
+        keep_runs(o, far, res)
+    return res
+
+
+UNDUP_LEFT = 15.0   # m, shorter pieces left between doubled stretches are strands, not kerbs
+UNDUP_D = 2.7   # m, a stretch this close beside a longer kerb, running with it (within 25 deg), doubles it (reviewer dup 2.0 m)
+
+
+def undup(out, stats):
+    """Version k: two neighbouring loops pulled onto one kerb (a street centreline drawn on the kerb itself, Parramatta 315920
+    6256378): the stretch of the shorter line lying beside a longer one goes."""
+    G = [LineString(o) for o in out]; rk = np.empty(len(out), int); rk[np.argsort([-g.length for g in G], kind="stable")] = np.arange(len(out))
+    t = STRtree(G); res = []
+    for i in np.argsort(rk):
+        o = out[i]; g, ts, P = _pts(o)
+        bad = np.zeros(len(ts), bool)
+        for a, b in zip(*t.query(P, predicate="dwithin", distance=UNDUP_D)):
+            if rk[int(b)] >= rk[i]:
+                continue   # only a longer line (already kept) makes this one a double
+            h = G[int(b)]; tg = tangent(g, ts[a]); q = h.project(P[a])
+            closed_h = np.hypot(*(np.asarray(h.coords[0]) - np.asarray(h.coords[-1]))) < 0.5
+            if (closed_h or 0.5 < q < h.length - 0.5) and abs(tangent(h, q) @ tg) >= np.cos(np.radians(25)):
+                bad[a] = True
+        stats["undup_m"] = stats.get("undup_m", 0) + int(bad.sum())
+        keep_runs(o, bad, res, UNDUP_LEFT if bad.any() else KEEP_MIN)
+    return res
+
+
+def skeleton(traced, lots, ground, level, area, st, a):
+    """Version k (Jacky 8 Nov 2026 picked the reviewer's option 1, "skeleton first"): every street block is one closed kerb loop
+    from the street layout and the property lots (closed and rounded by construction, both sides of every street, round dead-end
+    caps from the turning-circle discs); the photo/LiDAR kerbs only move the loop onto the kerb they saw; traced pieces that are
+    on no loop are dropped. The loop is fused onto the RAW traced kerbs (--fuse-with), not the regularised ones: Parramatta
+    council box (1 km, GDA94 reference moved to GDA2020), loops alone precise 81.4 % fused on the regularised input, 84.3 % on the
+    raw traces with a 2-sample window and 4.5 m reach (raw traces themselves 86.6 %, regularised 83.3 %, version j 80.6 %).
+    Main roads, motorways, bridges and tunnels are then cut out (scope: local and collector streets, fh 5-7)."""
+    global FUSE_T, FUSE, FUSE_K
+    if "--fuse-with" in a:
+        R = [LineString(t) for t in ka.read_kerbs(a[a.index("--fuse-with") + 1]) if len(t) > 1]
+        if area is not None:
+            ab = prep(area.buffer(300)); R = [g for g in R if ab.intersects(g)]
+        FUSE_T, FUSE, FUSE_K = (R, STRtree(R)), SKEL_FUSE, SKEL_K
+    global CLOSE_EDGE
+    CLOSE_EDGE = True
+    out = build(traced, lots, ground, area, st, keep_traced=False)
+    out = far_cut(out, [g for g, fh in ground if fh not in ka.SKIP_FH], st)
+    out = no_motorway(out, level, st)
+    if "--local-only" in a:
+        out = no_motorway(out, level, st, drop=(1, 2, 3, 4))
+    return undup(out, st)
+
+
 def _write(out, kind, a, roads, st, back):
     # a line that touches itself only after the trip to lon/lat and back (readers take lon/lat as GDA2020, 7844) is knotted there:
     # untie it as it will be read (8 Nov 2026: 5 such self-touches in the whole-suburb run)
@@ -2060,6 +2212,10 @@ def main(a):
         kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                 else "block guide" for o in out]
         _write(out, kind, a, roads, st, back)
+        return
+    if "--skeleton" in a:
+        out = skeleton(traced, lots, ground, level, area, st, a)
+        _write(out, ["block loop"] * len(out), a, roads, st, back)
         return
     out = build(traced, lots, ground, area, st)
     loops = [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5]
