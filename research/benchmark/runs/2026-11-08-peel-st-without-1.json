@@ -1,0 +1,19 @@
+{
+  "site": "peel-st", "mode": "without", "run": 1, "date": "2026-11-08", "model": "project default model (Opus)",
+  "from": "Reconstructed from research/peel-st-site-study/comparison.md and without-connector/site-study.html; items those do not record are null or false.",
+  "cost": {"tool_calls": 42, "minutes": 16},
+  "facts": {
+    "lot_id": "PS810967", "lot_area_m2": 760, "position": null,
+    "zones": ["MUZ"], "overlays": ["HO3", "DDO61 (Area 2)", "PO12"],
+    "heritage": {"overlay": ["HO3"], "grading": null},
+    "nearest_station": {"name": "Parkville", "distance_m": 415},
+    "official_kerb": false, "tallest_neighbour": null
+  },
+  "reach": {"lot_id": true, "lot_area": true, "address": true, "lot_boundary": true, "footprints": true, "heights": true, "height_basis": false, "zones": true, "overlays": true,
+    "heritage": true, "ground_levels": false, "kerbs": true, "street_trees": false, "transport": true, "shadows": true},
+  "numbers": [
+    {"what": "lot area", "value": 760, "source": null},
+    {"what": "site building height", "value": 22.5, "source": null},
+    {"what": "Parkville station distance", "value": 415, "source": null}
+  ]
+}

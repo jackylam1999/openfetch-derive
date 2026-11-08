@@ -1,0 +1,95 @@
+{
+  "site": "hawthorn",
+  "name": "Hawthorn",
+  "region": "vic",
+  "council": "BOROONDARA",
+  "rank": "VIC 16",
+  "point": [
+    145.0336857,
+    -37.8214251
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "2\\PS733527",
+    "lot": "2",
+    "plan": "PS733527",
+    "pfi": "421833029",
+    "area_m2": 759,
+    "area_basis": "planar area of the Vicmap Parcel polygon in MGA 55 (GDA2020)",
+    "address": [
+      "23 LYNCH STREET HAWTHORN 3122"
+    ],
+    "corners_mga": {
+      "NE": [
+        326981.24,
+        5812174.03
+      ],
+      "SE": [
+        326981.05,
+        5812172.56
+      ],
+      "SW": [
+        326797.48,
+        5812179.31
+      ],
+      "NW": [
+        326797.48,
+        5812179.31
+      ]
+    },
+    "centre_mga": [
+      326889.09,
+      5812178.29
+    ],
+    "crs": "EPSG:7855 GDA2020 MGA zone 55",
+    "source": "Vicmap Property, Parcel Map Polygons (PARCEL_MP), DEECA, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": null,
+    "status": "no official building height published here",
+    "source": null,
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "C1Z"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_ZONE, DTP, CC BY 4.0"
+  },
+  "overlays": {
+    "codes": [
+      "BFO2",
+      "EAO",
+      "PO1"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
+  },
+  "heritage": {
+    "overlay": [],
+    "grading": null,
+    "grading_status": "the council publishes no heritage gradings as open data",
+    "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"
+  },
+  "nearest_station": {
+    "name": "GLENFERRIE",
+    "distance_m": 290,
+    "next": {
+      "name": "HAWTHORN",
+      "distance_m": 903
+    },
+    "source": "Vicmap Transport, TR_RAIL_INFRASTRUCTURE rail_station, DTP, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": false,
+    "datasets": [],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

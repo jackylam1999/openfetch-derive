@@ -1,0 +1,12 @@
+{
+  "about": "Suburb benchmark sites (docs/handoffs/ahead-of-plain-ai.md move 1). Rank = tools/priority/TOP.md 2026-10-29. Each site is one ordinary lot inside the truth-site box (tools/truth/sites-*.mjs): a Vicmap address (Vic) or an NSW lot id; lon/lat is that lot, for the record. The prompt is prompt.md with {address} filled from sites/<id>.json.",
+  "sites": [
+    {"id": "peel-st", "name": "211 Peel St, North Melbourne (calibration: the 8 Nov 2026 trial, not one of the six)", "region": "vic", "council": "MELBOURNE", "rank": "VIC 4", "address": "211 PEEL STREET NORTH MELBOURNE 3051", "lon": 144.956211, "lat": -37.80281},
+    {"id": "hawthorn", "name": "Hawthorn", "region": "vic", "council": "BOROONDARA", "rank": "VIC 16", "address": "23 LYNCH STREET HAWTHORN 3122", "lon": 145.0336857, "lat": -37.8214251},
+    {"id": "footscray", "name": "Footscray", "region": "vic", "council": "MARIBYRNONG", "rank": "VIC 13", "lon": 144.9, "lat": -37.8},
+    {"id": "preston", "name": "Preston", "region": "vic", "council": "DAREBIN", "rank": "VIC 20", "address": "24 ARTHUR STREET PRESTON 3072", "lon": 144.9995501, "lat": -37.7430311},
+    {"id": "chatswood", "name": "Chatswood", "region": "nsw", "council": "WILLOUGHBY", "rank": "NSW 10", "lotid": "1//DP724850", "lon": 151.1803, "lat": -33.7969},
+    {"id": "parramatta", "name": "Parramatta", "region": "nsw", "council": "CITY OF PARRAMATTA", "council_file": "parramatta", "rank": "NSW 6", "lotid": "23//DP651527", "lon": 151.003, "lat": -33.815},
+    {"id": "geelong", "name": "Geelong", "region": "vic", "council": "GREATER GEELONG", "council_file": "geelong", "rank": "VIC 295 (regional city, picked for the plan)", "address": "59 GHERINGHAP STREET GEELONG 3220", "lon": 144.3574011, "lat": -38.149178}
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "site": "chatswood",
+  "name": "Chatswood",
+  "region": "nsw",
+  "council": "WILLOUGHBY",
+  "rank": "NSW 10",
+  "point": [
+    151.1803,
+    -33.7969
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "1//DP724850",
+    "lot": "1",
+    "section": null,
+    "plan": "DP724850",
+    "area_m2": 1617,
+    "area_basis": "planar area of the NSW Cadastre lot polygon in MGA 56 (GDA2020)",
+    "stated_area_m2": 1617.00619,
+    "corners_mga": {
+      "NE": [
+        331565.73,
+        6258852.19
+      ],
+      "SE": [
+        331584.53,
+        6258779.67
+      ],
+      "SW": [
+        331566.84,
+        6258772.72
+      ],
+      "NW": [
+        331542.38,
+        6258842.97
+      ]
+    },
+    "centre_mga": [
+      331564.27,
+      6258813.63
+    ],
+    "crs": "EPSG:7856 GDA2020 MGA zone 56",
+    "source": "NSW Cadastre (Lot), DCS Spatial Services, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": null,
+    "status": "no official building height published here",
+    "source": null,
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "E2"
+    ],
+    "epi": [
+      "Willoughby Local Environmental Plan 2012"
+    ],
+    "at": "lot centre",
+    "source": "NSW Planning Portal, EPI Land Zoning, DPHI, CC BY 4.0"
+  },
+  "overlays": {
+    "codes": [
+      "HOB 246.8 m(RL)"
+    ],
+    "at": "lot centre",
+    "source": "NSW Planning Portal, EPI Height of Building, DPHI, CC BY 4.0"
+  },
+  "heritage": {
+    "items": [],
+    "grading": "not a listed item",
+    "source": "NSW Planning Portal, EPI Heritage, DPHI, CC BY 4.0"
+  },
+  "nearest_station": {
+    "name": "CHATSWOOD RAILWAY STATION",
+    "distance_m": 53,
+    "next": {
+      "name": "ARTARMON RAILWAY STATION",
+      "distance_m": 1329
+    },
+    "source": "NSW Features of Interest, Train Station, DCS Spatial Services, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": false,
+    "datasets": [],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

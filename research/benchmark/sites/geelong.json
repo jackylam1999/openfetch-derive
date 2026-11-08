@@ -1,0 +1,99 @@
+{
+  "site": "geelong",
+  "name": "Geelong",
+  "region": "vic",
+  "council": "GREATER GEELONG",
+  "rank": "VIC 295 (regional city, picked for the plan)",
+  "point": [
+    144.3574011,
+    -38.149178
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "1\\TP821518",
+    "lot": "1",
+    "plan": "TP821518",
+    "pfi": "202362057",
+    "area_m2": 464,
+    "area_basis": "planar area of the Vicmap Parcel polygon in MGA 55 (GDA2020)",
+    "address": [
+      "59 GHERINGHAP STREET GEELONG 3220"
+    ],
+    "corners_mga": {
+      "NE": [
+        268455.14,
+        5774335.6
+      ],
+      "SE": [
+        268450.41,
+        5774321.32
+      ],
+      "SW": [
+        268421.4,
+        5774330.7
+      ],
+      "NW": [
+        268426.22,
+        5774345.24
+      ]
+    },
+    "centre_mga": [
+      268438.22,
+      5774332.96
+    ],
+    "crs": "EPSG:7855 GDA2020 MGA zone 55",
+    "source": "Vicmap Property, Parcel Map Polygons (PARCEL_MP), DEECA, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": 11.5,
+    "status": "official",
+    "distance_m": 80,
+    "centre_mga": [
+      268455.16,
+      5774410.93
+    ],
+    "basis": "roof height above ground",
+    "source": "City of Greater Geelong roofprints (LiDAR + photogrammetry), CC BY 3.0 AU, via the OpenFetch hosted copy; GDA94 lon/lat projected to MGA 55 (about 1.5 m datum shift ignored for picking the neighbour)",
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "ACZ1"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_ZONE, DTP, CC BY 4.0"
+  },
+  "overlays": {
+    "codes": [
+      "DDO36"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
+  },
+  "heritage": {
+    "overlay": [],
+    "grading": null,
+    "grading_status": "the council publishes no heritage gradings as open data",
+    "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"
+  },
+  "nearest_station": {
+    "name": "GEELONG",
+    "distance_m": 591,
+    "next": {
+      "name": "GEELONG SOUTH",
+      "distance_m": 1040
+    },
+    "source": "Vicmap Transport, TR_RAIL_INFRASTRUCTURE rail_station, DTP, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": false,
+    "datasets": [],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

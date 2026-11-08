@@ -1,0 +1,26 @@
+{
+  "site": "footscray",
+  "mode": "with",
+  "run": 1,
+  "date": "2026-11-20",
+  "model": "the model that ran the prompt",
+  "cost": {"tool_calls": 18, "minutes": 7},
+  "facts": {
+    "lot_id": "Lot 1 TP128421",
+    "lot_area_m2": 181,
+    "position": {"corners_mga": {"NE": [313000.0, 5813000.0]}, "centre_mga": null},
+    "zones": ["ACZ1"],
+    "overlays": ["DCPO2", "HO3", "PO1"],
+    "heritage": {"overlay": ["HO3"], "grading": null},
+    "nearest_station": {"name": "Footscray", "distance_m": 232},
+    "official_kerb": false,
+    "tallest_neighbour": {"height_m": null, "basis": "none given"}
+  },
+  "reach": {"lot_id": true, "lot_area": true, "address": true, "lot_boundary": true, "footprints": true, "heights": false, "height_basis": false, "zones": true, "overlays": true,
+    "heritage": true, "ground_levels": true, "kerbs": false, "street_trees": true, "transport": true, "shadows": true},
+  "numbers": [
+    {"what": "lot area", "value": 181, "source": {"stamp": "the data_used stamp or dataset + date + query"}},
+    {"what": "station distance", "value": 232, "source": null}
+  ],
+  "notes": "tallest_neighbour.basis is one of: official, OpenStreetMap, estimate, none given. corners_mga in the site's MGA zone (GDA2020)."
+}
