@@ -1217,5 +1217,137 @@
   "words": "visual reviewer: main street's west kerb south of the side street is missing, and so is the side street's south kerb",
   "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/i.geojson.gz",
   "by": "visual reviewer"
+ },
+ {
+  "id": "V102",
+  "x": 331863.3,
+  "y": 6257567.5,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: kerb broken into pieces: line jumps into the car park at the circle and a separate line starts mid-footpath; west kerb drifts",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V103",
+  "x": 336913.1,
+  "y": 6245819.4,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: both kerbs of the lane stop dead mid-street with open ends, nothing continues to the cross street",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V104",
+  "x": 336342.4,
+  "y": 6243638.2,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: two parallel lines run through the park, trees and yards beside the curved street",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V105",
+  "x": 337151.5,
+  "y": 6244619.3,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: corner broken: north kerb hooks and ends at the circle, a second line starts mid-road below it",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V106",
+  "x": 303913.6,
+  "y": 6188182.6,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: west kerb jumps sideways at the circle; upper part runs in the verge/yards, not on the kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V107",
+  "x": 334867.6,
+  "y": 6249247.2,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: kerbs drawn along a multi-lane main road; side-street corner left open with the main-road kerb missing below it",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V108",
+  "x": 337365.1,
+  "y": 6241339.3,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: east side doubled: a second line runs through trees and yards parallel to the real kerb",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V109",
+  "x": 338079.2,
+  "y": 6242534.1,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: on the divided road one kerb ends at the circle and another line cuts diagonally across the carriageway",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V110",
+  "x": 332875.5,
+  "y": 6247679.9,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: north kerb of the cross street missing for about 15 m west of the circle, corner not closed",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V111",
+  "x": 333325.9,
+  "y": 6249026.1,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane kerb ends in a hook at the circle; west kerb of the lane north of it missing; bottom street kerb missing",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V112",
+  "x": 331414.7,
+  "y": 6258976.6,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: kerbs drawn along a 4-lane main road (should be blank), north line has a kink",
+  "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
+  "by": "visual reviewer"
  }
 ]
