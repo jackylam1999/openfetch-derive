@@ -4,9 +4,9 @@
 Usage: python3 tools/derive/community.py xmin ymin xmax ymax out.geojson
 
 Reads tiles.openfetch.earth (zoom 14) and returns each building once (by Overture id), clipped to the box by
-intersection, in EPSG:7856. Property `src` is "osm" or "ms" (Microsoft ML footprints).
+intersection, in EPSG:7856 (MGA_EPSG=7855 for MGA zone 55, e.g. Albury). Property `src` is "osm" or "ms" (Microsoft ML footprints).
 """
-import sys, json, math, gzip, urllib.request
+import sys, os, json, math, gzip, urllib.request
 from pmtiles.reader import Reader
 import mapbox_vector_tile
 from pyproj import Transformer
@@ -25,7 +25,8 @@ def get(offset, length):
 
 def main():
     x0, y0, x1, y1 = map(float, sys.argv[1:5]); out = sys.argv[5]
-    to_ll = Transformer.from_crs(7856, 4326, always_xy=True); to_mga = Transformer.from_crs(4326, 7856, always_xy=True)
+    epsg = int(os.environ.get("MGA_EPSG", 7856))
+    to_ll = Transformer.from_crs(epsg, 4326, always_xy=True); to_mga = Transformer.from_crs(4326, epsg, always_xy=True)
     lon0, lat0 = to_ll.transform(x0, y0); lon1, lat1 = to_ll.transform(x1, y1)
     n = 2 ** Z
     tx = lambda lon: int((lon + 180) / 360 * n)
