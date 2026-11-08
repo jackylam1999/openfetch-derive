@@ -26,6 +26,9 @@ Kinds (all in metres, EPSG 7856; every one is a shape council kerb lines do not 
   near     a kerb end NEAR_D or closer to another kerb without touching it (a corner or join left open)
   merge    a kerb end slides into another kerb at under 30 deg, running within 3 m of it for MERGE_LEN (a Y)
            (near and merge are counted, not capped: 7 Nov 2026 e: merge 5 of 10 judged wrong, 2 unsure; fold cap now 0, both e folds wrong)
+  gap      two free kerb ends face each other (both within GAP_ANG of the line between them) GAP_MIN-GAP_MAX apart, nothing
+           crossing the gap: a broken straight kerb (Jacky 8 Nov 2026, whole-suburb preview). Counted, not capped yet: on e 251,
+           12 checked by eye, 10 real breaks, 2 false across a junction mouth (needs street centrelines to rule those out).
   loop     a closed kerb ring smaller than LOOP_AREA m2
 Fails: any spot within r of a case's point (regression, hard); a kind's rate per km over its cap, where the cap is the lower of its
 starting bar (CAP: none at all, fold one per 100 km (7 Nov 2026 2026-11-07-c passed looser caps of one per 20-100 km, yet
@@ -50,10 +53,11 @@ from shapely.strtree import STRtree
 POKE, FOLD_D, FOLD_ALONG = 6.0, 2.5, 8.0
 DUP_D, DUP_ANG, DUP_LEN = 2.0, 20.0, 8.0
 INSIDE_D, INSIDE_SHARE, BESIDE_D, BESIDE_LEN, LOOP_AREA = 2.5, 0.8, 3.5, 10.0, 30.0
+GAP_MIN, GAP_MAX, GAP_ANG = 1.0, 30.0, 10.0   # gap: two free ends facing each other along one line (a broken straight kerb)
 NEAR_D, MERGE_LEN = 5.0, 8.0         # near: a kerb end 1-5 m from another kerb (a join left open); merge: slides into another line
 END_TOUCH = 1.0                       # a crossing this close to a kerb end is a join, not a crossing
-KINDS = ('cross', 'poke', 'self', 'fold', 'dup', 'inside', 'beside', 'near', 'merge', 'loop')
-CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.0, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'near': 99, 'merge': 99, 'loop': 0.0}   # near, merge: measured only until a visual run confirms them
+KINDS = ('cross', 'poke', 'self', 'fold', 'dup', 'inside', 'beside', 'near', 'merge', 'gap', 'loop')
+CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.0, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'near': 99, 'merge': 99, 'gap': 99, 'loop': 0.0}   # near, merge: measured only until a visual run confirms them
 RATCHET = 0.10                        # a later version may be at most 10 % worse than the best passing one, per kind
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = os.path.join(HERE, 'kerbreview-cases.json')
@@ -192,6 +196,31 @@ def nears(lines, tree, spots):
                 spots.append({'kind': 'near', 'x': end.x, 'y': end.y, 'size': round(dist, 2)})
 
 
+def gaps(lines, tree, spots):
+    ends = []                                           # free kerb ends with their outward heading
+    for i, ln in enumerate(lines):
+        if ln.length < 4: continue
+        for k, end in ((0, Point(ln.coords[0])), (1, Point(ln.coords[-1]))):
+            if any(lines[j].distance(end) < END_TOUCH for j in tree.query(end, predicate='dwithin', distance=END_TOUCH) if j != i):
+                continue
+            inn = ln.interpolate(3.0 if k == 0 else ln.length - 3.0)
+            ends.append((i, end, math.atan2(end.y - inn.y, end.x - inn.x)))
+    et = STRtree([e[1] for e in ends]); seen = set()
+    for a, (i, p, h) in enumerate(ends):
+        for b in et.query(p, predicate='dwithin', distance=GAP_MAX):
+            j, q, g = ends[b]
+            if j == i or (min(a, b), max(a, b)) in seen: continue
+            dist = p.distance(q)
+            if dist < GAP_MIN: continue
+            to = math.atan2(q.y - p.y, q.x - p.x)
+            turn = lambda x, y: math.degrees(abs((x - y + math.pi) % (2 * math.pi) - math.pi))
+            if turn(h, to) > GAP_ANG or turn(g, to + math.pi) > GAP_ANG: continue
+            bridge = LineString([p, q])
+            if any(bridge.crosses(lines[m]) for m in tree.query(bridge) if m not in (i, j)): continue
+            seen.add((min(a, b), max(a, b)))
+            spots.append({'kind': 'gap', 'x': (p.x + q.x) / 2, 'y': (p.y + q.y) / 2, 'size': round(dist, 1)})
+
+
 def loops(lines, spots):
     for ln in lines:
         if ln.length > 4 and Point(ln.coords[0]).distance(Point(ln.coords[-1])) < END_TOUCH:
@@ -204,7 +233,7 @@ def review(lines):
     tree, spots = STRtree(lines), []
     crossings(lines, tree, spots)
     for ln in lines: selfs(ln, spots); folds(ln, spots)
-    dups(lines, tree, spots); insides(lines, tree, spots); besides(lines, tree, spots); nears(lines, tree, spots); loops(lines, spots)
+    dups(lines, tree, spots); insides(lines, tree, spots); besides(lines, tree, spots); nears(lines, tree, spots); gaps(lines, tree, spots); loops(lines, spots)
     km = sum(ln.length for ln in lines) / 1000
     count = {k: sum(1 for s in spots if s['kind'] == k) for k in KINDS}
     return spots, km, count
@@ -260,7 +289,7 @@ def sheet(lines, tree, spots, out, n=12, m=70, px=420, use_photo=True):
     img.save(out, quality=85)
 
 
-SEVERITY = {'random': 0, 'cross': 5, 'self': 5, 'fold': 4, 'inside': 4, 'poke': 4, 'dup': 3, 'loop': 3, 'merge': 3, 'beside': 2, 'near': 2}
+SEVERITY = {'random': 0, 'cross': 5, 'self': 5, 'fold': 4, 'inside': 4, 'poke': 4, 'dup': 3, 'loop': 3, 'merge': 3, 'beside': 2, 'near': 2, 'gap': 3}
 
 
 def check(a):
