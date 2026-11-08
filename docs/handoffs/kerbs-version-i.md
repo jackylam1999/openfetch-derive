@@ -45,3 +45,16 @@ Visual: sent to the reviewer thread "Automate kerb quality review" (see STATUS.t
 - V38 (313257 6252970): a fh 6 centreline over grass; a kerb drawn along a street that is not built. Needs imagery or lot data.
 - sides() uses the property line where nothing is drawn: check those streets on the sheet (verge per class, not per street).
 - 'near' counter in KERBG_TRACE counts ring seams until ringseat; only the final number matters.
+
+## Reviewer verdict (8 Nov 17:27Z)
+FAIL but beats h: 27/53 tiles wrong (h, same whole-tile scoring: 34/53). Files .notes/kerb-i/reviewer-independent/ (verdicts.json,
+review.json); cases on derive v6yk7j bc988c5. Patterns for j, worst first:
+- Missing kerbs elsewhere in the tile (most near tiles): one side or arm missing 329653 6246421, 330991 6246824, 334071 6250599,
+  332031 6248097, 329743 6247336, service lane 337607 6245343; V32 324946 6249886 west arm; V39 314096 6254182 car-park east kerb.
+- Square-ended gaps: ~20 m at 336526 6253983 (median nose open), lane 333122 6251979, ~5 m driveway 315698 6255909.
+- Open ends/stubs: 306565 6188642 (into roof), 334859 6249767, 329918 6245977.
+- False lines: depot forecourt 317465 6256715, roof 306379 6188602, V38 grass, V42 323465 6255283 into yards, V77 311109 6254692
+  down a cul-de-sac bulb middle.
+- Main-road leftovers to remove: V29, V41 (motorway), V43 (slip loop), V65 (across intersection), V78 (past stop line).
+- V33 323862 6256010: local roundabout island not drawn.
+- J4: given coordinate is a pale strip with no centreline; coordinator asking Jacky which line.
