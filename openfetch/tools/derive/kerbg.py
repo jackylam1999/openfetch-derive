@@ -792,6 +792,20 @@ def ringseat(out, stats):
         d = [min(x.distance(Point(q)) for x in near) for q in c[:-1]]
         k = int(np.argmax(d)); n += 1
         res.append(np.vstack([c[k:-1], c[:k + 1]]))
+    for k, c in enumerate(res):   # a loop that touches itself (as read in lon/lat): another seam, else opened at the seam
+        if not _closed(c) or _simple(_L(c)):
+            continue
+        for m in range(1, len(c) - 1):
+            r = np.vstack([c[m:-1], c[:m + 1]])
+            if _simple(_L(r)):
+                res[k] = r; break
+        if _closed(res[k]) and not _simple(_L(res[k])):
+            stats["ring_open"] = stats.get("ring_open", 0) + 1
+            import kerbnet
+            fr, to = _RT   # untied where it touches, in the coordinates readers get
+            q = np.array([to(*[round(v, 8) for v in fr(x, y)]) for x, y in res[k]])
+            parts = [p for p in kerbnet.deknot([q[:-1]], {}) if _simple(_L(p))]
+            res[k] = parts[0] if parts else res[k]; res.extend(parts[1:])
     stats["ring_seat"] = n
     return res
 
