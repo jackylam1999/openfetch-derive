@@ -11,7 +11,7 @@ Version f review (20 of 47 tiles wrong) showed the same few shapes over and over
   - a kerb turns with a radius, never a square corner (fillets).
 """
 import numpy as np
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import substring
 from shapely.strtree import STRtree
 
@@ -159,6 +159,7 @@ def away(out, streets, stats):
     return res
 
 
+TUNNELS_G = []   # j: tunnel centrelines (a road there is not on the ground)
 OVER = []   # bridge and tunnel centrelines: a ground street ending on one is not a dead end
 MAIN = []   # i: main roads (fh 1-4) with their functionhierarchy: out of scope, a walk stops at them
 STOP = []   # i: bridges a kerb walking along its street stops at (long ones and main roads; not a local street's short bridge)
@@ -874,7 +875,7 @@ def ringseat(out, stats):
 
 
 def clean(out, streets, bridge_lines, lots, stats, tunnels=(), level=None, local_bridges=()):
-    OVER[:] = bridge_lines
+    OVER[:] = bridge_lines; TUNNELS_G[:] = list(tunnels)
     # i (h gaps 19-29 m at rail and creek bridges, one side drawn and the other not): a local street's short bridge carries its
     # kerbs over like any street; the walk goes on over it and bridges() leaves kerbs beside it alone
     short = [b for b in local_bridges if b.length <= BRIDGE_SHORT]
@@ -884,13 +885,19 @@ def clean(out, streets, bridge_lines, lots, stats, tunnels=(), level=None, local
     STOP[:] = bridge_lines; SHORT[:] = short
     streets = list(streets) + short
     out = [np.asarray(o) for o in out if len(o) > 1]
-    MAIN[:] = [(g, fh) for g, fh in (level or []) if fh in SCOPE_W]
+    over = STRtree(list(tunnels) + list(OVER)) if (list(tunnels) or OVER) else None
+    MAIN[:] = [(g, fh) for g, fh in (level or []) if fh in SCOPE_W   # j: a main road in a tunnel or on a bridge has no ground width
+               and not (over is not None and any(same(g, over.geometries[int(k)]) for k in over.query(g, predicate="dwithin", distance=0.5)))]
+    LOTS[:] = list(lots or []); _MT[:] = []
+    global FH7
+    l7 = [g for g, fh in (level or []) if fh == 7]; FH7 = STRtree(l7) if l7 else None
     S = lambda f, *a: (lambda o: f(o, *a))
     steps = [("end_hooks", S(end_hooks, stats)), ("bridges", S(bridges, bridge_lines, stats)), ("streetless", S(streetless, streets, stats)), ("away", S(away, streets, stats)),
              ("hairpins", S(hairpins, streets, stats)), ("folds", S(folds, stats)), ("doubles", S(doubles, streets, lots, stats)),
              ("junctions", S(junctions_all, streets, stats)), ("caps", S(caps, streets, stats)), ("corner_join", S(corner_join, streets, stats)),
              ("unroad", S(unroad, streets, stats)),
              ("on_centre", S(on_centre, streets, stats)),
+             ("in_lots", S(in_lots, streets, lots, stats)),   # j: never inside a property; redrawn by sides / extend after
              ("sides", S(sides, streets, level, lots, stats)),   # i: a street side with no kerb gets one (own or other side's offset)
              ("extend", S(extend, streets, stats)),   # h: every cut is redrawn: free ends carried on along their street, then closed
              ("close_near", S(close_near, streets, stats)), ("caps", S(caps, streets, stats)), ("corner_join", S(corner_join, streets, stats)),
@@ -902,12 +909,18 @@ def clean(out, streets, bridge_lines, lots, stats, tunnels=(), level=None, local
              ("lane_caps", S(caps, streets, stats, False, LANE_CAP_MIN, LANE_CAP_MAX)),   # i: leftovers along a main road (the scope cut made again, nearest street only)
              ("close_near", S(close_near, streets, stats)), ("flare", S(flare, streets, stats)), ("corner_join", S(corner_join, streets, stats)),
              ("besides", S(besides, stats)), ("folds", S(folds, stats)),
+             ("in_lots", S(in_lots, streets, lots, stats)),
+             ("close_near", S(close_near, streets, stats)),
+             ("pair_join", S(pair_join, streets, stats)),   # j: a kerb broken at a driveway is one kerb
+             ("off_centre_ends", S(off_centre_ends, streets, stats)),
              ("short", lambda o: [c for c in o if _L(c).length >= KEEP_MIN]),   # i: a stub about to go must not hold an end shut
              ("near_ends", S(near_ends, streets, stats)),
              ("corner_join", S(corner_join, streets, stats)),
              ("lane_caps", S(caps, streets, stats, False, LANE_CAP_MIN, LANE_CAP_MAX)),   # corners flared since
-             ("besides", S(besides, stats)), ("ring_shut", S(ring_shut, stats)), ("despike", S(despike, stats)), ("endtrim", S(endtrim, stats)), ("endfix", S(endfix, stats)),
-             ("ringseat", S(ringseat, stats)), ("ring_shut", S(ring_shut, stats))]
+             ("besides", S(besides, stats)), ("ring_shut", S(ring_shut, stats)), ("despike", S(despike, stats)), ("pair_join", S(pair_join, streets, stats)), ("endtrim", S(endtrim, stats)), ("endfix", S(endfix, stats)),
+             ("ringseat", S(ringseat, stats)), ("ring_shut", S(ring_shut, stats)),
+             ("roundabouts", S(roundabouts, level, lots, stats)),   # j: a local roundabout's island
+             ("guard", S(guard, stats))]   # j: the reviewer's shape rules once more
     import os
     trace = os.environ.get("KERBG_TRACE")
     for name, f in steps:
@@ -1324,7 +1337,7 @@ def sides(out, streets, level, lots, stats):
         inside = shapely.contains(La[lk], shapely.points(P0[li])); li, lk = li[~inside], lk[~inside]
         np.minimum.at(d, li, shapely.distance(shapely.points(P0[li]), shapely.intersection(rays[li], La[lk])))
         return d
-    todo = []; verge = {}
+    todo = []; verge = {}; koff = {}
     for gi, g in enumerate(streets):
         fh = fh_get(g)
         if fh not in (5, 6, 7) or g.length < 2 * SIDE_END + SIDE_RUN:
@@ -1340,18 +1353,26 @@ def sides(out, streets, level, lots, stats):
             R[s] = (P0, N, anyk, park, mouth, lotd)
             c = np.isfinite(park) & (park < mouth) & np.isfinite(lotd)
             verge.setdefault(fh, []).extend((lotd[c] - park[c]).tolist())
+            c2 = np.isfinite(park) & (park < mouth)
+            koff.setdefault(fh, []).extend(park[c2].tolist())
         todo.append((gi, g, fh, ts, R))
     # the verge (kerb to property line) each street class has where both are known: a side with nothing to copy is drawn there
     VG = {f: float(np.median([x for x in v if -0.5 <= x <= 8.0])) for f, v in verge.items() if len([x for x in v if -0.5 <= x <= 8.0]) > 50}
     stats["sides_verge"] = {str(f): round(v, 2) for f, v in VG.items()}
+    # j (i review V32: a street arm between drawn streets with nothing either side and a park, not lots, on one side): the class's
+    # usual kerb offset where neither a kerb nor a property line is there to measure from
+    KO = {f: float(np.median([x for x in v if SIDE_MIN_OFF <= x <= SIDE_MAX_OFF])) for f, v in koff.items()
+          if len([x for x in v if SIDE_MIN_OFF <= x <= SIDE_MAX_OFF]) > 50}
+    stats["sides_koff"] = {str(f): round(v, 2) for f, v in KO.items()}
     for gi, g, fh, ts, R in todo:
         cov = {s: np.isfinite(R[s][3]) & (R[s][3] < R[s][4]) for s in R}
         if os.environ.get('KERBG_SIDES_DBG'):
             print('street', fh, round(g.length), round(cov[1].mean(), 2), round(cov[-1].mean(), 2), [round(v) for v in g.coords[0]])
         if not (cov[1].mean() >= SIDE_SHARE or cov[-1].mean() >= SIDE_SHARE):
             # nothing drawn either side: inside the drawn area (kerbs around it) and between property lots, else left alone
+            ends_drawn = all(len(gt.query(Point(g.coords[x]), predicate="dwithin", distance=SIDE_RAY)) for x in (0, -1))
             if not len(gt.query(g.interpolate(0.5, normalized=True), predicate="dwithin", distance=SIDE_AROUND)) \
-                    or min(np.isfinite(R[1][5]).mean(), np.isfinite(R[-1][5]).mean()) < 0.5:
+                    or (min(np.isfinite(R[1][5]).mean(), np.isfinite(R[-1][5]).mean()) < 0.5 and not ends_drawn):
                 continue
         for s in (1, -1):
             P0, N, anyk, park, mouth, lotd = R[s]
@@ -1361,14 +1382,30 @@ def sides(out, streets, level, lots, stats):
             # the offset where it is missing: this side's own kerb within SIDE_NEAR m along, else the other side's (mirrored) there,
             # else the property line less the street class's verge
             offs = np.full(len(ts), np.nan)
+            ok_off = lambda v: v is not None and np.isfinite(v) and SIDE_MIN_OFF <= v <= SIDE_MAX_OFF
             for k in np.nonzero(miss)[0]:
+                # j (i review tiles 2, 8: the first offset found was under SIDE_MIN_OFF, so nothing was drawn): the first offset
+                # in this order that is a street kerb's is used
+                cands = []
                 for side, reach in ((s, SIDE_NEAR), (-s, SIDE_NEAR / 2)):
                     w = cov[side] & (np.abs(ts - ts[k]) <= reach)
                     if w.sum() >= 3:
-                        offs[k] = float(np.median(R[side][3][w])); break
-                else:
-                    if fh in VG and np.isfinite(lotd[k]):
-                        offs[k] = lotd[k] - VG[fh]
+                        if side == -s and np.isfinite(lotd[k]):
+                            # j (i review tile 2: the other side's kerb 1.7 m off a centreline drawn off the middle): a street is
+                            # symmetric about its reserve, not its centreline: this side's property line less the other side's verge
+                            wv = w & np.isfinite(R[side][5])
+                            if wv.sum() >= 3:
+                                vg = float(np.median(R[side][5][wv] - R[side][3][wv]))
+                                if -0.5 <= vg <= 8.0:
+                                    cands.append(lotd[k] - vg)
+                        cands.append(float(np.median(R[side][3][w])))
+                if fh in VG and np.isfinite(lotd[k]):
+                    cands.append(lotd[k] - VG[fh])
+                if fh in KO:
+                    cands.append(KO[fh])
+                for v in cands:
+                    if ok_off(v):
+                        offs[k] = v; break
             miss &= np.isfinite(offs)
             if not miss.any():
                 continue
@@ -1427,16 +1464,65 @@ def _near_count(out):
     return n
 
 
+MAIN_REACH, MAIN_STEP, MAIN_SMOOTH, MAIN_KEEP, MAIN_OWN = 60.0, 4.0, 16.0, 5.0, 10.0   # m
+LOTS = []   # j: property lots, to measure each main road's own width
+
+
+def _main_widths():
+    """j (i review V29, V43, V65, V78 and tile 30: kerbs on a main road's carriageway, across its junction, past its stop line,
+    along a motorway's edge): a main road's width is not one number per class (SCOPE_W). Its property line is measured every
+    MAIN_STEP m on each side (the first lot along a ray, a lot holding the centreline is a road parcel, not one), smoothed over
+    +-MAIN_SMOOTH m with the street mouths (no lot) left out: (s, left, right) per main centreline"""
+    import shapely
+    lt = STRtree(LOTS) if LOTS else None; La = np.array(LOTS, dtype=object) if LOTS else None; W = []
+    for g, fh in MAIN:
+        ts = np.arange(0.0, g.length + 0.01, MAIN_STEP) if g.length > MAIN_STEP else np.array([0.0, g.length])
+        row = [ts]
+        for s in (1, -1):
+            if lt is None:
+                row.append(np.full(len(ts), np.nan)); continue
+            P0, T, N, rays = _rays(g, ts, s, MAIN_REACH)
+            d = np.full(len(ts), np.inf)
+            li, lk = lt.query(rays, predicate="intersects")
+            if len(li):
+                inside = shapely.contains(La[lk], shapely.points(P0[li])); li, lk = li[~inside], lk[~inside]
+                np.minimum.at(d, li, shapely.distance(shapely.points(P0[li]), shapely.intersection(rays[li], La[lk])))
+            sm = np.full(len(ts), np.nan)
+            for k in range(len(ts)):
+                w = d[(np.abs(ts - ts[k]) <= MAIN_SMOOTH) & np.isfinite(d)]
+                if len(w) >= 3:
+                    sm[k] = float(np.median(w))
+            row.append(sm)
+        W.append(row)
+    return W
+
+
+_MW = []
+
+
 def _main_near(q, own_d):
-    """a main road nearer to q than own_d and within its carriageway band"""
+    """q lies on a main road's carriageway: more than MAIN_KEEP m inside its property line on that side (j), or, where its width
+    could not be measured, nearer to it than to q's own street and within its class band (i)"""
     if not MAIN:
         return False
     if not _MT or _MT[0] is not MAIN[0][0]:
         _MT[:] = [MAIN[0][0], STRtree([g for g, _ in MAIN])]
-    for j in _MT[1].query(q, predicate="dwithin", distance=14.0):
-        g, fh = MAIN[int(j)]
+        _MW[:] = _main_widths()
+    for j in _MT[1].query(q, predicate="dwithin", distance=MAIN_REACH):
+        j = int(j); g, fh = MAIN[j]
         dd = g.distance(q)
-        if dd < own_d and dd < SCOPE_W[fh]:
+        s_ = g.project(q); f = g.interpolate(s_); t = _street_dir(g, s_)
+        side = 1 if t[0] * (q.y - f.y) - t[1] * (q.x - f.x) > 0 else -1
+        ts, wl, wr = _MW[j]; w = wl if side == 1 else wr
+        fin = np.nonzero(np.isfinite(w))[0]; W = np.nan
+        if len(fin):
+            k = fin[int(np.argmin(np.abs(ts[fin] - s_)))]
+            if abs(ts[k] - s_) <= MAIN_SMOOTH + MAIN_STEP:
+                W = float(w[k])
+        if np.isfinite(W):
+            if dd < W - MAIN_KEEP and dd < own_d + MAIN_OWN:   # a wide forecourt with no lots is not all carriageway
+                return True
+        elif dd < own_d and dd < SCOPE_W[fh]:
             return True
     return False
 
@@ -1465,7 +1551,7 @@ def main_tails(out, streets, stats):
 
 def _MT_q(g):
     _main_near(Point(g.coords[0]), 0.0)
-    return _MT[1].query(g, predicate="dwithin", distance=14.0) if _MT else []
+    return _MT[1].query(g, predicate="dwithin", distance=MAIN_REACH) if _MT else []
 
 
 def end_hooks(out, stats):
@@ -1535,6 +1621,9 @@ def _lollipop(c, la):
 NT_TRIM, NT_CLEAR = 8.0, 5.1   # m
 
 
+NT_NOSTREET = 3.0   # m
+
+
 def near_ends(out, streets, stats):
     """i (h near 177, cap ~145: a kerb end left 1-5 m from another kerb reads as a corner or join left open): last pass over the
     ends still open. An end pointing at the other kerb (35 deg or squarer) runs on straight onto it, a T, unless that crosses a
@@ -1552,7 +1641,9 @@ def near_ends(out, streets, stats):
         if _ang(h, _hd(o, o.project(e), 2.0)) >= TEE_ANG:
             seg = LineString([e, f])
             ahead = np.dot(u, np.array([f.x - e.x, f.y - e.y]) / max(d, 1e-9))
-            if ahead > 0.5 and not len(st.query(seg, predicate="intersects")) \
+            # j (i review V93: a median nose left hooked 2.8 m off its other side, a centreline drawn through the nose): no street
+            # fits in a gap under NT_NOSTREET m, so a centreline there does not stop the T
+            if ahead > 0.5 and (d < NT_NOSTREET or not len(st.query(seg, predicate="intersects"))) \
                     and not any(int(m) not in (i, k) and G[int(m)].intersects(seg) for m in tree.query(seg)):
                 grow.setdefault(i, [None, None])[j0] = np.array([f.x, f.y]); n_t += 1
                 continue
@@ -1640,3 +1731,277 @@ def _folds_near(c, k, reach=20.0):
             if P[a].distance(P[b]) < 2.6:
                 return True
     return False
+
+
+RB_AREA, RB_COMPACT, RB_LANE, RB_R = 2500.0, 0.8, 4.3, (3.5, 8.0)   # m2, isoperimetric ratio, m, m
+
+
+def roundabouts(out, level, lots, stats):
+    """j (i review V33: a local roundabout's raised island not drawn): a roundabout is a small round face of local centrelines
+    (fh 5-7, on the ground) with no property lot in it; the spokes mapped into its middle split it, so neighbouring small faces
+    are taken together. Its island is a circle one lane (RB_LANE m) inside the ring, drawn when nothing is drawn there yet and the
+    island is big enough to be raised (RB_R)"""
+    from shapely.ops import polygonize, unary_union
+    if not level:
+        return out
+    over = STRtree(list(OVER) + list(TUNNELS_G)) if (OVER or TUNNELS_G) else None
+    ground = [(g, fh) for g, fh in level if not (over is not None and len(over.query(g, predicate="dwithin", distance=0.5))
+                                                    and any(over.geometries[int(k)].hausdorff_distance(g) < 1.0 for k in over.query(g, predicate="dwithin", distance=0.5)))]
+    loc = [g for g, fh in ground if fh in (5, 6, 7)]
+    if not loc:
+        return out
+    lt = STRtree(loc)
+    faces = [f for f in polygonize(unary_union([g for g, _ in ground])) if f.area < RB_AREA]
+    if not faces:
+        return out
+    ft = STRtree(faces); par = list(range(len(faces)))
+    def root(i):
+        while par[i] != i:
+            par[i] = par[par[i]]; i = par[i]
+        return i
+    for i, f in enumerate(faces):
+        for k in ft.query(f, predicate="touches"):
+            k = int(k)
+            if k != i and f.boundary.intersection(faces[k].boundary).length > 1.0:
+                par[root(i)] = root(k)
+    grp = {}
+    for i in range(len(faces)):
+        grp.setdefault(root(i), []).append(faces[i])
+    lot_t = STRtree(lots) if lots else None
+    G = [_L(o) for o in out]; gt = STRtree(G) if G else None; n = 0
+    for fs in grp.values():
+        U = unary_union(fs)
+        if U.geom_type != "Polygon" or U.area >= RB_AREA or 4 * np.pi * U.area / U.length ** 2 < RB_COMPACT:
+            continue
+        rim = U.exterior
+        on = sum(seg.length for seg in [rim.intersection(loc[int(k)].buffer(0.5)) for k in lt.query(rim, predicate="dwithin", distance=0.5)])
+        if on < 0.8 * rim.length:
+            continue
+        if lot_t is not None and any(lots[int(k)].representative_point().within(U) for k in lot_t.query(U)):
+            continue
+        R = float(np.sqrt(U.area / np.pi)); r = R - RB_LANE; c = U.centroid
+        if not (RB_R[0] <= r <= RB_R[1]):
+            continue
+        if gt is not None and len(gt.query(c, predicate="dwithin", distance=r + 1.5)):
+            continue
+        ring = np.asarray(c.buffer(r, 16).exterior.coords)
+        out = out + [ring]; n += 1
+    stats["roundabouts"] = n
+    return out
+
+
+IN_LOT, IN_LOT_RUN = 2.0, 4.0   # m, m
+
+
+def in_lots(out, streets, lots, stats):
+    """j (i review tiles 1, 4, 5, 14, V42: a stub into a roof, lines across a depot forecourt, a kerb drifting into yards): a kerb
+    lies in the street, never inside a property. Any stretch of IN_LOT_RUN m or more lying more than IN_LOT m inside a lot (a lot
+    holding a street centreline is a road parcel or a private road, not one) is taken out; the ends left are carried on and joined
+    by the steps after (extend, close_near, corner_join), so the kerb is redrawn along its street, not left open"""
+    import shapely
+    if not lots:
+        return out
+    lt = STRtree(lots); st = STRtree(streets); road = {}
+    def prop(k):
+        if k not in road:
+            road[k] = len(st.query(lots[k], predicate="intersects")) == 0
+        return road[k]
+    res = []
+    for o in out:
+        g = _L(o); ks = [int(k) for k in lt.query(g, predicate="intersects")]
+        ks = [k for k in ks if prop(k)]
+        if not ks:
+            res.append(o); continue
+        ts = _samples(g, 0.5); P = shapely.line_interpolate_point(g, ts)
+        m = np.zeros(len(ts), bool)
+        for k in ks:
+            L = lots[k]; c = shapely.contains(L, P)
+            if c.any():
+                ii = np.nonzero(c)[0]
+                m[ii] |= shapely.distance(L.exterior, P[ii]) > IN_LOT
+        m = _runs(m, ts, IN_LOT_RUN)
+        if not m.any():
+            res.append(o); continue
+        res += _keep_runs(g, m, ts, stats, "in_lot_m")
+    return res
+
+
+PJ_MAX, PJ_ANG, STUB_MAX = 20.0, 30.0, 15.0   # m, deg, m
+NOSE_W, NOSE_ANG, LANE_MOUTH_GAP = (2.7, 6.0), 35.0, 10.0   # m, deg, m
+FH7 = None   # j: STRtree of lane centrelines (fh 7)
+
+
+def _unkerbed(r, seg, G, tree, near=12.0, side=6.0):
+    """a street with no kerb of its own: no kerb within side m of its centreline away from the crossing (near m)"""
+    from shapely.ops import unary_union
+    rest = r.difference(seg.buffer(near))
+    if rest.is_empty or rest.length < 5.0:
+        return False
+    return not len(tree.query(rest, predicate="dwithin", distance=side))
+
+
+def _is_fh7(g):
+    return any(FH7.geometries[int(k)].hausdorff_distance(g) < 1.0 for k in FH7.query(g, predicate="dwithin", distance=0.5))
+
+
+def _join_clear(c, n0, n1, clear=2.6, skip=5.0):
+    """the joining stretch c[n0:n1] keeps clear of the rest of its own line (no hook, loop or fold where it was made)"""
+    g = LineString(c); cum = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(c, axis=0).T))])
+    a, b = cum[max(n0, 0)], cum[min(n1, len(c) - 1)]
+    for t in np.arange(a, b + 0.01, 0.5):
+        q = g.interpolate(t)
+        for lo, hi in ((0.0, t - skip), (t + skip, g.length)):
+            if hi - lo > 0.5 and substring(g, lo, hi).distance(q) < clear:
+                return False
+    return True
+
+
+def pair_join(out, streets, stats):
+    """j (i review tiles 9, 10, 11: a straight kerb broken 5-20 m at a driveway or a lane, two square ends facing each other; the
+    reviewer's near): two free ends that face each other (each pointing at the other within PJ_ANG) up to PJ_MAX m apart are one
+    kerb: joined with a smooth curve unless that crosses a street centreline or another kerb. A short piece (under STUB_MAX m) with
+    both ends free and one of them near another kerb is a stub (i tiles 1, 28: into a roof, at a junction): it goes"""
+    st = STRtree(streets)
+    G = [_L(o) for o in out]; tree = STRtree(G)
+    ends = _free_ends(out, G, tree, minlen=3.0)
+    et = STRtree([e for _, _, e, _ in ends]) if ends else None
+    cand = []
+    for a, (i, j0, e, h) in enumerate(ends):
+        u = np.array([np.cos(h), np.sin(h)])
+        for b in et.query(e, predicate="dwithin", distance=PJ_MAX):
+            b = int(b)
+            if b <= a:
+                continue
+            k, j1, f, hk = ends[b]
+            v = np.array([f.x - e.x, f.y - e.y]); d = np.hypot(*v)
+            if k == i and G[i].length < max(50.0, 4 * d):   # a long kerb round a block left open: shut into its ring
+                continue
+            if d < 1.0:
+                continue
+            v /= d; w = np.array([np.cos(hk), np.sin(hk)])
+            if np.dot(u, v) >= np.cos(np.radians(PJ_ANG)) and np.dot(w, -v) >= np.cos(np.radians(PJ_ANG)):
+                cand.append((d, a, b, "on"))
+            elif k != i and NOSE_W[0] <= d <= NOSE_W[1] and np.dot(u, w) > np.cos(np.radians(NOSE_ANG)) and abs(np.dot(u, v)) < 0.5:
+                # j (i review tile 3, V93: a median nose or a footway strip left open, two kerbs ending side by side): a
+                # round cap, unless a street runs between them (that is a lane, capped by caps())
+                cand.append((d + PJ_MAX, a, b, "nose"))
+    cand.sort(); used = set(); pairs = []
+    for d, a, b, how in cand:
+        i, j0, e, h = ends[a]; k, j1, f, hk = ends[b]
+        if i in used or k in used:
+            continue
+        p0 = np.array([e.x, e.y]); p1 = np.array([f.x, f.y])
+        if how == "nose":
+            d -= PJ_MAX; r = 0.7 * d
+            bz = _bez(p0, p0 + r * np.array([np.cos(h), np.sin(h)]), p1 + r * np.array([np.cos(hk), np.sin(hk)]), p1, 12)
+        else:
+            bz = _bez(p0, p0 + d / 3 * np.array([np.cos(h), np.sin(h)]), p1 + d / 3 * np.array([np.cos(hk), np.sin(hk)]), p1, 10)
+        seg = LineString(bz)
+        crossed = [int(m) for m in st.query(seg, predicate="intersects")]
+        if how == "on" and d <= LANE_MOUTH_GAP:
+            # j (i review V96: a kerb cut square either side of a lane with no kerbs of its own): the kerb runs on across the
+            # lane's mouth (a layback), so a lane centreline (fh 7) does not stop the join there
+            crossed = [m for m in crossed if not ((FH7 is not None and _is_fh7(streets[m])) or _unkerbed(streets[m], seg, G, tree))]
+        if crossed or any(int(m) not in (i, k) and G[int(m)].intersects(seg) for m in tree.query(seg)):
+            continue
+        A = np.asarray(out[i]); A = A if j0 == 1 else A[::-1]
+        if k == i:
+            c = np.vstack([A, bz[1:-1], A[:1]])
+            if abs(Polygon(c).area) < 200.0 or not LineString(c[:-1]).is_simple or not _join_clear(c, len(A) - 1, len(A) + len(bz) - 2):
+                continue
+            used.add(i); pairs.append((i, k, c)); continue
+        B = np.asarray(out[k]); B = B if j1 == 0 else B[::-1]
+        c = np.vstack([A, bz[1:-1], B])
+        if not LineString(c).is_simple or not _join_clear(c, len(A) - 1, len(A) + len(bz) - 2):
+            continue
+        used.add(i); used.add(k); pairs.append((i, k, c))
+    res = [o for n, o in enumerate(out) if n not in used] + [c for _, _, c in pairs]
+    stats["pair_join"] = stats.get("pair_join", 0) + len(pairs)
+    # stubs
+    G = [_L(o) for o in res]; tree = STRtree(G); drop = set()
+    for i, g in enumerate(G):
+        if g.length >= STUB_MAX or _closed(res[i]):
+            continue
+        es = [Point(g.coords[0]), Point(g.coords[-1])]
+        if not all(_free(G, tree, i, e) for e in es):
+            continue
+        if any(any(int(k) != i and int(k) not in drop and G[int(k)].distance(e) < NEAR_D for k in tree.query(e, predicate="dwithin", distance=NEAR_D)) for e in es):
+            drop.add(i)
+    stats["stub_drop"] = stats.get("stub_drop", 0) + len(drop)
+    return [o for n, o in enumerate(res) if n not in drop]
+
+
+GUARD_FOLD_D, GUARD_FOLD_ALONG, GUARD_INSIDE_D, GUARD_INSIDE_SHARE, GUARD_INSIDE_MAX = 2.55, 8.0, 2.7, 0.75, 40.0   # m, m, m, share, m
+
+
+def guard(out, stats):
+    """j (j trial runs: a 9 m join lying inside a corner it doubles, a 2.47 m hairpin): the last pass applies the reviewer's own
+    shape rules once more, with a margin: a short line lying mostly within GUARD_INSIDE_D m of other kerbs doubles them and goes; a
+    line folding back on itself within GUARD_FOLD_D m (more than GUARD_FOLD_ALONG m apart along it) is cut at the fold and its
+    shorter side goes"""
+    G = [_L(o) for o in out]; tree = STRtree(G); drop = set(); res = []; nf = 0
+    for i, g in enumerate(G):
+        if g.length > GUARD_INSIDE_MAX or _closed(out[i]):
+            continue
+        oth = [G[int(k)] for k in tree.query(g, predicate="dwithin", distance=GUARD_INSIDE_D) if int(k) != i and int(k) not in drop]
+        if not oth:
+            continue
+        ts = _samples(g, 1.0)
+        near = np.mean([min(o.distance(g.interpolate(t)) for o in oth) < GUARD_INSIDE_D for t in ts])
+        if near >= GUARD_INSIDE_SHARE:
+            drop.add(i)
+    for i, o in enumerate(out):
+        if i in drop:
+            continue
+        g = G[i]
+        if _closed(o) or g.length < GUARD_FOLD_ALONG + 2:
+            res.append(o); continue
+        ts = _samples(g, 1.0); P = [g.interpolate(t) for t in ts]; pt = STRtree(P); cut = None
+        for a, p in enumerate(P):
+            for b in pt.query(p, predicate="dwithin", distance=GUARD_FOLD_D):
+                b = int(b)
+                if b > a and ts[b] - ts[a] > GUARD_FOLD_ALONG:
+                    cut = (ts[a] + ts[b]) / 2; break
+            if cut is not None:
+                break
+        if cut is None:
+            res.append(o); continue
+        nf += 1
+        keep = (0.0, cut - GUARD_FOLD_ALONG / 2) if cut > g.length / 2 else (cut + GUARD_FOLD_ALONG / 2, g.length)
+        if keep[1] - keep[0] >= KEEP_MIN:
+            res.append(np.asarray(substring(g, *keep).coords))
+    stats["guard_inside"] = len(drop); stats["guard_fold"] = nf
+    return res
+
+
+OFFC_D, OFFC_MAX = 1.5, 30.0   # m
+
+
+def off_centre_ends(out, streets, stats):
+    """j (i review V98: a lane kerb walked up the lane's centreline and stopped there, 0.8 m off it): a kerb end lying within
+    OFFC_D m of a ground street centreline is not a kerb; the end is taken back until it is OFFC_D m clear (up to OFFC_MAX m)"""
+    st = STRtree(streets); G = [_L(o) for o in out]; tree = STRtree(G); res = []; n = 0
+    for i, o in enumerate(out):
+        g = G[i]
+        if _closed(o) or g.length < KEEP_MIN:
+            res.append(o); continue
+        cut = [0.0, 0.0]
+        for j0 in (0, 1):
+            e = Point(g.coords[0 if j0 == 0 else -1])
+            if not _free(G, tree, i, e):
+                continue
+            t = 0.0
+            while t <= OFFC_MAX and t < g.length:
+                q = g.interpolate(t if j0 == 0 else g.length - t)
+                if not len(st.query(q, predicate="dwithin", distance=OFFC_D)):
+                    break
+                t += 0.5
+            if 0 < t <= OFFC_MAX:
+                cut[j0] = t
+        if cut[0] or cut[1]:
+            if g.length - cut[0] - cut[1] >= KEEP_MIN:
+                res.append(np.asarray(substring(g, cut[0], g.length - cut[1]).coords)); n += 1
+            continue
+        res.append(o)
+    stats["off_centre_end"] = n
+    return res
