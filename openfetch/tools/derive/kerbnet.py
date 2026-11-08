@@ -33,6 +33,7 @@ from shapely.prepared import prep
 from shapely.strtree import STRtree
 
 import kerbaudit as ka
+import kerbg
 import kerbregular as kr
 
 R_BY_RANK = {1: 9.0, 2: 6.0, 3: 4.0}   # m, corner radius by the busiest road at the block
@@ -667,6 +668,8 @@ def unmerge(out, stats):
 
 
 TUNNELS = []   # roadontype 3 centrelines (filled in main)
+LOCAL_BRIDGES = []   # i: local and collector streets (fh 5-7) on a bridge (roadontype 2): short ones carry their kerbs over
+OVER_STREETS = []   # street (fh 1-7) centrelines on a bridge or in a tunnel (filled in main)
 
 
 def on_ground(roads, over):
@@ -1994,6 +1997,25 @@ def props(o, kind, traced_path, roads, _c={}):
     return pr
 
 
+def _write(out, kind, a, roads, st, back):
+    # a line that touches itself only after the trip to lon/lat and back (readers take lon/lat as GDA2020, 7844) is knotted there:
+    # untie it as it will be read (8 Nov 2026: 5 such self-touches in the whole-suburb run)
+    rd = Transformer.from_crs(7844, 7856, always_xy=True).transform; o2, k2 = [], []
+    for o, k in zip(out, kind):
+        q = np.array([rd(*[round(v, 8) for v in back(x, y)]) for x, y in o])
+        if LineString(q).is_simple or np.hypot(*(q[0] - q[-1])) < 0.01:
+            o2.append(o); k2.append(k); continue
+        fr = Transformer.from_crs(7856, 7844, always_xy=True).transform; to = Transformer.from_crs(4326, 7856, always_xy=True).transform
+        for c in deknot([q], {}):
+            o2.append(np.array([to(*fr(x, y)) for x, y in c])); k2.append(k)
+    out, kind = o2, k2
+    feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
+              "geometry": {"type": "LineString", "coordinates": [[round(v, 8) for v in back(x, y)] for x, y in o]}}
+             for o, k in zip(out, kind)]
+    json.dump({"type": "FeatureCollection", "features": feats}, open(a[3], "w"))
+    print("RESULT", json.dumps(st), len(feats))
+
+
 def main(a):
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
     traced = ka.read_kerbs(a[0])
@@ -2008,6 +2030,10 @@ def main(a):
             if pr.get("roadontype") in (2, 3) and f.get("geometry") and pr.get("OBJECTID") not in seen:
                 seen.add(pr.get("OBJECTID")); g = shape(f["geometry"])
                 BRIDGES.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
+                if pr.get("functionhierarchy") not in ka.SKIP_FH:
+                    OVER_STREETS.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
+                if pr.get("roadontype") == 2 and pr.get("functionhierarchy") in (5, 6, 7):
+                    LOCAL_BRIDGES.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
                 if pr.get("roadontype") == 3:
                     TUNNELS.extend(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString")
     area = None
@@ -2025,6 +2051,16 @@ def main(a):
     # streets on bridges or in tunnels are not on the ground: they neither split a block nor stop a kerb (Jacky 8 Nov 2026: "those
     # rail line seems to be underground, and the kerb shouldn't be stopped" - the WestConnex tunnel, fh 1 roadontype 3)
     ground = on_ground(roads, BRIDGES); level = on_ground(roads, TUNNELS)
+    if "--from-g" in a:
+        # i: the network as dumped by --dump-g (just before kerbg), cleaned again by the current kerbg (a 10 min loop, not 30)
+        import pickle
+        D = pickle.load(open(a[a.index("--from-g") + 1], "rb")); out = D[0]; st = dict(D[4]); st8 = {}
+        out = kerbg.clean(out, D[1], OVER_STREETS, D[3], st8, TUNNELS, level, LOCAL_BRIDGES); st["g"] = st8
+        tr_t = STRtree(D[8] if len(D) > 8 else [LineString(t) for t in traced if len(t) > 1])
+        kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
+                else "block guide" for o in out]
+        _write(out, kind, a, roads, st, back)
+        return
     out = build(traced, lots, ground, area, st)
     loops = [o for o in out if np.hypot(*(o[0] - o[-1])) < 0.5]
     if "--loops" not in a:
@@ -2048,6 +2084,10 @@ def main(a):
             # crossings and T's become round corners, kerbs across a street go, open corners and short breaks are joined,
             # hooks and doubles are cut; the same shapes kerbreview.py fails
             streets = [g for g, fh in ground if fh not in ka.SKIP_FH] + street_links(ground)
+            if "--dump-pre" in a:
+                import pickle; pickle.dump((out, st, loops), open(a[a.index("--dump-pre") + 1], "wb"))
+            if "--from-pre" in a:
+                import pickle; out, st, _ = pickle.load(open(a[a.index("--from-pre") + 1], "rb"))
             if "--no-across" not in a:
                 out = across(out, ground, st)
             out = corners(out, streets, st)
@@ -2074,27 +2114,17 @@ def main(a):
             out = snap_near(out, st)
             st7 = {}; out = endpairs(out, streets, st7); st["end_pairs2"] = st7.get("end_pairs", 0)
             out = deknot(unfold(unhook(deknot(out, st), st), st), {})
+            if "--dump-g" in a:
+                import pickle; pickle.dump((out, streets, OVER_STREETS, lots, st, TUNNELS, level, LOCAL_BRIDGES, list(tr_t.geometries)), open(a[a.index("--dump-g") + 1], "wb"))
+            if "--no-g" not in a:
+                # version g (8 Nov 2026, f review 20 of 47 tiles wrong): forks, tails, doubles, strays, square corners, dead-end caps
+                st8 = {}; out = kerbg.clean(out, streets, OVER_STREETS, lots, st8, TUNNELS, level, LOCAL_BRIDGES); st["g"] = st8
             # a cleaned line is a traced kerb when its middle still lies on one, else an added piece
             kind = ["traced" if len(tr_t.query(LineString(o).interpolate(0.5, normalized=True), predicate="dwithin", distance=0.3))
                     else "block guide" for o in out]
     else:
         kind = ["block loop"] * len(out)
-    # a line that touches itself only after the trip to lon/lat and back (readers take lon/lat as GDA2020, 7844) is knotted there:
-    # untie it as it will be read (8 Nov 2026: 5 such self-touches in the whole-suburb run)
-    rd = Transformer.from_crs(7844, 7856, always_xy=True).transform; o2, k2 = [], []
-    for o, k in zip(out, kind):
-        q = np.array([rd(*[round(v, 8) for v in back(x, y)]) for x, y in o])
-        if LineString(q).is_simple or np.hypot(*(q[0] - q[-1])) < 0.01:
-            o2.append(o); k2.append(k); continue
-        fr = Transformer.from_crs(7856, 7844, always_xy=True).transform; to = Transformer.from_crs(4326, 7856, always_xy=True).transform
-        for c in deknot([q], {}):
-            o2.append(np.array([to(*fr(x, y)) for x, y in c])); k2.append(k)
-    out, kind = o2, k2
-    feats = [{"type": "Feature", "properties": props(o, k, a[0], roads),
-              "geometry": {"type": "LineString", "coordinates": [[round(v, 8) for v in back(x, y)] for x, y in o]}}
-             for o, k in zip(out, kind)]
-    json.dump({"type": "FeatureCollection", "features": feats}, open(a[3], "w"))
-    print("RESULT", json.dumps(st), len(feats))
+    _write(out, kind, a, roads, st, back)
 
 
 if __name__ == "__main__":
