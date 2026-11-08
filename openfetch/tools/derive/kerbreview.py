@@ -325,7 +325,7 @@ def check(a):
     else: fails.append('no --roads: street centrelines are needed to tell a broken kerb from a street mouth')
     hits = against_cases(spots, opt.get('cases', CASES), fails)
     for k in KINDS:
-        if rate[k] > cap[k]: fails.append(f'{k}: {count[k]} spots, {rate[k]} per km, over the cap {cap[k]}')
+        if count[k] > cap[k] * km: fails.append(f'{k}: {count[k]} spots, {rate[k]} per km, over the cap {cap[k]}')
     spots.sort(key=lambda s: (-SEVERITY[s['kind']], -s['size'] if s['kind'] in ('dup', 'inside') else s['size']))
     pick, seen = [], set()
     for s in spots:                                     # the sheet shows the worst of every kind first, then the rest
