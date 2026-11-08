@@ -1073,5 +1073,17 @@
   "words": "visual reviewer: only the west kerb is drawn; the clearly visible east kerb is missing along the whole tile",
   "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/h.geojson.gz",
   "by": "visual reviewer"
+ },
+ {
+  "id": "J4",
+  "x": 337975.0,
+  "y": 6247070.0,
+  "r": 20,
+  "kinds": [
+   "random"
+  ],
+  "words": "Jacky 8 Nov 2026 13:43Z: 'one kerb line is missing too on the bottom right' of the good example (version h tile 47 / V54): west kerb of the north-south street, south of the rounded corner, missing for about 40 m",
+  "version": "2026-11-08-h",
+  "by": "Jacky"
  }
 ]
