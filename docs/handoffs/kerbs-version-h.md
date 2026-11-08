@@ -31,3 +31,20 @@ cross/dup/merge/self/inside 0. Visual: sent to the reviewer thread.
   rail bridges, 19-29 m).
 - fold: 7 spots (305743 6188140, 338603 6245736, 338833-338880 6245770).
 - Still there from g's list: 334049 6252312 car park strand, 317965 6253355 parking-bay line, 313257 6252970 over grass.
+
+## Visual result (reviewer 8 Nov 12:54Z): FAIL 18 of 51 wrong (f 20/47, g 26/48) -> improved, loop goes on to i
+Verdicts in /mnt/project-files/.notes/kerb-h/reviewer-independent/; new cases on derive v6yk7j 3615cf1 (PR #26).
+Fix list for i (EPSG 7856):
+- folds: 338833 6245777 square cap mid-lane where the lane goes on; 338603 6245736 dead end closed as a needle spike;
+  305753 6188128 thin median outline pinching into a crossing.
+- gaps: ~5 m at 315847 6255694 and 334515 6249845; 317461 6249752 south kerb missing over a bridge for 19 m while the north
+  is drawn (treat both sides the same: draw both over short local bridges).
+- junctions: 331442 6247583 stubs + three bunched ends; 330991 6246824 lane west kerb stub, mouth corner open; V69 337607
+  6245343 inner kerb stops beside the outer tail; 329918 6245977 two lines touch at the lane mouth.
+- deleted again: 338022 6247128 whole visible street has no kerbs (redraw, don't drop).
+- one side only: 316180 6255861 east kerb missing.
+- main-road leftovers: V41 333980 6251790 zigzag on motorway; V65 336265 6243098 line along arterial kerb; V78 327854
+  6248416 side-street kerbs run past the mouth as stubs into the main road.
+- 313257 6252970 (old V38, ~5 m off): line through trees and front yards.
+- also (tile whys 30, 44, 45, 51): side-street kerb pokes ~10 m into a main road; ramp lines end as a stub; kerbs stop
+  20-35 m before a junction.
