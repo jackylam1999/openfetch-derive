@@ -1,0 +1,247 @@
+[
+ {
+  "name": "flip-average at prediction",
+  "why": "inference only; trained exactly like the control (same seed), so only the flips differ",
+  "cfg": {
+   "tta": 1
+  },
+  "kill": "F1 below control"
+ },
+ {
+  "name": "scale and colour jitter",
+  "why": "held-out gap and shadow",
+  "cfg": {
+   "jitter": 1
+  },
+  "kill": "Parramatta CBD and wocheck do not move"
+ },
+ {
+  "name": "train 150 min more",
+  "why": "under-trained or at capacity?",
+  "cfg": {
+   "minutes": 300
+  },
+  "kill": "within noise: model is at capacity"
+ },
+ {
+  "name": "second scale input",
+  "why": "method item 6: a 3x wider, 0.3 m view of the street around each chip for shadow and medians (dense scenario is weakest)",
+  "cfg": {
+   "scale2": 1
+  },
+  "kill": "dense and shadow found do not rise"
+ },
+ {
+  "name": "trace at 0.1 m",
+  "why": "round 2: signed offset about 0 on every council (no gutter shift to fix), yet median distance 0.27-0.37 m; lines are traced on 0.2 m blocks",
+  "cfg": {
+   "fine": 1
+  },
+  "kill": "median offset does not drop"
+ },
+ {
+  "name": "resnet50 encoder",
+  "why": "method item 7: train longer was within noise (round 2), so the ResNet-34 model is at capacity; starts from ImageNet, so 3x the steps",
+  "cfg": {
+   "encoder": "resnet50",
+   "minutes": 450,
+   "batch": 6
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "learn from misses (all misses, no cause)",
+  "why": "Jacky 31 Oct: the model should learn from its mistakes. v1 mined misses sorted by a photo-guessed cause (9 tries, no gain); this version feeds back every missed kerb and extra line on the training boxes, unsorted, 30% of chips",
+  "cfg": {
+   "mine": 0.3,
+   "focus": ""
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "clDice line-continuity loss",
+  "why": "Jacky 31 Oct 'do what is best': a soft-skeleton clDice term (Shit et al. CVPR 2021, used for road extraction) on top of the current skeleton-recall term, so kerbs are traced as whole lines, not dashes; targets found and whole lines",
+  "cfg": {
+   "cldice": 0.5
+  },
+  "kill": "whole lines and found do not rise beyond noise"
+ },
+ {
+  "name": "drop council lines with no photo edge",
+  "why": "Jacky 31 Oct: council kerb segments that do not sit on a visible kerb edge (old, moved or wrongly drawn) teach and score the model wrong; targets precise and offset; training labels only (council pieces of 10 m with under half the box median photo edge), scoring reference unchanged so it stays comparable with the control",
+  "cfg": {
+   "labelcheck": 1
+  },
+  "kill": "precise and offset do not move beyond noise"
+ },
+ {
+  "name": "Satlas Swin-v2-B aerial encoder",
+  "why": "Jacky 31 Oct 06:34Z (thread 'Find kerb tracing models on Hugging Face'): aerial-pretrained encoder torchgeo/swin_v2_b_naip_rgb_satlas (Apache 2.0, 1 m NAIP RGB); expect little gain since our photos are 7-10 cm",
+  "cfg": {
+   "encoder": "swin_v2_b_satlas",
+   "minutes": 450,
+   "batch": 6
+  },
+  "kill": "within the 0.006 noise bar of the control"
+ },
+ {
+  "name": "more apartment and dense training areas",
+  "why": "plateau since round 1 on model changes; apartments 0.65 and dense 0.65 are the weakest scenarios and had 2 and 4 training boxes. Adds 4 boxes busiest first from TOP.md: Wentworth Point (NSW 28), Melrose Park (Ermington, NSW 35), South Wharf (Vic 22), West Melbourne (Vic 94); none overlaps a check or held-out box",
+  "cfg": {
+   "more": 1
+  },
+  "kill": "apartments and dense do not rise beyond noise"
+ },
+ {
+  "name": "LiDAR + aerial",
+  "why": "Jacky 1 Nov: 'lidar is a must'. Adds 3 LiDAR layers (ground minus 3 m median, slope, has-LiDAR) beside the photo; judged on the boxes with LiDAR against the aerial-only control",
+  "cfg": {
+   "lidar": 1
+  },
+  "kill": "within noise of the control on the LiDAR boxes"
+ },
+ {
+  "name": "LiDAR only",
+  "why": "Jacky 1 Nov: does LiDAR alone find kerbs? Photo blanked, trained and scored on LiDAR boxes only; a finding, never the model (cannot draw boxes without LiDAR)",
+  "cfg": {
+   "lidar": 2
+  },
+  "kill": "below the control on the LiDAR boxes"
+ },
+ {
+  "name": "LiDAR + aerial, photo blanked on half the chips",
+  "why": "round 10: LiDAR only beat the control on LiDAR boxes (0.780 vs 0.772; Parramatta CBD F1 0.71 -> 0.79) but LiDAR + aerial barely moved (0.776): the new layers start at zero and the photo already explains the labels, so the model never learned them. Blanking the photo on 50% of LiDAR chips forces it to",
+  "cfg": {
+   "lidar": 1,
+   "pdrop": 0.5
+  },
+  "kill": "within noise of the control on the LiDAR boxes"
+ },
+ {
+  "name": "LiDAR + aerial, photo blanked on half the chips, 300 min",
+  "why": "same, trained twice as long: tells whether learning the LiDAR layers needs more steps",
+  "cfg": {
+   "lidar": 1,
+   "pdrop": 0.5,
+   "minutes": 300
+  },
+  "kill": "within noise of the 150 min version"
+ },
+ {
+  "name": "two-judge label cleaning (LiDAR step + photo edge)",
+  "why": "Jacky 31 Oct 15:52Z: label quality is the main limit. Training labels drop a council 10 m piece unless both judges agree: photo edge (as labelcheck) and a LiDAR ground step of at least 7.5 cm across the line (ELVIS NSW orders, 10 training boxes; boxes without LiDAR use the photo judge only). Scoring reference unchanged: no LiDAR on the check and held-out boxes, so the filtered-set score is not possible",
+  "cfg": {
+   "labelcheck": 1,
+   "lidarcheck": 0.15
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "Satlas: train 300 min more",
+  "why": "the Satlas model gained again as the control (0.757 to 0.761) when trained on: likely under-trained, unlike ResNet-34 (round 2 capacity)",
+  "cfg": {
+   "minutes": 450
+  },
+  "kill": "within noise: at capacity"
+ },
+ {
+  "name": "Satlas: bigger view (384 px chips)",
+  "why": "a transformer uses wider context; dense centres (0.66, worst with apartments) need medians and shadow context; the second-scale view did not help ResNet-34",
+  "cfg": {
+   "chip": 384,
+   "batch": 4
+  },
+  "kill": "dense does not rise beyond noise"
+ },
+ {
+  "name": "LiDAR + aerial, photo blanked on 3/4 of the chips",
+  "why": "round 11: blanking half the chips made the model use LiDAR (0.798 vs 0.776 unblanked); does more blanking help further?",
+  "cfg": {
+   "pdrop": 0.75
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "LiDAR + aerial + Melrose Park and Wentworth Point apartment boxes",
+  "why": "apartments is the weakest scenario (Olympic Park 0.68, misses kerbs); only Rydalmere trains apartments with LiDAR",
+  "cfg": {
+   "more": 1
+  },
+  "kill": "apartments does not rise"
+ },
+ {
+  "name": "apartment boxes + kerb pixels weighted 6",
+  "why": "round 12: apartment boxes raised apartments 0.675 -> 0.716 (overall within noise); Olympic Park still misses kerbs (recall 0.61 at precision 0.88), so weight kerb pixels more to trade precision for recall",
+  "cfg": {
+   "more": 1,
+   "pw": 6.0
+  },
+  "kill": "apartments and worst held-out do not rise"
+ },
+ {
+  "name": "kerb pixels weighted 6",
+  "why": "recall is the weak side on apartments and dense (Parramatta recall 0.73); separates the weight effect from the apartment boxes",
+  "cfg": {
+   "pw": 6.0
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "hide car- and tree-sized patches (3 per chip), keep the kerb label",
+  "why": "Jacky 1 Nov: guess hidden kerbs from the line around them, like a person does; masked-input training (photo + LiDAR blanked, label whole)",
+  "cfg": {
+   "occlude": 3
+  },
+  "kill": "recall and worst held-out do not rise"
+ },
+ {
+  "name": "hide car- and tree-sized patches (6 per chip), keep the kerb label",
+  "why": "same, heavier: is more hiding better?",
+  "cfg": {
+   "occlude": 6
+  },
+  "kill": "within noise of 3 per chip"
+ },
+ {
+  "name": "apartment boxes + hide 3 patches per chip, 300 min",
+  "why": "combine the two small positives (apartments +0.04; hidden patches recall +0.01) and train longer as a candidate final model",
+  "cfg": {
+   "occlude": 3,
+   "minutes": 300
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "fill hidden kerb gaps along the road",
+  "why": "Jacky 1 Nov: guess hidden kerbs like a person. kerbfill.py: along each block frontage the kerb sits at the verge width measured on the visible kerb (carried across the gap from the kerb before to the kerb after); gaps 2-40 m with kerb seen on both sides are drawn in the same kerb layer. Synthetic test (council kerbs with 4-30 m pieces cut out, 8 NSW check/held-out boxes): found 0.871 -> 0.939, precise 1.000 -> 0.981. Post-processing only; scored with minutes 0 on the best model (pc/side-fill-eval.json)",
+  "cfg": {
+   "gapfill": 1
+  },
+  "kill": "found under trees / cars does not rise, or precise drops beyond noise"
+ },
+ {
+  "name": "main and collector road kerbs sampled 30% of chips",
+  "why": "main roads are the weakest road type (nbcheck found 54% vs 89% on local streets) and the lot-frontage fill did not reach them (2 Nov side run: 0.804 -> 0.804); train more on kerbs within 25 m of a main or collector centreline",
+  "cfg": {
+   "mainroad": 0.3
+  },
+  "kill": "main-road found does not rise, or within noise of the control"
+ },
+ {
+  "name": "learn from misses again (LiDAR + Satlas model), 30% of chips",
+  "why": "round 6 tied on the old photo-only ResNet-34; kerbmiss 2 Nov: 52% of missed kerb is whole stretches over 40 m, 54% on local streets; feed back exactly the stretches the best model skips",
+  "cfg": {
+   "mine": 0.3,
+   "focus": ""
+  },
+  "kill": "within noise of the control"
+ },
+ {
+  "name": "learn from misses on half the chips (mine 0.5)",
+  "why": "round 17: mine 0.3 gave 0.815 vs 0.810 (precise up on 7 of 8 boxes, worst held-out 0.778 -> 0.786), promoted by hand; more of the chips on the model's own mistakes",
+  "cfg": {
+   "mine": 0.5
+  },
+  "kill": "within noise of the control"
+ }
+]

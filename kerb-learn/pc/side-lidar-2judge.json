@@ -1,0 +1,9 @@
+{
+ "variants": [
+  {
+   "name": "LiDAR only + two-judge label cleaning (photo edge + LiDAR step), 150 min (vs LiDAR only 0.780)",
+   "id": 0,
+   "cfg_json": "{\"encoder\": \"swin_v2_b_satlas\", \"minutes\": 150, \"chip\": 256, \"batch\": 6, \"lr\": 0.0003, \"pw\": 4.0, \"skel\": 1.0, \"mine\": 0.0, \"focus\": \"\", \"seed\": 11, \"tta\": 1, \"jitter\": 0, \"context\": 1, \"lidar\": 2, \"labelcheck\": 1, \"lidarcheck\": 0.15}"
+  }
+ ]
+}
