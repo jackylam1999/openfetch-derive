@@ -1,0 +1,144 @@
+{
+  "site": "parramatta",
+  "name": "Parramatta",
+  "region": "nsw",
+  "council": "CITY OF PARRAMATTA",
+  "rank": "NSW 6",
+  "point": [
+    151.003,
+    -33.815
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "23//DP651527",
+    "lot": "23",
+    "section": null,
+    "plan": "DP651527",
+    "area_m2": 633,
+    "area_basis": "planar area of the NSW Cadastre lot polygon in MGA 56 (GDA2020)",
+    "stated_area_m2": 632.298,
+    "boundary_mga": [
+      [
+        315221.59,
+        6256512.49
+      ],
+      [
+        315218.75,
+        6256501.62
+      ],
+      [
+        315202.89,
+        6256505.55
+      ],
+      [
+        315199.63,
+        6256506.36
+      ],
+      [
+        315207.71,
+        6256537.45
+      ],
+      [
+        315216.5,
+        6256535.25
+      ],
+      [
+        315226.85,
+        6256532.66
+      ],
+      [
+        315221.59,
+        6256512.49
+      ]
+    ],
+    "corners_mga": {
+      "NE": [
+        315226.85,
+        6256532.66
+      ],
+      "SE": [
+        315218.75,
+        6256501.62
+      ],
+      "SW": [
+        315199.63,
+        6256506.36
+      ],
+      "NW": [
+        315207.71,
+        6256537.45
+      ]
+    },
+    "centre_mga": [
+      315213.24,
+      6256519.62
+    ],
+    "crs": "EPSG:7856 GDA2020 MGA zone 56",
+    "source": "NSW Cadastre (Lot), DCS Spatial Services, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": null,
+    "status": "no official building height published here",
+    "source": null,
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "MU1"
+    ],
+    "epi": [
+      "Parramatta Local Environmental Plan 2023"
+    ],
+    "at": "lot centre",
+    "source": "NSW Planning Portal, EPI Land Zoning, DPHI, CC BY 4.0"
+  },
+  "overlays": {
+    "families": [
+      "FSR",
+      "HOB"
+    ],
+    "optional_families": [],
+    "fsr": [
+      10
+    ],
+    "maps_checked": "EPI Primary Planning Layers: Floor Space Ratio, Land Reservation Acquisition, Lot Size, Height of Building (heritage items under heritage, zoning under zones)",
+    "codes": [
+      "HOB CA"
+    ],
+    "at": "lot centre",
+    "source": "NSW Planning Portal, EPI Height of Building, DPHI, CC BY 4.0"
+  },
+  "heritage": {
+    "items": [
+      {
+        "id": "I464",
+        "name": "Murrays' Building and potential archaeological site",
+        "significance": "Local"
+      }
+    ],
+    "grading": "Local",
+    "source": "NSW Planning Portal, EPI Heritage, DPHI, CC BY 4.0"
+  },
+  "nearest_station": {
+    "name": "PARRAMATTA RAILWAY STATION",
+    "distance_m": 291,
+    "next": {
+      "name": "HARRIS PARK RAILWAY STATION",
+      "distance_m": 958
+    },
+    "source": "NSW Features of Interest, Train Station, DCS Spatial Services, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": true,
+    "datasets": [
+      "nsw.parramatta.parrad.kerbs"
+    ],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

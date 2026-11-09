@@ -1,0 +1,23 @@
+{"site":"footscray","mode":"with","run":1,"date":"2026-11-08","model":"Sonnet (benchmark subagent)",
+ "cost":{"tool_calls":18,"minutes":5},
+ "facts":{"lot_id":"Lot 1 TP128421","lot_area_m2":181,
+  "position":{"corners_mga":{"NE":[315119.91,5814310.11],"SE":[315119.91,5814279.28],"SW":[315110.26,5814279.28],"NW":[315110.26,5814310.11]},"centre_mga":[315115.09,5814294.69]},
+  "zones":["ACZ1"],"overlays":["PO1","DCPO2","HO3"],"heritage":{"overlay":["HO3"],"grading":null},
+  "nearest_station":{"name":"Footscray Railway Station","distance_m":235},
+  "official_kerb":true,
+  "tallest_neighbour":{"height_m":9,"basis":"OpenStreetMap"}},
+ "reach":{"lot_id":true,"lot_area":true,"address":true,"lot_boundary":true,"footprints":true,"heights":true,"height_basis":true,"zones":true,"overlays":true,"heritage":true,"ground_levels":true,"kerbs":true,"street_trees":true,"transport":true,"shadows":true},
+ "numbers":[
+  {"what":"lot area","value":181,"source":{"stamp":"vic-parcel-mp Lots (Vicmap) 2025, read 2026-11-08, lots within 10 m of the address point (du_1ph4n8i)"}},
+  {"what":"corner NE","value":[315119.91,5814310.11],"source":{"stamp":"vic-parcel-mp du_1ph4n8i, bounding box of lot polygon"}},
+  {"what":"corner SE","value":[315119.91,5814279.28],"source":{"stamp":"vic-parcel-mp du_1ph4n8i, bounding box of lot polygon"}},
+  {"what":"corner SW","value":[315110.26,5814279.28],"source":{"stamp":"vic-parcel-mp du_1ph4n8i, bounding box of lot polygon"}},
+  {"what":"corner NW","value":[315110.26,5814310.11],"source":{"stamp":"vic-parcel-mp du_1ph4n8i, bounding box of lot polygon"}},
+  {"what":"centre","value":[315115.09,5814294.69],"source":{"stamp":"find_site 2026-11-08, middle of lot extent (du_1u3f2hr)"}},
+  {"what":"tallest neighbour height_m","value":9,"source":{"stamp":"osm-buildings-vic, OpenStreetMap, read 2026-11-08, box 150 m + 80 m north (du_2zdydd)"}},
+  {"what":"building height on lot","value":6,"source":{"stamp":"osm-buildings-vic du_2zdydd, stated"}},
+  {"what":"ground level near site AHD","value":20,"source":{"stamp":"vic-vicmap-elevation-metro-1-to-5-metre-1 Vicmap metro contours 2011, read 2026-11-08 (du_u7fehd)"}},
+  {"what":"ground level 19 m contour south","value":19,"source":{"stamp":"du_u7fehd"}},
+  {"what":"ground level 21 m contour north","value":21,"source":{"stamp":"du_u7fehd"}},
+  {"what":"nearest station distance m","value":235,"source":{"stamp":"vic-stops-train nearest list, DTP timetable 2026, read 2026-11-08 (du_2d6t9m query)"}}
+ ]}

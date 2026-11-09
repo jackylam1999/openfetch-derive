@@ -1,0 +1,159 @@
+{
+  "site": "footscray",
+  "name": "Footscray",
+  "region": "vic",
+  "council": "MARIBYRNONG",
+  "rank": "VIC 13",
+  "point": [
+    144.9,
+    -37.8
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "1\\TP128421",
+    "lot": "1",
+    "plan": "TP128421",
+    "pfi": "1096954",
+    "area_m2": 181,
+    "area_basis": "planar area of the Vicmap Parcel polygon in MGA 55 (GDA2020)",
+    "address": [
+      "147 HOPKINS STREET FOOTSCRAY 3011"
+    ],
+    "boundary_mga": [
+      [
+        315113.56,
+        5814280.87
+      ],
+      [
+        315112.96,
+        5814281.56
+      ],
+      [
+        315110.26,
+        5814284.68
+      ],
+      [
+        315110.65,
+        5814287.97
+      ],
+      [
+        315113.53,
+        5814310.11
+      ],
+      [
+        315119.91,
+        5814309.35
+      ],
+      [
+        315117,
+        5814286.67
+      ],
+      [
+        315116.91,
+        5814286.68
+      ],
+      [
+        315116.59,
+        5814284.14
+      ],
+      [
+        315116.48,
+        5814284.15
+      ],
+      [
+        315115.85,
+        5814279.28
+      ],
+      [
+        315114.72,
+        5814279.41
+      ],
+      [
+        315114.89,
+        5814280.84
+      ],
+      [
+        315113.56,
+        5814280.87
+      ]
+    ],
+    "corners_mga": {
+      "NE": [
+        315119.91,
+        5814309.35
+      ],
+      "SE": [
+        315115.85,
+        5814279.28
+      ],
+      "SW": [
+        315114.72,
+        5814279.41
+      ],
+      "NW": [
+        315113.53,
+        5814310.11
+      ]
+    },
+    "centre_mga": [
+      315114.96,
+      5814295.24
+    ],
+    "crs": "EPSG:7855 GDA2020 MGA zone 55",
+    "source": "Vicmap Property, Parcel Map Polygons (PARCEL_MP), DEECA, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": null,
+    "status": "no official building height published here",
+    "source": null,
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "ACZ1"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_ZONE, DTP, CC BY 4.0"
+  },
+  "overlays": {
+    "codes": [
+      "DCPO2",
+      "HO3",
+      "PO1"
+    ],
+    "optional": [],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
+    "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
+  },
+  "heritage": {
+    "overlay": [
+      "HO3"
+    ],
+    "optional": [],
+    "grading": null,
+    "grading_status": "the council publishes no heritage gradings as open data",
+    "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"
+  },
+  "nearest_station": {
+    "name": "FOOTSCRAY",
+    "distance_m": 232,
+    "next": {
+      "name": "MIDDLE FOOTSCRAY",
+      "distance_m": 807
+    },
+    "source": "Vicmap Transport, TR_RAIL_INFRASTRUCTURE rail_station, DTP, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": true,
+    "datasets": [
+      "vic.data-gov-au.dga.road-asset-register-maribyrnong"
+    ],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

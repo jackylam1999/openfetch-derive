@@ -1,0 +1,210 @@
+{
+  "site": "peel-st",
+  "name": "211 Peel St, North Melbourne (calibration: the 8 Nov 2026 trial, not one of the six)",
+  "region": "vic",
+  "council": "MELBOURNE",
+  "rank": "VIC 4",
+  "point": [
+    144.956211,
+    -37.80281
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "CM3\\PS810967",
+    "lot": "CM3",
+    "plan": "PS810967",
+    "pfi": "431836433",
+    "area_m2": 758,
+    "area_basis": "planar area of the Vicmap Parcel polygon in MGA 55 (GDA2020)",
+    "address": [
+      "101/211 PEEL STREET NORTH MELBOURNE 3051",
+      "102/211 PEEL STREET NORTH MELBOURNE 3051",
+      "103/211 PEEL STREET NORTH MELBOURNE 3051",
+      "104/211 PEEL STREET NORTH MELBOURNE 3051",
+      "106/211 PEEL STREET NORTH MELBOURNE 3051"
+    ],
+    "boundary_mga": [
+      [
+        320079.27,
+        5814092.31
+      ],
+      [
+        320078.8,
+        5814088.53
+      ],
+      [
+        320078.34,
+        5814084.85
+      ],
+      [
+        320078,
+        5814082.16
+      ],
+      [
+        320077.52,
+        5814078.33
+      ],
+      [
+        320059.28,
+        5814081
+      ],
+      [
+        320059.67,
+        5814084.64
+      ],
+      [
+        320059.77,
+        5814085.7
+      ],
+      [
+        320060.02,
+        5814087.68
+      ],
+      [
+        320060.25,
+        5814089.87
+      ],
+      [
+        320060.36,
+        5814090.9
+      ],
+      [
+        320060.84,
+        5814094.68
+      ],
+      [
+        320061.12,
+        5814097.43
+      ],
+      [
+        320061.42,
+        5814099.42
+      ],
+      [
+        320062.94,
+        5814099.22
+      ],
+      [
+        320064.08,
+        5814108.3
+      ],
+      [
+        320064.95,
+        5814115.49
+      ],
+      [
+        320063.43,
+        5814115.68
+      ],
+      [
+        320063.5,
+        5814116.39
+      ],
+      [
+        320063.75,
+        5814118.39
+      ],
+      [
+        320064.27,
+        5814122.65
+      ],
+      [
+        320067.1,
+        5814122.34
+      ],
+      [
+        320082.78,
+        5814120.36
+      ],
+      [
+        320080.98,
+        5814106.15
+      ],
+      [
+        320079.27,
+        5814092.31
+      ]
+    ],
+    "corners_mga": {
+      "NE": [
+        320082.78,
+        5814120.36
+      ],
+      "SE": [
+        320077.52,
+        5814078.33
+      ],
+      "SW": [
+        320059.28,
+        5814081
+      ],
+      "NW": [
+        320064.27,
+        5814122.65
+      ]
+    },
+    "centre_mga": [
+      320071.24,
+      5814100.96
+    ],
+    "crs": "EPSG:7855 GDA2020 MGA zone 55",
+    "source": "Vicmap Property, Parcel Map Polygons (PARCEL_MP), DEECA, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": null,
+    "status": "no official building height published here",
+    "source": null,
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "MUZ"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_ZONE, DTP, CC BY 4.0"
+  },
+  "overlays": {
+    "codes": [
+      "DDO61",
+      "DDO61-A2",
+      "HO3",
+      "PO12"
+    ],
+    "optional": [
+      "DDO32"
+    ],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
+    "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
+  },
+  "heritage": {
+    "overlay": [
+      "HO3"
+    ],
+    "optional": [],
+    "grading": null,
+    "grading_status": "check the City of Melbourne heritage gradings by eye",
+    "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"
+  },
+  "nearest_station": {
+    "name": "PARKVILLE",
+    "distance_m": 447,
+    "next": {
+      "name": "STATE LIBRARY",
+      "distance_m": 914
+    },
+    "source": "Vicmap Transport, TR_RAIL_INFRASTRUCTURE rail_station, DTP, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": true,
+    "datasets": [
+      "vic.melbourne.com.road-segments-with-surface-type"
+    ],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

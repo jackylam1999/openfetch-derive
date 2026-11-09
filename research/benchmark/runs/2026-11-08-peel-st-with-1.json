@@ -1,0 +1,19 @@
+{
+  "site": "peel-st", "mode": "with", "run": 1, "date": "2026-11-08", "model": "project default model (Opus)",
+  "from": "Reconstructed from research/peel-st-site-study/comparison.md and connector-test-notes.md; items those notes do not record are null or false.",
+  "cost": {"tool_calls": 16, "minutes": 7},
+  "facts": {
+    "lot_id": "Lot 101 PS810967", "lot_area_m2": 758, "position": null,
+    "zones": ["MUZ"], "overlays": ["HO3", "DDO61-A2", "PO12"],
+    "heritage": {"overlay": ["HO3"], "grading": "not graded"},
+    "nearest_station": {"name": "Parkville", "distance_m": 440},
+    "official_kerb": true, "tallest_neighbour": null
+  },
+  "reach": {"lot_id": true, "lot_area": true, "address": true, "lot_boundary": true, "footprints": true, "heights": true, "height_basis": true, "zones": true, "overlays": true,
+    "heritage": true, "ground_levels": true, "kerbs": true, "street_trees": false, "transport": true, "shadows": true},
+  "numbers": [
+    {"what": "lot area", "value": 758, "source": {"stamp": "data_used vic-parcel-mp"}},
+    {"what": "site building height above street", "value": 26.5, "source": {"stamp": "data_used CoM 2023 footprints"}},
+    {"what": "Parkville station distance", "value": 440, "source": {"stamp": "data_used hosted timetable copy"}}
+  ]
+}

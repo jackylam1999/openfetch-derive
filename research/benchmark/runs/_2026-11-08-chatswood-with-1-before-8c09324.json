@@ -1,0 +1,18 @@
+{"site":"chatswood","mode":"with","run":1,"date":"2026-11-08","model":"Sonnet (benchmark subagent)",
+"cost":{"tool_calls":19,"minutes":6},
+"facts":{"lot_id":"1//DP724850","lot_area_m2":1617,
+"position":{"corners_mga":{"NE":[331565.27,6258850.76],"SE":[331584.07,6258778.24],"SW":[331566.38,6258771.29],"NW":[331541.92,6258841.55]},"centre_mga":[331562.7,6258810.5]},
+"zones":["E2"],"overlays":["HOB"],"heritage":{"overlay":[],"grading":null},
+"nearest_station":{"name":"Chatswood","distance_m":90},
+"official_kerb":false,
+"tallest_neighbour":{"height_m":null,"basis":"none given"}},
+"reach":{"lot_id":true,"lot_area":true,"address":false,"lot_boundary":true,"footprints":true,"heights":false,"height_basis":false,"zones":true,"overlays":true,"heritage":true,"ground_levels":false,"kerbs":false,"street_trees":false,"transport":true,"shadows":false},
+"numbers":[
+{"what":"lot area","value":1617,"source":{"stamp":"NSW Spatial Services cadastre Lot layer (NSW_Cadastre MapServer/9), planlotarea, lotidstring 1//DP724850, read 2026-11-08"}},
+{"what":"corner NE","value":[331565.27,6258850.76],"source":{"stamp":"NSW Spatial Services cadastre Lot layer, outSR 7856, read 2026-11-08"}},
+{"what":"corner SE","value":[331584.07,6258778.24],"source":{"stamp":"NSW Spatial Services cadastre Lot layer, outSR 7856, read 2026-11-08"}},
+{"what":"corner SW","value":[331566.38,6258771.29],"source":{"stamp":"NSW Spatial Services cadastre Lot layer, outSR 7856, read 2026-11-08"}},
+{"what":"corner NW","value":[331541.92,6258841.55],"source":{"stamp":"NSW Spatial Services cadastre Lot layer, outSR 7856, read 2026-11-08"}},
+{"what":"max building height control RL (LEP, not an existing building)","value":246.8,"source":{"stamp":"NSW Planning Portal EPI Primary Planning Layers MapServer/5 Height of Building, Willoughby LEP 2012, lot polygon query 2026-11-08"}},
+{"what":"station distance (approximate, from general knowledge)","value":90,"source":null}
+]}

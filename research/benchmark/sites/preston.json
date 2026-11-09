@@ -1,0 +1,125 @@
+{
+  "site": "preston",
+  "name": "Preston",
+  "region": "vic",
+  "council": "DAREBIN",
+  "rank": "VIC 20",
+  "point": [
+    144.9995501,
+    -37.7430311
+  ],
+  "made": "2026-11-08",
+  "checked": {
+    "by": null,
+    "on": null,
+    "note": "not yet checked by eye"
+  },
+  "lot": {
+    "id": "23\\LP7668",
+    "lot": "23",
+    "plan": "LP7668",
+    "pfi": "175992",
+    "area_m2": 574,
+    "area_basis": "planar area of the Vicmap Parcel polygon in MGA 55 (GDA2020)",
+    "address": [
+      "24 ARTHUR STREET PRESTON 3072"
+    ],
+    "boundary_mga": [
+      [
+        323778.07,
+        5820813.72
+      ],
+      [
+        323780.47,
+        5820802.81
+      ],
+      [
+        323738.92,
+        5820807.21
+      ],
+      [
+        323737.57,
+        5820821.48
+      ],
+      [
+        323777.4,
+        5820817.26
+      ],
+      [
+        323778.07,
+        5820813.72
+      ]
+    ],
+    "corners_mga": {
+      "NE": [
+        323777.4,
+        5820817.26
+      ],
+      "SE": [
+        323780.47,
+        5820802.81
+      ],
+      "SW": [
+        323738.92,
+        5820807.21
+      ],
+      "NW": [
+        323737.57,
+        5820821.48
+      ]
+    },
+    "centre_mga": [
+      323758.57,
+      5820811.98
+    ],
+    "crs": "EPSG:7855 GDA2020 MGA zone 55",
+    "source": "Vicmap Property, Parcel Map Polygons (PARCEL_MP), DEECA, CC BY 4.0"
+  },
+  "tallest_neighbour": {
+    "value_m": null,
+    "status": "no official building height published here",
+    "source": null,
+    "radius_m": 100
+  },
+  "zones": {
+    "codes": [
+      "HCTZ2"
+    ],
+    "at": "lot centre",
+    "source": "Vicmap Planning, PLAN_ZONE, DTP, CC BY 4.0"
+  },
+  "overlays": {
+    "codes": [
+      "DCPO1",
+      "HO186",
+      "ICO1"
+    ],
+    "optional": [],
+    "at": "lot centre; optional = touches the lot but not its centre (edge or sliver), right whether named or not",
+    "source": "Vicmap Planning, PLAN_OVERLAY, DTP, CC BY 4.0"
+  },
+  "heritage": {
+    "overlay": [
+      "HO186"
+    ],
+    "optional": [],
+    "grading": null,
+    "grading_status": "the council publishes no heritage gradings as open data",
+    "source": "Vicmap Planning, PLAN_OVERLAY (HO codes)"
+  },
+  "nearest_station": {
+    "name": "BELL",
+    "distance_m": 321,
+    "next": {
+      "name": "PRESTON",
+      "distance_m": 491
+    },
+    "source": "Vicmap Transport, TR_RAIL_INFRASTRUCTURE rail_station, DTP, CC BY 4.0"
+  },
+  "official_kerb": {
+    "exists": false,
+    "datasets": [],
+    "source": "OpenFetch registry (data/datasets) of official council kerb datasets, checked by eye against the council portal"
+  },
+  "notes": []
+}

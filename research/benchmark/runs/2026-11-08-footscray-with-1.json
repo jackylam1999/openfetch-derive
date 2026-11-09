@@ -1,0 +1,22 @@
+{"site":"footscray","mode":"with","run":1,"date":"2026-11-08","model":"Sonnet (benchmark subagent)",
+"cost":{"tool_calls":21,"minutes":4},
+"facts":{"lot_id":"Lot 1 TP128421","lot_area_m2":181,
+"position":{"corners_mga":{"NE":[315119.91,5814309.35],"SE":[315115.85,5814279.28],"SW":[315114.72,5814279.41],"NW":[315113.53,5814310.11]},"centre_mga":[315115.09,5814294.69]},
+"zones":["ACZ1"],"overlays":["PO1","DCPO2","HO3"],"heritage":{"overlay":["HO3"],"grading":null},
+"nearest_station":{"name":"Footscray Station","distance_m":235},
+"official_kerb":true,
+"tallest_neighbour":{"height_m":9,"basis":"OpenStreetMap"}},
+"reach":{"lot_id":true,"lot_area":true,"address":true,"lot_boundary":true,"footprints":true,"heights":true,"height_basis":true,"zones":true,"overlays":true,"heritage":true,"ground_levels":true,"kerbs":true,"street_trees":true,"transport":true,"shadows":true},
+"numbers":[
+{"what":"lot area","value":181,"source":{"stamp":"vic-parcel-mp Lots 2025, find_site 2026-11-08 (lots within 10 m of address point)"}},
+{"what":"corner NE","value":[315119.91,5814309.35],"source":{"stamp":"vic-parcel-mp Lots 2025, find_site 2026-11-08"}},
+{"what":"corner SE","value":[315115.85,5814279.28],"source":{"stamp":"vic-parcel-mp Lots 2025, find_site 2026-11-08"}},
+{"what":"corner SW","value":[315114.72,5814279.41],"source":{"stamp":"vic-parcel-mp Lots 2025, find_site 2026-11-08"}},
+{"what":"corner NW","value":[315113.53,5814310.11],"source":{"stamp":"vic-parcel-mp Lots 2025, find_site 2026-11-08"}},
+{"what":"centre","value":[315115.09,5814294.69],"source":{"stamp":"vic-parcel-mp Lots 2025, find_site 2026-11-08"}},
+{"what":"tallest neighbour height","value":9,"source":{"stamp":"osm-buildings-vic, get_layers 2026-11-08, box 150 m at 315115.09,5814294.69, ground from vic-vicmap-elevation-metro contours"}},
+{"what":"building height on lot / typical neighbours","value":6,"source":{"stamp":"osm-buildings-vic, get_layers 2026-11-08, box 150 m"}},
+{"what":"ground level","value":20,"source":{"stamp":"vic-vicmap-elevation-metro-1-to-5-metre-1 (2011), get_things 2026-11-08, box 150 m"}},
+{"what":"ground level low","value":19,"source":{"stamp":"vic-vicmap-elevation-metro-1-to-5-metre-1 (2011), get_things 2026-11-08, box 150 m"}},
+{"what":"station distance Footscray","value":235,"source":{"stamp":"vic-stops-train/vic-vmlite-tr-rail-station, get_things nearest 2026-11-08, from site centre"}}
+]}
