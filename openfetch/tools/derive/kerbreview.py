@@ -5,6 +5,7 @@ to be automated and improved overtime").
     python3 kerbreview.py check kerbs.json[.gz] out_dir --roads roads_dir [--prev review.json] [--cases kerbreview-cases.json] [--no-photo]
     python3 kerbreview.py visual out_dir verdicts.json        (the visual reviewer's tile verdicts -> review.json result)
     python3 kerbreview.py selftest kerbs.json[.gz] version    (every case found in that version must be caught by the checks)
+    python3 kerbreview.py sample kerbs.json[.gz] out_dir [40]   (headline: random places sheet) ; score out_dir verdicts.json
     python3 kerbreview.py addcase x y version "Jacky's words" kinds [--r 20]   (kinds: comma list of KINDS, x y in EPSG 7856)
 
 check writes out_dir/review.json (counts, per-km rates, worst spots, fails) and out_dir/review-sheet.png (the worst 12 spots on
@@ -404,7 +405,32 @@ def addcase(a):
     return 0
 
 
+def sample(a):
+    """Headline score (Jacky 9 Nov 2026): N random places on our lines, judged whole-tile by a fresh reviewer; clean % =
+    OK tiles / judged tiles. Same seed per file, so a rerun shows the same places."""
+    import random
+    src, out, n = a[0], a[1], int(a[2]) if len(a) > 2 else 40
+    os.makedirs(out, exist_ok=True); lines = load(src)
+    rnd, tot, pick = random.Random(os.path.basename(src)), sum(ln.length for ln in lines), []
+    for _ in range(n):
+        r, i = rnd.uniform(0, tot), 0
+        while r > lines[i].length: r -= lines[i].length; i += 1
+        p = lines[i].interpolate(r); pick.append({'kind': 'random', 'x': p.x, 'y': p.y, 'size': 0})
+    sheet(lines, STRtree(lines), pick, os.path.join(out, 'random-sheet.jpg'), n=n)
+    json.dump({'source': src, 'spots': pick}, open(os.path.join(out, 'random.json'), 'w'), indent=1)
+    print('random sheet', n, 'tiles; judge with kerbreview-prompt.md, then: kerbreview.py score', out, 'verdicts.json')
+    return 0
+
+
+def score(a):
+    out, vf = a[0], a[1]; v = json.load(open(vf)); rj = os.path.join(out, 'random.json'); r = json.load(open(rj))
+    judged = [x for x in v if x['verdict'] in ('OK', 'WRONG')]
+    r['visual'] = v; r['clean_pct'] = round(100.0 * sum(x['verdict'] == 'OK' for x in judged) / max(1, len(judged)), 1)
+    json.dump(r, open(rj, 'w'), indent=1); print('clean', r['clean_pct'], '% of', len(judged), 'judged random places')
+    return 0
+
+
 if __name__ == '__main__':
-    cmd = {'check': check, 'visual': visual, 'selftest': selftest, 'addcase': addcase}
+    cmd = {'sample': sample, 'score': score, 'check': check, 'visual': visual, 'selftest': selftest, 'addcase': addcase}
     if len(sys.argv) < 3 or sys.argv[1] not in cmd: sys.exit(__doc__)
     sys.exit(cmd[sys.argv[1]](sys.argv[2:]))
