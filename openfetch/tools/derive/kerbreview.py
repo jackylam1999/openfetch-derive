@@ -5,6 +5,7 @@ to be automated and improved overtime").
     python3 kerbreview.py check kerbs.json[.gz] out_dir --roads roads_dir [--prev review.json] [--cases kerbreview-cases.json] [--no-photo]
     python3 kerbreview.py visual out_dir verdicts.json        (the visual reviewer's tile verdicts -> review.json result)
     python3 kerbreview.py selftest kerbs.json[.gz] version    (every case found in that version must be caught by the checks)
+    python3 kerbreview.py selftest                           (built-in shapes: closed block loops have no free ends)
     python3 kerbreview.py sample kerbs.json[.gz] out_dir --roads d [--n 40] [--places p.json]   (headline sheet) ; score out_dir verdicts.json
     python3 kerbreview.py addcase x y version "Jacky's words" kinds [--r 20]   (kinds: comma list of KINDS, x y in EPSG 7856)
 
@@ -170,9 +171,13 @@ def insides(lines, tree, spots):
             spots.append({'kind': 'inside', 'x': p.x, 'y': p.y, 'size': round(ln.length, 1)})
 
 
+def closed(ln):
+    return Point(ln.coords[0]).distance(Point(ln.coords[-1])) < END_TOUCH   # a closed block loop has no free ends at its seam
+
+
 def besides(lines, tree, spots):
     for i, ln in enumerate(lines):
-        if ln.length < 3: continue
+        if ln.length < 3 or closed(ln): continue
         for end, d in ((Point(ln.coords[0]), 0.0), (Point(ln.coords[-1]), ln.length)):
             near = [j for j in tree.query(end, predicate='dwithin', distance=BESIDE_D) if j != i]
             if not near or any(lines[j].distance(end) < END_TOUCH for j in near): continue
@@ -186,7 +191,7 @@ def besides(lines, tree, spots):
 
 def nears(lines, tree, spots):
     for i, ln in enumerate(lines):
-        if ln.length < 3: continue
+        if ln.length < 3 or closed(ln): continue
         for end, d in ((Point(ln.coords[0]), 0.0), (Point(ln.coords[-1]), ln.length)):
             near = [(lines[j].distance(end), j) for j in tree.query(end, predicate='dwithin', distance=NEAR_D) if j != i]
             if not near: continue
@@ -219,7 +224,7 @@ def load_roads(d):
 def gaps(lines, tree, spots, roads=None):
     ends = []                                           # free kerb ends with their outward heading
     for i, ln in enumerate(lines):
-        if ln.length < 4: continue
+        if ln.length < 4 or closed(ln): continue
         for k, end in ((0, Point(ln.coords[0])), (1, Point(ln.coords[-1]))):
             if any(lines[j].distance(end) < END_TOUCH for j in tree.query(end, predicate='dwithin', distance=END_TOUCH) if j != i):
                 continue
@@ -383,7 +388,24 @@ def visual(a):
     return 0 if rv['result'] == 'pass' else 1
 
 
+def geomtest():
+    """Built-in shapes: a closed ring beside a line has no free ends; an open line ending 2 m short of another is one near."""
+    from shapely.geometry import LineString
+    ring = LineString([(0, 0), (40, 0), (40, 40), (0, 40), (0.3, 0.2)])
+    open_ = LineString([(0, -3), (40, -3)]); stub = LineString([(20, -30), (20, -5)])
+    got = {}
+    for name, ls, want in (('ring', [ring, open_], 0), ('stub', [ring, open_, stub], 1)):
+        tree, sp = STRtree(ls), []
+        besides(ls, tree, sp); nears(ls, tree, sp); gaps(ls, tree, sp)
+        sp = [x for x in sp if x['kind'] in ('near', 'beside', 'gap') and not (x['y'] == -3 and x['x'] in (0, 40))]
+        got[name] = (len(sp), want)
+    bad = {k: v for k, v in got.items() if v[0] != v[1]}
+    print('geomtest', 'pass' if not bad else 'fail', got)
+    return 1 if bad else 0
+
+
 def selftest(a):
+    if not a: return geomtest()
     lines = load(a[0]); spots, _, _ = review(lines); miss = []
     for cs in json.load(open(CASES)):
         if cs['version'] != a[1]: continue
@@ -449,5 +471,6 @@ def score(a):
 
 if __name__ == '__main__':
     cmd = {'sample': sample, 'score': score, 'check': check, 'visual': visual, 'selftest': selftest, 'addcase': addcase}
+    if sys.argv[1:] == ['selftest']: sys.exit(geomtest())
     if len(sys.argv) < 3 or sys.argv[1] not in cmd: sys.exit(__doc__)
     sys.exit(cmd[sys.argv[1]](sys.argv[2:]))
