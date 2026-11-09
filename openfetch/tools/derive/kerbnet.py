@@ -81,10 +81,21 @@ def fuse(loop, T, tt, stats):
         return loop
     n_s = max(int(g.length // 1.0), 8)
     s = np.linspace(0, g.length, n_s, endpoint=False)
-    P = np.array([g.interpolate(x).coords[0] for x in s])
-    tg = np.array([tangent(g, x) for x in s]); N = np.c_[-tg[:, 1], tg[:, 0]]
+    P = shapely.get_coordinates(shapely.line_interpolate_point(g, s))
+    A = shapely.get_coordinates(shapely.line_interpolate_point(g, np.maximum(s - 1.5, 0)))
+    B = shapely.get_coordinates(shapely.line_interpolate_point(g, np.minimum(s + 1.5, g.length)))
+    tg = B - A; tg = tg / np.maximum(np.hypot(tg[:, 0], tg[:, 1]), 1e-9)[:, None]; N = np.c_[-tg[:, 1], tg[:, 0]]
     c = np.full(len(s), np.nan)
+    bend = np.zeros(len(s), bool)
+    if FUSE_WALL:
+        # version k: the loop's round corners are not moved (a corner fused onto the kerb running on across a side street's mouth
+        # pinched it towards the next block: 416 "near" spots in the first full run); they follow their neighbours' shift
+        h = 3
+        for i in range(len(s)):
+            bend[i] = tg[(i - h) % len(s)] @ tg[(i + h) % len(s)] < np.cos(np.radians(BEND_ANG))
     for i in range(len(s)):
+        if bend[i]:
+            continue
         ray = LineString([P[i] - N[i] * FUSE, P[i] + N[i] * FUSE])
         best = None
         for k in tt.query(ray, predicate="intersects"):
@@ -106,7 +117,9 @@ def fuse(loop, T, tt, stats):
     seen = ~np.isnan(c)
     stats["fuse_seen_m"] = stats.get("fuse_seen_m", 0) + int(seen.sum()); stats["fuse_all_m"] = stats.get("fuse_all_m", 0) + len(s)
     if not seen.any():
-        return loop
+        if not FUSE_WALL:
+            return loop
+        c = np.zeros(len(s)); seen = np.ones(len(s), bool)   # version k: nothing seen, the loop still goes through the opening below
     # a lone seen point or two is noise; then interpolate round the loop and smooth
     idx = np.where(seen)[0]
     x = np.r_[idx - len(s), idx, idx + len(s)]; y = np.r_[c[idx], c[idx], c[idx]]
@@ -117,9 +130,28 @@ def fuse(loop, T, tt, stats):
     pad = np.r_[cc[-k:], cc, cc[:k]]
     cc = np.convolve(pad, np.ones(2 * k + 1) / (2 * k + 1), mode="valid")
     Q = P + N * cc[:, None]
+    if FUSE_WALL:
+        # version k: fused loops are opened (arms thinner than 2 x OPEN_R go) and untied (a loop crossing itself keeps its
+        # largest valid ring); 57 "fold" and 20 "self" spots in the first full runs were thin arms pulled onto one kerb
+        v = Polygon(Q).buffer(0).buffer(-OPEN_R, join_style="round").buffer(OPEN_R, join_style="round")
+        v = max(getattr(v, "geoms", [v]), key=lambda q: q.area) if not v.is_empty else None
+        if v is None or v.area < 0.5 * Polygon(loop).area:
+            stats["fuse_dropped"] = stats.get("fuse_dropped", 0) + 1
+            return None   # mostly thin arms: a strand between two streets, not a block
+        if v.geom_type == "Polygon":
+            return np.asarray(v.exterior.coords)
+    if FUSE_WALL and not LineString(np.vstack([Q, Q[:1]])).is_simple:
+        # version k: a fused loop that crosses itself (tight corners, cul-de-sac ends) is untied: its largest valid ring
+        v = Polygon(Q).buffer(0)
+        v = max(getattr(v, "geoms", [v]), key=lambda q: q.area) if not v.is_empty else None
+        stats["fuse_untied"] = stats.get("fuse_untied", 0) + 1
+        if v is None or v.area < 0.5 * Polygon(loop).area:
+            return loop
+        return np.asarray(v.exterior.coords)
     return np.vstack([Q, Q[:1]])
 
 
+EDGE_LINES, HOUSE = [], []   # version k: the closure lines and the house lots of the last build (for far_cut)
 NET = []   # the street centrelines a joining kerb may not cross: the block network plus streets left out only for lying in lots
 BARRIER = []
 
@@ -752,6 +784,10 @@ def across(out, roads, stats):
     return res
 
 
+BEND_ANG = 35.0    # deg over 6 m: a loop stretch turning this much is a corner and is not fused (version k)
+OPEN_R = 1.5       # m, version k: block arms thinner than twice this are opened away
+ACROSS_D = 12.0    # m, version k: see far_cut
+EDGE_CUT = 2.0     # m, version k: loop stretches this near the area-edge closure line are no kerb
 CLOSE_EDGE = False  # version k (--skeleton): close the street network on the area's edge (see build)
 FAR_CUT = 18.0     # m, a loop stretch farther than this from every street centreline is no kerb (a block side on a railway or creek)
 NARROW_SEEN = 0.5  # share of a narrow street's length with a kerb seen each side that makes it a kerbed street, not a lane
@@ -843,11 +879,14 @@ def build(traced, lots, roads, area=None, stats=None, keep_traced=True):
             key = (round(e[0], 2), round(e[1], 2)); deg[key] = deg.get(key, 0) + 1
     if CLOSE_EDGE:
         global FUSE_WALL
+        EDGE_LINES[:] = edge
         sp = [p for i, p in enumerate(pieces) if i not in closure]; FUSE_WALL = (sp, STRtree(sp))
     faces = [f for f in polygonize(pieces) if f.area > 150]
     lt = STRtree(lots)
     # house lots (no street centreline runs through them): their street fronts are where the road reserve ends
-    house = [l for l in lots if not any(g.intersects(l.buffer(-0.5)) for g in (pieces[int(k)] for k in pt.query(l)))]
+    house = [l for l in lots if not any(pieces[int(k)].intersects(l.buffer(-0.5)) for k in pt.query(l) if int(k) not in closure)]
+    if CLOSE_EDGE:
+        HOUSE[:] = house
     ht = STRtree(house) if house else None
     T = [LineString(t) for t in traced if len(t) > 1]
     tt = STRtree(T) if T else None
@@ -962,9 +1001,15 @@ def build(traced, lots, roads, area=None, stats=None, keep_traced=True):
                 rr /= 2; sm = poly.buffer(-rr, join_style="round").buffer(rr, join_style="round")
             if sm.is_empty:
                 sm = poly
+            if CLOSE_EDGE:
+                # version k: arms of a block thinner than 3 m are strands, not kerbs (51 "fold" spots in the first full run)
+                op = sm.buffer(-OPEN_R, join_style="round").buffer(OPEN_R, join_style="round")
+                sm = op if not op.is_empty else sm
             for pp in getattr(sm, "geoms", [sm]):
                 if pp.geom_type == "Polygon":
-                    out.append(fuse(np.asarray(pp.exterior.coords), *(FUSE_T or (T, tt)), stats))
+                    fz = fuse(np.asarray(pp.exterior.coords), *(FUSE_T or (T, tt)), stats)
+                    if fz is not None:
+                        out.append(fz)
     stats["blocks"] = blocks
     # traced kerb that is not part of any block kerb (lane kerbs, median islands, build-outs) is kept, part by part: the stretch
     # of a traced line more than DUP m from every block loop, at least KEEP_MIN m long, its ends snapped onto the loop it meets
@@ -2070,6 +2115,16 @@ def keep_runs(o, bad, res, min_len=KEEP_MIN):
     """Line o sampled every 1 m with bad[i] per sample: the good runs of min_len m or more go to res (a closed loop is opened at
     its first bad sample, so a run across its start stays one line)."""
     g = LineString(o); ts = np.linspace(0, g.length, len(bad))
+    bad = bad.copy(); i = 0; closed = np.hypot(*(o[0] - o[-1])) < 0.5
+    while i < len(bad):
+        # a bad run under BAD_MIN m inside the line is kept: cutting it would only leave two ends 1-4 m apart (the first full
+        # runs' "near" spots: 1-2 m nicks out of block corners)
+        j = i
+        while j + 1 < len(bad) and bad[j + 1] == bad[i]:
+            j += 1
+        if bad[i] and j - i + 1 < BAD_MIN and (closed or (i > 0 and j < len(bad) - 1)):
+            bad[i:j + 1] = False
+        i = j + 1
     if not bad.any():
         res.append(o); return
     if np.hypot(*(o[0] - o[-1])) < 0.5 and not bad[0]:
@@ -2093,14 +2148,26 @@ def _pts(o):
 def far_cut(out, streets, stats):
     """Stretches of a line farther than FAR_CUT m from every street centreline go (leftovers under KEEP_MIN m too)."""
     st = STRtree(streets); res = []
+    ed = unary_union(EDGE_LINES) if EDGE_LINES else None
     for o in out:
         g, ts, P = _pts(o)
         far = shapely.distance(P, np.asarray(streets, object)[st.nearest(P)]) > FAR_CUT
+        if EDGE_LINES:
+            far |= shapely.distance(P, ed) < EDGE_CUT
+            # a stretch over ACROSS_D m from its nearest street and running across it (over 45 deg) crosses lots or a park,
+            # it does not follow a street (the area-edge faces' leftovers: full run 3's "gap" spots)
+            dn = shapely.distance(P, np.asarray(streets, object)[st.nearest(P)])
+            idx = np.where(dn > ACROSS_D)[0]
+            for a_ in idx:
+                h = streets[int(st.nearest(P[a_]))]; q = h.project(P[a_])
+                if abs(tangent(g, ts[a_]) @ tangent(h, q)) < np.cos(np.radians(45)):
+                    far[a_] = True
         stats["far_cut_m"] = stats.get("far_cut_m", 0) + int(far.sum())
         keep_runs(o, far, res)
     return res
 
 
+BAD_MIN = 5         # samples (1 m): shorter cuts out of a line are not made
 UNDUP_LEFT = 15.0   # m, shorter pieces left between doubled stretches are strands, not kerbs
 UNDUP_D = 2.7   # m, a stretch this close beside a longer kerb, running with it (within 25 deg), doubles it (reviewer dup 2.0 m)
 
@@ -2146,7 +2213,16 @@ def skeleton(traced, lots, ground, level, area, st, a):
     out = no_motorway(out, level, st)
     if "--local-only" in a:
         out = no_motorway(out, level, st, drop=(1, 2, 3, 4))
-    return undup(out, st)
+    out = undup(out, st)
+    # j's roundabout islands (i review V33, j baseline places 15 and 34): small round faces of local streets with no lot in them
+    kerbg.OVER[:] = BRIDGES; kerbg.TUNNELS_G[:] = TUNNELS
+    out = kerbg.roundabouts(out, level, lots, st)
+    # the ends the cuts left (scope, area edge, doubles) are tidied by the steps the reviewer's kinds were built against: folds and
+    # strands inside other kerbs (guard), short breaks and open corners (gapjoin, endpairs, snap_near), ends beside a line (besides)
+    streets = [g for g, fh in ground if fh not in ka.SKIP_FH] + street_links(ground)
+    out = kerbg.guard(kerbg.guard(out, st), st)
+    out = snap_near(endpairs(gapjoin(out, streets, st), streets, st), st)
+    return kerbg.guard(kerbg.besides(out, st), st)
 
 
 def _write(out, kind, a, roads, st, back):
