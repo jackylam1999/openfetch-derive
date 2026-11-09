@@ -5,7 +5,7 @@ to be automated and improved overtime").
     python3 kerbreview.py check kerbs.json[.gz] out_dir --roads roads_dir [--prev review.json] [--cases kerbreview-cases.json] [--no-photo]
     python3 kerbreview.py visual out_dir verdicts.json        (the visual reviewer's tile verdicts -> review.json result)
     python3 kerbreview.py selftest kerbs.json[.gz] version    (every case found in that version must be caught by the checks)
-    python3 kerbreview.py sample kerbs.json[.gz] out_dir [40]   (headline: random places sheet) ; score out_dir verdicts.json
+    python3 kerbreview.py sample kerbs.json[.gz] out_dir --roads d [--n 40] [--places p.json]   (headline sheet) ; score out_dir verdicts.json
     python3 kerbreview.py addcase x y version "Jacky's words" kinds [--r 20]   (kinds: comma list of KINDS, x y in EPSG 7856)
 
 check writes out_dir/review.json (counts, per-km rates, worst spots, fails) and out_dir/review-sheet.png (the worst 12 spots on
@@ -406,19 +406,36 @@ def addcase(a):
 
 
 def sample(a):
-    """Headline score (Jacky 9 Nov 2026): N random places on our lines, judged whole-tile by a fresh reviewer; clean % =
-    OK tiles / judged tiles. Same seed per file, so a rerun shows the same places."""
-    import random
-    src, out, n = a[0], a[1], int(a[2]) if len(a) > 2 else 40
-    os.makedirs(out, exist_ok=True); lines = load(src)
-    rnd, tot, pick = random.Random(os.path.basename(src)), sum(ln.length for ln in lines), []
-    for _ in range(n):
-        r, i = rnd.uniform(0, tot), 0
-        while r > lines[i].length: r -= lines[i].length; i += 1
-        p = lines[i].interpolate(r); pick.append({'kind': 'random', 'x': p.x, 'y': p.y, 'size': 0})
-    sheet(lines, STRtree(lines), pick, os.path.join(out, 'random-sheet.jpg'), n=n)
+    """Headline score (Jacky 9 Nov 2026): N fixed random places on local streets (ground-level centrelines, functionhierarchy
+    5-7, next to a kerb of the first version sampled), judged whole-tile by a fresh reviewer; clean % = OK / judged. Places are
+    picked from the STREETS, not from our lines, so a missing kerb can be hit, and the same places file (--places) is reused for
+    every later version so versions compare on the same ground.
+    kerbreview.py sample kerbs.json out_dir --roads roads_dir [--n 40] [--places places.json]"""
+    import glob, random
+    from shapely.geometry import shape
+    src, out = a[0], a[1]; opt = {k: a[a.index('--' + k) + 1] for k in ('roads', 'n', 'places') if '--' + k in a}
+    os.makedirs(out, exist_ok=True); lines = load(src); tree = STRtree(lines)
+    if opt.get('places') and os.path.exists(opt['places']):
+        pick = json.load(open(opt['places']))['spots']
+    else:
+        roads = []
+        for fn in sorted(glob.glob(os.path.join(opt['roads'], '*.json'))):
+            for f in json.load(open(fn)).get('features', []):
+                pr = f.get('properties') or {}
+                if f.get('geometry') and str(pr.get('functionhierarchy')) in ('5', '6', '7') and str(pr.get('roadontype', 1)) not in ('2', '3'):
+                    roads.append(shape(f['geometry']))
+        roads = [r for r in roads if r.geom_type == 'LineString' and len(tree.query(r, predicate='dwithin', distance=15))]
+        rnd, tot, pick = random.Random('kerb-sample-v1'), sum(r.length for r in roads), []
+        while len(pick) < int(opt.get('n', 40)):
+            x, i = rnd.uniform(0, tot), 0
+            while x > roads[i].length: x -= roads[i].length; i += 1
+            p = roads[i].interpolate(x)
+            if all(math.hypot(p.x - q['x'], p.y - q['y']) > 150 for q in pick):
+                pick.append({'kind': 'random', 'x': round(p.x, 1), 'y': round(p.y, 1), 'size': 0})
+        json.dump({'spots': pick, 'made_from': src}, open(os.path.join(out, 'places.json'), 'w'), indent=1)
+    sheet(lines, tree, pick, os.path.join(out, 'random-sheet.jpg'), n=len(pick))
     json.dump({'source': src, 'spots': pick}, open(os.path.join(out, 'random.json'), 'w'), indent=1)
-    print('random sheet', n, 'tiles; judge with kerbreview-prompt.md, then: kerbreview.py score', out, 'verdicts.json')
+    print('random sheet', len(pick), 'tiles; judge with kerbreview-prompt.md, then: kerbreview.py score', out, 'verdicts.json')
     return 0
 
 
