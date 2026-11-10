@@ -133,7 +133,8 @@ def fuse(loop, T, tt, stats):
     if FUSE_WALL:
         # version k: fused loops are opened (arms thinner than 2 x OPEN_R go) and untied (a loop crossing itself keeps its
         # largest valid ring); 57 "fold" and 20 "self" spots in the first full runs were thin arms pulled onto one kerb
-        v = Polygon(Q).buffer(0).buffer(-OPEN_R, join_style="round").buffer(OPEN_R, join_style="round")
+        v = Polygon(Q).buffer(0).buffer(SLIT_R, join_style="round").buffer(-SLIT_R, join_style="round")   # slits shut
+        v = v.buffer(-OPEN_R, join_style="round").buffer(OPEN_R, join_style="round")
         v = max(getattr(v, "geoms", [v]), key=lambda q: q.area) if not v.is_empty else None
         if v is None or v.area < 0.5 * Polygon(loop).area:
             stats["fuse_dropped"] = stats.get("fuse_dropped", 0) + 1
@@ -785,6 +786,7 @@ def across(out, roads, stats):
 
 
 BEND_ANG = 35.0    # deg over 6 m: a loop stretch turning this much is a corner and is not fused (version k)
+SLIT_R = 1.5       # m, version k: notches into a fused loop narrower than twice this are shut (run 6 fold 337790 6242640)
 OPEN_R = 1.5       # m, version k: block arms thinner than twice this are opened away
 ACROSS_D = 12.0    # m, version k: see far_cut
 EDGE_CUT = 2.0     # m, version k: loop stretches this near the area-edge closure line are no kerb
@@ -2192,6 +2194,96 @@ def undup(out, stats):
     return res
 
 
+NEAR_CLEAR, NEAR_BACK = 5.0, 15.0   # m: a free end 0.05-5 m from another kerb is cut back until 5 m clear (at most 15 m)
+
+
+def near_trim(out, stats):
+    """Version k (reviewer case V104 back in run 5: a kerb stopping 1-5 m from another): a free end left close to another kerb
+    after every join step is cut back until it is clear of it, when no more than NEAR_BACK m has to go and KEEP_MIN m stays."""
+    G = [LineString(o) for o in out]; tree = STRtree(G); res = []
+    for i, o in enumerate(out):
+        g = G[i]
+        if np.hypot(*(o[0] - o[-1])) < 0.5 or g.length < KEEP_MIN:
+            res.append(o); continue
+        a, b = 0.0, g.length
+        for j in (0, 1):
+            e = Point(o[0] if j == 0 else o[-1]); oth = [G[int(k)] for k in tree.query(e.buffer(NEAR_CLEAR)) if int(k) != i]
+            d = min((h.distance(e) for h in oth), default=99)
+            if not 0.05 < d < NEAR_CLEAR:
+                continue
+            for t in np.arange(1.0, NEAR_BACK + 0.01, 1.0):
+                q = g.interpolate(t if j == 0 else g.length - t)
+                if min(h.distance(q) for h in oth) >= NEAR_CLEAR:
+                    if j == 0: a = t
+                    else: b = g.length - t
+                    stats["near_trim"] = stats.get("near_trim", 0) + 1
+                    break
+        if b - a >= KEEP_MIN:
+            res.append(np.asarray(substring(g, a, b).coords) if (a > 0 or b < g.length) else o)
+    return res
+
+
+END_CROSS = 12.0
+SHORT_CROSS = 20.0   # m: a line this short crossing another (a bow-tie left by the join steps, run 6) is dropped
+
+
+def short_cross(out, stats):
+    G = [LineString(o) for o in out]; tree = STRtree(G); drop = set()
+    for i, g in sorted(enumerate(G), key=lambda x: x[1].length):
+        if g.length >= SHORT_CROSS:
+            break
+        if any(int(k) != i and int(k) not in drop and g.crosses(G[int(k)]) for k in tree.query(g)) or not g.is_simple:
+            drop.add(i)
+    stats["short_cross"] = len(drop)
+    out = [o for i, o in enumerate(out) if i not in drop]
+    # two kerb ends overshooting across each other (an X, run 6 334193 6251350): each end crossing another line within
+    # END_CROSS m of its tip is cut at the crossing, so the two meet end-on instead
+    G = [LineString(o) for o in out]; tree = STRtree(G); res = []
+    for i, g in enumerate(G):
+        a, b = 0.0, g.length
+        if np.hypot(*(out[i][0] - out[i][-1])) >= 0.5:
+            for k in tree.query(g):
+                if int(k) == i or not g.crosses(G[int(k)]):
+                    continue
+                x = g.intersection(G[int(k)])
+                for q in getattr(x, "geoms", [x]):
+                    if q.geom_type != "Point":
+                        continue
+                    t = g.project(q)
+                    if t <= END_CROSS:
+                        a = max(a, t)
+                    elif g.length - t <= END_CROSS:
+                        b = min(b, t)
+        if a > 0 or b < g.length:
+            stats["end_cross_cut"] = stats.get("end_cross_cut", 0) + 1
+            if b - a >= KEEP_MIN:
+                res.append(np.asarray(substring(g, a, b).coords))
+        else:
+            res.append(out[i])
+    return res
+
+
+def ring_pinch(out, stats, d=2.5, along=8.0, r=2.0):
+    """A closed loop that comes back within d m of itself more than `along` m further round (a notch the guard leaves alone,
+    run 6 337790 6242640) is shut with a closing of r m, kept when the loop keeps 90 % of its area."""
+    res = []
+    for o in out:
+        if np.hypot(*(o[0] - o[-1])) >= 0.5 or len(o) < 4:
+            res.append(o); continue
+        g = LineString(o); n = max(int(g.length // 1.0), 4); ts = np.linspace(0, g.length, n, endpoint=False)
+        P = shapely.line_interpolate_point(g, ts); a_, b_ = STRtree(P).query(P, predicate="dwithin", distance=d)
+        sep = np.abs(ts[a_] - ts[b_]); sep = np.minimum(sep, g.length - sep)
+        if not (sep > along).any():
+            res.append(o); continue
+        p0 = Polygon(o).buffer(0); v = p0.buffer(r, join_style="round").buffer(-r, join_style="round")
+        v = max(getattr(v, "geoms", [v]), key=lambda q: q.area) if not v.is_empty else None
+        if v is not None and v.geom_type == "Polygon" and abs(v.area - p0.area) <= 0.1 * p0.area:
+            res.append(np.asarray(v.exterior.coords)); stats["ring_pinch"] = stats.get("ring_pinch", 0) + 1
+        else:
+            res.append(o)
+    return res
+
+
 def skeleton(traced, lots, ground, level, area, st, a):
     """Version k (Jacky 8 Nov 2026 picked the reviewer's option 1, "skeleton first"): every street block is one closed kerb loop
     from the street layout and the property lots (closed and rounded by construction, both sides of every street, round dead-end
@@ -2222,7 +2314,8 @@ def skeleton(traced, lots, ground, level, area, st, a):
     streets = [g for g, fh in ground if fh not in ka.SKIP_FH] + street_links(ground)
     out = kerbg.guard(kerbg.guard(out, st), st)
     out = snap_near(endpairs(gapjoin(out, streets, st), streets, st), st)
-    return kerbg.guard(kerbg.besides(out, st), st)
+    out = near_trim(kerbg.guard(kerbg.besides(out, st), st), st)
+    return ring_pinch(kerbg.guard(short_cross(out, st), st), st)
 
 
 def _write(out, kind, a, roads, st, back):

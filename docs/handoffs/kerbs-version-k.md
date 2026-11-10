@@ -1,8 +1,9 @@
-# Kerbs version k: closed loop per street block (8-9 Nov 2026) - PAUSED
+# Kerbs version k: closed loop per street block (8-10 Nov 2026)
 
 Thread "Build kerb version k from block loops". Jacky picked the kerb reviewer's option 1 ("skeleton first"). Paused 9 Nov 03:11Z
-(Jacky: stop automatic work until the Wednesday token reset). Code: derive branch claude/project-thread-pjr3xa (on j 2233c96).
-Files: /mnt/project-files/.notes/kerb-k/ (full-k4.json.gz = run 4, post6.json.gz = run 4 + tidy pass, scripts/, ref-parra-gda2020.json).
+(token reset), resumed 10 Nov 11:20Z (Jacky: "keep the kerb running"). Code: derive branch claude/project-thread-pjr3xa (on j 2233c96).
+Files: /mnt/project-files/.notes/kerb-k/ (kerbs-nsw-k.geojson.gz = run 7, reviewer/ = its review.json + sheet, scripts/,
+ref-parra-gda2020.json).
 
 ## How to run
 `kerbnet.py nsw-r11.json lots roads out.json --traced-only-area --skeleton --local-only --fuse-with nsw-traced-raw.json`
@@ -33,12 +34,14 @@ streets only) in .notes/kerb-k/scripts. Box 315000 6256000 316000 6257000.
    from a street and running across it go. no_motorway (fh 1) and the local-only cut (fh 1-4). undup (doubles, 2.7 m).
 4. kerbg.roundabouts (j's islands), then tidy: kerbg.guard x2, gapjoin, endpairs, snap_near, kerbg.besides, guard.
 
-## Where it stands (resume here)
-- Run 4 (+ tidy pass applied afterwards, post6): 3,047 km, geometry fold 5, gap 1, near 66 (under cap), no other kind; one
-  old case back (V104, near at 336336 6243644, made by the besides cut). The 5 folds were thin closed rings on loops where
-  nothing was traced (fuse returned early before the opening): fixed in code (unseen loops now go through the opening).
-- Run 5 (all of the above built in) was started and STOPPED for the pause. Next step: run it (command above), run the review,
-  look at V104 and anything left, then send the geojson path + Parramatta precise to the reviewer thread "Automate kerb quality
-  review" for the visual sheet and the 40-place headline (j baseline 52.6 % clean; k must beat it).
-- Known weak spots: main-road junction cut ends; streets whose centreline sits on the kerb (Parramatta 315900 6256385);
-  streets lying in road-parcel lots are still dropped as lanes (a road-parcel rule was tried: +2 km at 19 % precise, removed).
+## Where it stands (10 Nov 2026)
+Run 7 (full, ~31 min): 3,055 km; kerbreview (v6yk7j db4f11f, --roads, --prev j independent): every hard kind 0, near 50
+(under cap), no old case hit -> **pending visual**; Parramatta precise 85.4 % (j 80.6 %, bar 82 %), local found 66.8 %
+(j 65.0 %). Sent to the reviewer thread "Automate kerb quality review" for the sheet and the 40-place headline (j 52.6 % clean).
+Final steps added since run 4 (skeleton() end): near_trim (free end 0.05-5 m from a kerb cut back until 5 m clear; fixed case
+V104), short_cross (short bow-ties dropped; ends crossing another line within 12 m of the tip cut at the crossing), ring_pinch
+(a closed loop folding within 2.5 m of itself gets a 2 m closing; a 2 m closing inside fuse for every loop lost 0.8 km in the
+Parramatta box, so it is applied only to pinched rings). Fast check of a tidy step: scripts/post.py runs kerbnet steps on a
+finished output in ~1 min instead of a 30-min full run.
+Known weak spots: main-road junction cut ends; streets whose centreline sits on the kerb (Parramatta 315900 6256385);
+streets lying in road-parcel lots are still dropped as lanes (a road-parcel rule was tried: +2 km at 19 % precise, removed).
