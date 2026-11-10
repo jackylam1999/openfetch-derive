@@ -5,6 +5,8 @@ to be automated and improved overtime").
     python3 kerbreview.py check kerbs.json[.gz] out_dir --roads roads_dir [--prev review.json] [--cases kerbreview-cases.json] [--no-photo]
     python3 kerbreview.py visual out_dir verdicts.json        (the visual reviewer's tile verdicts -> review.json result)
     python3 kerbreview.py selftest kerbs.json[.gz] version    (every case found in that version must be caught by the checks)
+    python3 kerbreview.py selftest                           (built-in shapes: closed block loops have no free ends)
+    python3 kerbreview.py sample kerbs.json[.gz] out_dir --roads d [--n 40] [--places p.json]   (headline sheet) ; score out_dir verdicts.json
     python3 kerbreview.py addcase x y version "Jacky's words" kinds [--r 20]   (kinds: comma list of KINDS, x y in EPSG 7856)
 
 check writes out_dir/review.json (counts, per-km rates, worst spots, fails) and out_dir/review-sheet.png (the worst 12 spots on
@@ -25,7 +27,7 @@ Kinds (all in metres, EPSG 7856; every one is a shape council kerb lines do not 
   beside   a free kerb end sits within BESIDE_D of another kerb that runs parallel to it for BESIDE_LEN (stops beside a line)
   near     a kerb end NEAR_D or closer to another kerb without touching it (a corner or join left open)
   merge    a kerb end slides into another kerb at under 30 deg, running within 3 m of it for MERGE_LEN (a Y)
-           (near is counted, not capped; merge capped at 0 on 8 Nov 2026: e 5 of 10 judged wrong, f 5 of 7 flagged + 4 of 5 earlier merges)
+           (near capped at 0.05 per km on 8 Nov 2026: in g all 12 near tiles judged wrong, hooks and ends stopping short; merge capped at 0 on 8 Nov 2026: e 5 of 10 judged wrong, f 5 of 7 flagged + 4 of 5 earlier merges)
   gap      two free kerb ends face each other (both within GAP_ANG of the line between them) GAP_MIN-GAP_MAX apart, nothing
            crossing the gap: a broken straight kerb (Jacky 8 Nov 2026, whole-suburb preview). Capped at 0 with --roads (street
            centrelines rule out street mouths; --roads is required since 8 Nov 2026). On e with --roads 190 (12 checked by eye: all broken kerbs or leftover
@@ -59,7 +61,7 @@ GAP_MIN, GAP_MAX, GAP_ANG, GAP_CAP = 1.0, 30.0, 10.0, 0.0   # gap: two free ends
 NEAR_D, MERGE_LEN = 5.0, 8.0         # near: a kerb end 1-5 m from another kerb (a join left open); merge: slides into another line
 END_TOUCH = 1.0                       # a crossing this close to a kerb end is a join, not a crossing
 KINDS = ('cross', 'poke', 'self', 'fold', 'dup', 'inside', 'beside', 'near', 'merge', 'gap', 'loop')
-CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.0, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'near': 99, 'merge': 0.0, 'gap': 99, 'loop': 0.0}   # near, merge: measured only until a visual run confirms them
+CAP = {'cross': 0.0, 'poke': 0.0, 'self': 0.0, 'fold': 0.0, 'dup': 0.0, 'inside': 0.0, 'beside': 0.0, 'near': 0.05, 'merge': 0.0, 'gap': 99, 'loop': 0.0}   # near, merge: measured only until a visual run confirms them
 RATCHET = 0.10                        # a later version may be at most 10 % worse than the best passing one, per kind
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = os.path.join(HERE, 'kerbreview-cases.json')
@@ -169,9 +171,13 @@ def insides(lines, tree, spots):
             spots.append({'kind': 'inside', 'x': p.x, 'y': p.y, 'size': round(ln.length, 1)})
 
 
+def closed(ln):
+    return Point(ln.coords[0]).distance(Point(ln.coords[-1])) < END_TOUCH   # a closed block loop has no free ends at its seam
+
+
 def besides(lines, tree, spots):
     for i, ln in enumerate(lines):
-        if ln.length < 3: continue
+        if ln.length < 3 or closed(ln): continue
         for end, d in ((Point(ln.coords[0]), 0.0), (Point(ln.coords[-1]), ln.length)):
             near = [j for j in tree.query(end, predicate='dwithin', distance=BESIDE_D) if j != i]
             if not near or any(lines[j].distance(end) < END_TOUCH for j in near): continue
@@ -185,7 +191,7 @@ def besides(lines, tree, spots):
 
 def nears(lines, tree, spots):
     for i, ln in enumerate(lines):
-        if ln.length < 3: continue
+        if ln.length < 3 or closed(ln): continue
         for end, d in ((Point(ln.coords[0]), 0.0), (Point(ln.coords[-1]), ln.length)):
             near = [(lines[j].distance(end), j) for j in tree.query(end, predicate='dwithin', distance=NEAR_D) if j != i]
             if not near: continue
@@ -218,7 +224,7 @@ def load_roads(d):
 def gaps(lines, tree, spots, roads=None):
     ends = []                                           # free kerb ends with their outward heading
     for i, ln in enumerate(lines):
-        if ln.length < 4: continue
+        if ln.length < 4 or closed(ln): continue
         for k, end in ((0, Point(ln.coords[0])), (1, Point(ln.coords[-1]))):
             if any(lines[j].distance(end) < END_TOUCH for j in tree.query(end, predicate='dwithin', distance=END_TOUCH) if j != i):
                 continue
@@ -382,7 +388,24 @@ def visual(a):
     return 0 if rv['result'] == 'pass' else 1
 
 
+def geomtest():
+    """Built-in shapes: a closed ring beside a line has no free ends; an open line ending 2 m short of another is one near."""
+    from shapely.geometry import LineString
+    ring = LineString([(0, 0), (40, 0), (40, 40), (0, 40), (0.3, 0.2)])
+    open_ = LineString([(0, -3), (40, -3)]); stub = LineString([(20, -30), (20, -5)])
+    got = {}
+    for name, ls, want in (('ring', [ring, open_], 0), ('stub', [ring, open_, stub], 1)):
+        tree, sp = STRtree(ls), []
+        besides(ls, tree, sp); nears(ls, tree, sp); gaps(ls, tree, sp)
+        sp = [x for x in sp if x['kind'] in ('near', 'beside', 'gap') and not (x['y'] == -3 and x['x'] in (0, 40))]
+        got[name] = (len(sp), want)
+    bad = {k: v for k, v in got.items() if v[0] != v[1]}
+    print('geomtest', 'pass' if not bad else 'fail', got)
+    return 1 if bad else 0
+
+
 def selftest(a):
+    if not a: return geomtest()
     lines = load(a[0]); spots, _, _ = review(lines); miss = []
     for cs in json.load(open(CASES)):
         if cs['version'] != a[1]: continue
@@ -404,7 +427,50 @@ def addcase(a):
     return 0
 
 
+def sample(a):
+    """Headline score (Jacky 9 Nov 2026): N fixed random places on local streets (ground-level centrelines, functionhierarchy
+    5-7, next to a kerb of the first version sampled), judged whole-tile by a fresh reviewer; clean % = OK / judged. Places are
+    picked from the STREETS, not from our lines, so a missing kerb can be hit, and the same places file (--places) is reused for
+    every later version so versions compare on the same ground.
+    kerbreview.py sample kerbs.json out_dir --roads roads_dir [--n 40] [--places places.json]"""
+    import glob, random
+    from shapely.geometry import shape
+    src, out = a[0], a[1]; opt = {k: a[a.index('--' + k) + 1] for k in ('roads', 'n', 'places') if '--' + k in a}
+    os.makedirs(out, exist_ok=True); lines = load(src); tree = STRtree(lines)
+    if opt.get('places') and os.path.exists(opt['places']):
+        pick = json.load(open(opt['places']))['spots']
+    else:
+        roads = []
+        for fn in sorted(glob.glob(os.path.join(opt['roads'], '*.json'))):
+            for f in json.load(open(fn)).get('features', []):
+                pr = f.get('properties') or {}
+                if f.get('geometry') and str(pr.get('functionhierarchy')) in ('5', '6', '7') and str(pr.get('roadontype', 1)) not in ('2', '3'):
+                    roads.append(shape(f['geometry']))
+        roads = [r for r in roads if r.geom_type == 'LineString' and len(tree.query(r, predicate='dwithin', distance=15))]
+        rnd, tot, pick = random.Random('kerb-sample-v1'), sum(r.length for r in roads), []
+        while len(pick) < int(opt.get('n', 40)):
+            x, i = rnd.uniform(0, tot), 0
+            while x > roads[i].length: x -= roads[i].length; i += 1
+            p = roads[i].interpolate(x)
+            if all(math.hypot(p.x - q['x'], p.y - q['y']) > 150 for q in pick):
+                pick.append({'kind': 'random', 'x': round(p.x, 1), 'y': round(p.y, 1), 'size': 0})
+        json.dump({'spots': pick, 'made_from': src}, open(os.path.join(out, 'places.json'), 'w'), indent=1)
+    sheet(lines, tree, pick, os.path.join(out, 'random-sheet.jpg'), n=len(pick))
+    json.dump({'source': src, 'spots': pick}, open(os.path.join(out, 'random.json'), 'w'), indent=1)
+    print('random sheet', len(pick), 'tiles; judge with kerbreview-prompt.md, then: kerbreview.py score', out, 'verdicts.json')
+    return 0
+
+
+def score(a):
+    out, vf = a[0], a[1]; v = json.load(open(vf)); rj = os.path.join(out, 'random.json'); r = json.load(open(rj))
+    judged = [x for x in v if x['verdict'] in ('OK', 'WRONG')]
+    r['visual'] = v; r['clean_pct'] = round(100.0 * sum(x['verdict'] == 'OK' for x in judged) / max(1, len(judged)), 1)
+    json.dump(r, open(rj, 'w'), indent=1); print('clean', r['clean_pct'], '% of', len(judged), 'judged random places')
+    return 0
+
+
 if __name__ == '__main__':
-    cmd = {'check': check, 'visual': visual, 'selftest': selftest, 'addcase': addcase}
+    cmd = {'sample': sample, 'score': score, 'check': check, 'visual': visual, 'selftest': selftest, 'addcase': addcase}
+    if sys.argv[1:] == ['selftest']: sys.exit(geomtest())
     if len(sys.argv) < 3 or sys.argv[1] not in cmd: sys.exit(__doc__)
     sys.exit(cmd[sys.argv[1]](sys.argv[2:]))
