@@ -1349,5 +1349,89 @@
   "words": "visual reviewer: kerbs drawn along a 4-lane main road (should be blank), north line has a kink",
   "version": "/tmp/claude-0/-home-user-openfetch-derive/dab9345d-efb1-5287-b051-eb166b832dcf/scratchpad/j.geojson.gz",
   "by": "visual reviewer"
+ },
+ {
+  "id": "V113",
+  "x": 335155.5,
+  "y": 6250498.0,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: wide road beside solar building has a kerb on its west side only; east side missing (or stray line along a main road); lane ends left open",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V114",
+  "x": 325685.0,
+  "y": 6250572.8,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: kerb line crosses the lane diagonally from north side to south side; half of each kerb missing",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V115",
+  "x": 333830.7,
+  "y": 6250693.6,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lines drawn on motorway/distributor ramps, one ends mid-carriageway",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V116",
+  "x": 328968.8,
+  "y": 6247694.9,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane east kerb stops ~9 m short of the main road; stub line drawn over a building roof at top",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V117",
+  "x": 332833.7,
+  "y": 6247279.6,
+  "r": 15,
+  "kinds": [
+   "near"
+  ],
+  "words": "visual reviewer: lane kerbs pinch together at the mouth instead of turning corners; a line runs over a house roof at top",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V118",
+  "x": 326734.0,
+  "y": 6248678.5,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: west kerb line runs mid-lane then cuts across footpath/median; kink at circle",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V119",
+  "x": 334406.2,
+  "y": 6247093.9,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: north kerb drifts ~5 m into trees/footpath on the left half; service lane has no kerbs",
+  "version": "/mnt/project-files/.notes/kerb-k/kerbs-nsw-k.geojson.gz",
+  "by": "visual reviewer"
  }
 ]
