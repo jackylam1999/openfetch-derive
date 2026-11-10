@@ -45,3 +45,17 @@ Parramatta box, so it is applied only to pinched rings). Fast check of a tidy st
 finished output in ~1 min instead of a 30-min full run.
 Known weak spots: main-road junction cut ends; streets whose centreline sits on the kerb (Parramatta 315900 6256385);
 streets lying in road-parcel lots are still dropped as lanes (a road-parcel rule was tried: +2 km at 19 % precise, removed).
+
+## Reviewer verdict on k (10 Nov 14:21Z): FAIL, level with j
+Visual 29/56 WRONG + 4 unsure (j 27/55); 40-place headline 55.6 % clean, 20/36 judged (j 52.6 %, 20/38, the same 20 OK
+places). Geometry all 0, near 50. Files .notes/kerb-k/reviewer-independent/; new cases derive v6yk7j d083c5a.
+Patterns: (1) missing kerbs: one street side gone (1/4, 27, 43, 52), old defect places now empty (22-24), side streets left
+undrawn with the main kerb straight across their mouths (33, 40, 49; headline 4, 28, 35: the 7 m lane filter and road-parcel
+lots), whole local streets (headline 20, 31), a corner (32), grass median both sides (37); (2) loops on the wrong ground: roofs
+(11, 12, 54), across the road (6), in the traffic lane (50), on verges ~6 m out (15, 20, 29, 43, headline 21: unseen loop parts at
+the default/frontage offset), grass with no road (39); (3) lines on main roads (10, 44, 48, 56; headline 22, 40); (4) open ends
+mid-road (25, 44), ends 8-9 m short (11, 51), roundabout ring 2 m off its island (34). Still wrong: V16, V38, V39, V77, V78.
+Loop rule (kerb-auto-loop): i, j, k in a row did not lower the wrong count, so the loop stopped and reported to the coordinator.
+Precise rose (85.4 %) but what the eye sees did not: most wrong places are missing streets and unseen stretches, which
+alignment does not measure. If continued, the lever is coverage of side streets (lane test) and where nothing was traced (blank,
+not a guess: reviewer option 2), not more tidy rules.
