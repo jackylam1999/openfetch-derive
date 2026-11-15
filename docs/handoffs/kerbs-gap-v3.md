@@ -11,7 +11,7 @@ weird turns onto the wrong kerb).
 `--bridge --lane-mouth --loose --split` on version k loops (run: kerbgap-tools/runcell-v3.sh, cells.txt; join: props.py).
 - First try (unseen runs up to 60 m even when bending): CBD 221 blocks but Jacky marked 3 merges across streets + 1 bump.
   All four were bending guessed stretches; straight-only bridging drops all four. KG_RUN 25 and 40 brought them back.
-- Result: 1,219 km, 2,284 loops (2026-11-15: 1,022 km, 1,914); CBD six squares 150 -> 187 blocks.
+- Result: 1,219 km, 2,284 loops (2026-11-15: 1,022 km, 1,914); CBD six squares 150 -> 193 blocks (47 -> 62 km).
 - Independent reviewer, 40 fresh places on new lines only (seed 20261117, 70 m + 160 m tiles): 40 OK, 0 WRONG, 0 UNSURE.
 
 ## Lessons
