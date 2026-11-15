@@ -221,6 +221,8 @@ def loose_ends(K, roads, lots, rtree=None):
     edge = traced_area(K).boundary
     loose, n = [], 0
     for i, p in enumerate(K.p):
+        if np.hypot(*(p[0] - p[-1])) < 1.0:
+            continue
         for w in (0, 1):
             e, v = _end(p, w); n += 1
             pe = Point(e)

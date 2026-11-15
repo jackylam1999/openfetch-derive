@@ -3,12 +3,6 @@ drawn yet: the block face between ground street centrelines, minus each street's
 from the traced kerbs on that same side), corners rounded. Kept whole or left blank. Lessons kept from the 6-7 Nov centreline
 loops (kerbnet.py): never replace a drawn kerb (only blank blocks), lanes and tunnels/bridges never shape a block, no open ends.
 
-TRIED 15 Nov 2026 on the CBD (333-335 x 6249-6252), NOT PUBLISHED. Round 1-2 (lots as guard): 11 odd of 39, 11 of 26. Round 3
-(malls split blocks, building footprints as guard, shelters ignored, covered streets dropped): 55 OK / 18 odd / 3 unsure of 76.
-Round 4 (+ step, L shape, sliver, no-street-between gates): 17 OK / 6 odd / 8 unsure of 31. The CBD core grid fills cleanly; the
-odd ones are where a street line is not a street on the ground (private ways, rail cuttings, freeway slivers), and no data feature
-tried (seen kerb across the street, lots, buildings) separates them.
-
     python3 kerbgrid.py lots_dir roads_dir raw.json drawn_dir out.json --box x0 y0 x1 y1 --buildings footprints.json(lon/lat) [--why why.json] [--official o.json]
 """
 import glob, json, os, sys
@@ -27,7 +21,7 @@ LANE_FH = 7
 ROUND = 4.0          # m corner radius
 LOT_IN, LOT_RUN = 5.0, 3.0   # lot lines sit up to 5 m off the aerial in the CBD (lessons), so lots only catch gross errors
 BLD_IN, BLD_RUN = 1.5, 3.0   # the ring may not run more than 1.5 m inside a building footprint for over 3 m
-MALL_FH, MALL_LOTS = (8, 9, 10, 11), 0.5   # a path with lots on both sides (Pitt St Mall, Martin Place) splits blocks like a street
+MALL_FH, MALL_LOTS = (8, 9, 10, 11), 0.3   # a path with buildings on both sides (Pitt St Mall, Martin Place) splits blocks like a street
 AGREE_NEAR, AGREE_D, AGREE_MIN = 6.0, 2.5, 0.7   # where a traced kerb lies within 6 m, it must be within 2.5 m on 70 % of it
 OPEN_W, OPEN_A = 4.5, 40.0   # an open area (no lot) over 9 m wide inside the ring: plaza, mall or a street missing from the map
 LOT_SHARE = 0.5
@@ -36,7 +30,8 @@ SAME_DIR = 12.0
 COVERED = 0.5    # a street line more than half under building footprints runs beneath a building: not a street on the ground
 STUB_MAX = 80.0  # m: dead-end streets inside a block shorter than this (CBD lanes mapped as local roads) are lane mouths, not edges
 NARROW = 6.0     # m: a longer dead-end street whose buildings stand within this of its line is a lane between buildings, not a street
-SHELTER_D = 3.0  # m: a footprint this close to a street centreline is a shelter or canopy on the street, not a building in a block
+SHELTER_D, SHELTER_A = 3.0, 120.0  # a SMALL footprint (< 120 m2) this close to a street centreline is a shelter or canopy on the street;
+# a house or building on a mapped street that is not on the ground (paper road, path) must stay (15 Nov 2026: 23 of 337 odd blocks)
 BLD = []
 EDGE_MIN = 5.0   # m of a street along the face edge; a lane that only meets the edge at its mouth does not notch the ring
 ROAD_OUT, ROAD_RUN = 3.5, 10   # 3.5 m outside the ring is road or paving: inside a building for over 10 m, there is no street there
@@ -245,7 +240,16 @@ def read_drawn(d, tr):
     return out
 
 
+REVIEW = {"SHAPE_A": 40.0, "STEP_TURN": 45.0, "HULL_MIN": 0.6, "LOT_RUN": 1e9, "EVID_RUN": 10 ** 9, "LOT_SHARE": 0.2,
+          "AGREE_MIN": 0.4, "SLIVER": 5.0, "OPEN_A": 400.0, "ROAD_RUN": 25, "NEAR_D": 4.0}
+# --review (Jacky 15 Nov 2026 chose "double-review every block"): soft gates loosened so more blocks are drafted; every drafted
+# block then goes to two independent visual reviewers and only blocks both pass are published. Hard gates stay: drawn, cross,
+# building, no road, open area, no street between, official, size.
+
+
 def main(a):
+    if "--review" in a:
+        globals().update(REVIEW)
     to = Transformer.from_crs(4326, 7856, always_xy=True).transform
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
     i = a.index("--box"); area = box(*map(float, a[i + 1:i + 5]))
@@ -259,14 +263,6 @@ def main(a):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
     ongr = kn.on_ground(roads, over)
     ground = [(g, fh) for g, fh in ongr if fh not in ka.SKIP_FH]
-    lt = STRtree(lots)
-    for g, fh in ongr:
-        if fh in MALL_FH and g.length >= 20:
-            zone = g.buffer(20).difference(g.buffer(3))
-            sides = [zone.intersection(g.buffer(20, single_sided=True)), zone.intersection(g.buffer(-20, single_sided=True))]
-            ok = all(sd.area > 0 and unary_union([lots[int(k)] for k in lt.query(sd)] or [Polygon()]).intersection(sd).area / sd.area >= MALL_LOTS for sd in sides)
-            if ok:
-                ground.append((g, MALL_FH[0]))
     R = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     R = [g for g in R if g.intersects(area.buffer(300))]
     D = [g for g in read_drawn(a[3], to) if g.intersects(area.buffer(300))]
@@ -276,6 +272,14 @@ def main(a):
         g = Polygon([to(*c[:2]) for c in g.exterior.coords]).buffer(0)
         if g.area > 10 and g.intersects(area.buffer(300)):
             B.append(g)
+    ab = STRtree(B)
+    for g, fh in ongr:
+        if fh in MALL_FH and g.length >= 20:
+            zone = g.buffer(20).difference(g.buffer(3))
+            sides = [zone.intersection(g.buffer(20, single_sided=True)), zone.intersection(g.buffer(-20, single_sided=True))]
+            ok = all(sd.area > 0 and unary_union([B[int(k)] for k in ab.query(sd)] or [Polygon()]).intersection(sd).area / sd.area >= MALL_LOTS for sd in sides)
+            if ok:
+                ground.append((g, MALL_FH[0]))
     bt = STRtree(B)
     def covered(g):
         u = unary_union([B[int(k)] for k in bt.query(g)] or [Polygon()])
@@ -283,7 +287,7 @@ def main(a):
     ground = [(g, fh) for g, fh in ground if not covered(g)]
     st = ground
     gt = STRtree([g for g, fh in ground if fh != LANE_FH])
-    B = [b for b in B if not len(gt.query(b, predicate="dwithin", distance=SHELTER_D))]   # tram stops, canopies, footbridges on a street
+    B = [b for b in B if b.area >= SHELTER_A or not len(gt.query(b, predicate="dwithin", distance=SHELTER_D))]   # tram stops, canopies
     bt = STRtree(B)
     BLD[:] = [(B, bt)]
     ctx = {"bld": (B, bt), "raw": (R, STRtree(R)), "drawn": (D, STRtree(D)), "lots": (lots, STRtree(lots)),
