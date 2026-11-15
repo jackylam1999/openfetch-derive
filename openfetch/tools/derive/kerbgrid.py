@@ -3,12 +3,13 @@ drawn yet: the block face between ground street centrelines, minus each street's
 from the traced kerbs on that same side), corners rounded. Kept whole or left blank. Lessons kept from the 6-7 Nov centreline
 loops (kerbnet.py): never replace a drawn kerb (only blank blocks), lanes and tunnels/bridges never shape a block, no open ends.
 
-TRIED 15 Nov 2026 on the CBD (333-335 x 6249-6252), NOT PUBLISHED: where both exist the street-offset ring sat within 1 m of our
-measured kerb 85 % of the time, but on the blocks still blank an independent reviewer found 11 odd of 39 (round 1) and 11 odd of 26
-(round 2, with shape and no-road gates): blocks left blank are mostly where the street map does not match the ground (centrelines
-along rail, freeway ramps, private ways, lots misaligned), so the street grid there is not a safe guide.
+TRIED 15 Nov 2026 on the CBD (333-335 x 6249-6252), NOT PUBLISHED. Round 1-2 (lots as guard): 11 odd of 39, 11 of 26. Round 3
+(malls split blocks, building footprints as guard, shelters ignored, covered streets dropped): 55 OK / 18 odd / 3 unsure of 76.
+Round 4 (+ step, L shape, sliver, no-street-between gates): 17 OK / 6 odd / 8 unsure of 31. The CBD core grid fills cleanly; the
+odd ones are where a street line is not a street on the ground (private ways, rail cuttings, freeway slivers), and no data feature
+tried (seen kerb across the street, lots, buildings) separates them.
 
-    python3 kerbgrid.py lots_dir roads_dir raw.json drawn_dir out.json --box x0 y0 x1 y1 [--why why.json] [--official o.json]
+    python3 kerbgrid.py lots_dir roads_dir raw.json drawn_dir out.json --box x0 y0 x1 y1 --buildings footprints.json(lon/lat) [--why why.json] [--official o.json]
 """
 import glob, json, os, sys
 import numpy as np
@@ -21,17 +22,30 @@ import kerbaudit as ka
 import kerbnet as kn
 import kerbregular as kr
 
-HALF_W = {1: 9.0, 2: 8.0, 3: 7.0, 4: 6.5, 5: 5.5, 6: 4.5, 7: 3.0}
+HALF_W = {1: 9.0, 2: 8.0, 3: 7.0, 4: 6.5, 5: 5.5, 6: 4.5, 7: 3.0, 8: 4.0}
 LANE_FH = 7
 ROUND = 4.0          # m corner radius
-LOT_IN, LOT_RUN = 2.0, float(os.environ.get("KG_LOTRUN", 3.0))
+LOT_IN, LOT_RUN = 5.0, 3.0   # lot lines sit up to 5 m off the aerial in the CBD (lessons), so lots only catch gross errors
+BLD_IN, BLD_RUN = 1.5, 3.0   # the ring may not run more than 1.5 m inside a building footprint for over 3 m
+MALL_FH, MALL_LOTS = (8, 9, 10, 11), 0.5   # a path with lots on both sides (Pitt St Mall, Martin Place) splits blocks like a street
 AGREE_NEAR, AGREE_D, AGREE_MIN = 6.0, 2.5, 0.7   # where a traced kerb lies within 6 m, it must be within 2.5 m on 70 % of it
 OPEN_W, OPEN_A = 4.5, 40.0   # an open area (no lot) over 9 m wide inside the ring: plaza, mall or a street missing from the map
 LOT_SHARE = 0.5
 DRAWN_D = 3.0
 SAME_DIR = 12.0
-ROAD_OUT, ROAD_RUN = 3.5, 15   # 3.5 m outside the ring is road: inside a lot for over 15 m, the "street" there is not a road
+COVERED = 0.5    # a street line more than half under building footprints runs beneath a building: not a street on the ground
+STUB_MAX = 80.0  # m: dead-end streets inside a block shorter than this (CBD lanes mapped as local roads) are lane mouths, not edges
+NARROW = 6.0     # m: a longer dead-end street whose buildings stand within this of its line is a lane between buildings, not a street
+SHELTER_D = 3.0  # m: a footprint this close to a street centreline is a shelter or canopy on the street, not a building in a block
+BLD = []
+EDGE_MIN = 5.0   # m of a street along the face edge; a lane that only meets the edge at its mouth does not notch the ring
+ROAD_OUT, ROAD_RUN = 3.5, 10   # 3.5 m outside the ring is road or paving: inside a building for over 10 m, there is no street there
 MIN_A, MAX_A = 300.0, 60000.0
+STEP_LEN, STEP_TURN = 15.0, 20.0   # a jog: a stretch under 15 m between two opposite turns of over 20 degrees
+SLIVER = 7.0     # m: a block narrower than 14 m is a sliver between two street lines, not a block
+NEAR_D, NEAR_RUN = 6.0, 20   # a drawn kerb under 6 m outside the ring for 20 m: no street between the two blocks
+HULL_MIN = 0.85  # area over convex hull: below it the ring is an L, a neck or a wrap round another block
+EVID_D, EVID_RUN = 16.0, int(os.environ.get("KG_EVRUN", 40))   # across the street (16 m out) a seen or drawn kerb shows the street is real
 NECK, NOTCH, SHAPE_A = 5.0, 6.0, 9.0   # a neck under 10 m wide or a notch or bump under 12 m across, over 15 m2: an odd shape
 
 
@@ -59,6 +73,32 @@ def bearing(g):
     return np.degrees(np.arctan2(d[1], d[0])) % 180
 
 
+def stub(g, face, streets):
+    """True when g belongs to a dead-end tree of streets inside the face whose total length is under STUB_MAX."""
+    s_g, s_fh, s_t = streets
+    inside = [s_g[int(k)] for k in s_t.query(face) if s_g[int(k)].intersection(face.exterior.buffer(0.5)).length < EDGE_MIN
+              and s_g[int(k)].intersects(face.buffer(-1))]
+    comp, grew = [g], True
+    while grew:
+        grew = False
+        for h in inside:
+            if not any(h.equals(c) for c in comp) and any(h.distance(c) < 0.5 for c in comp):
+                comp.append(h); grew = True
+    if sum(c.length for c in comp) < STUB_MAX:
+        return True
+    if not BLD:
+        return False
+    b_g, b_t = BLD[0]
+    d = []
+    for c in comp:
+        P = samples(c, 2.0)
+        dd = np.full(len(P), np.inf)
+        for k in b_t.query(c.buffer(NARROW)):
+            dd = np.minimum(dd, shapely.distance(P, b_g[int(k)]))
+        d += list(dd)
+    return float(np.median(d)) < NARROW
+
+
 def ring_for(face, streets, raw):
     """One street side = one kerb distance: segments on the face's edge that run the same way (within SAME_DIR degrees) and are
     the same class share the median measured distance, so a straight side never steps where the street line is split."""
@@ -67,24 +107,36 @@ def ring_for(face, streets, raw):
     segs = []
     for k in s_t.query(face):
         part = s_g[int(k)].intersection(edge)
-        on_edge = part.length >= 1
-        if not on_edge and (s_fh[int(k)] == LANE_FH or not s_g[int(k)].intersects(face)):
+        on_edge = part.length >= EDGE_MIN
+        if not on_edge and (s_fh[int(k)] == LANE_FH or not s_g[int(k)].intersects(face) or stub(s_g[int(k)], face, streets)):
             continue
         fh = s_fh[int(k)]
         segs.append([s_g[int(k)], fh, side_dist(s_g[int(k)], face, raw), bearing(part if on_edge else s_g[int(k)])])
     if not segs:
         return [], 0
     for s in segs:
-        if s[2] is not None:
-            s.append(s[2])
-        else:
-            peers = [t[2] for t in segs if t[2] is not None and HALF_W.get(t[1]) == HALF_W.get(s[1])
+        if True:
+            peers = [t[2] for t in segs if t[2] is not None
                      and min(abs(t[3] - s[3]), 180 - abs(t[3] - s[3])) <= SAME_DIR and t[0].distance(s[0]) < 1.0]
             s.append(float(np.median(peers)) if peers else HALF_W.get(s[1], 5.0))
     bands = [g.buffer(hw, cap_style=1) for g, fh, m, b, hw in segs]
     q = face.difference(unary_union(bands)).buffer(-ROUND).buffer(ROUND)
     ps = [p for p in getattr(q, "geoms", [q]) if p.geom_type == "Polygon" and p.area >= MIN_A]
     return ps, sum(s[2] is not None for s in segs) / len(segs)
+
+
+def jog(q):
+    c = np.asarray(q.exterior.simplify(0.75).coords)[:-1]
+    n = len(c)
+    if n < 4:
+        return False
+    d = np.roll(c, -1, axis=0) - c
+    L = np.hypot(d[:, 0], d[:, 1]); ang = np.degrees(np.arctan2(d[:, 1], d[:, 0]))
+    turn = (np.roll(ang, -1) - ang + 180) % 360 - 180   # turn at the end of segment i
+    for i in range(n):
+        if L[i] < STEP_LEN and abs(turn[i - 1]) > STEP_TURN and abs(turn[i]) > STEP_TURN and np.sign(turn[i - 1]) != np.sign(turn[i]):
+            return True
+    return False
 
 
 def judge(q, ctx):
@@ -94,12 +146,20 @@ def judge(q, ctx):
         dd = q.symmetric_difference(alt)
         if any(p.area > SHAPE_A for p in getattr(dd, "geoms", [dd])):
             return "shape"
+    core = q.buffer(-SLIVER)
+    if core.is_empty or core.area < 0.15 * q.area:
+        return "sliver"
+    if jog(q):
+        return "step"
+    if q.area / q.convex_hull.area < HULL_MIN:
+        return "L shape"
     ring = LineString(q.exterior.coords)
     for k in ctx["drawn"][1].query(q.buffer(DRAWN_D)):
         if ctx["drawn"][0][int(k)].distance(ring) < DRAWN_D or q.contains(ctx["drawn"][0][int(k)]):
             return "drawn"
     for k in ctx["all_st"][1].query(ring):
-        if ctx["all_st"][0][int(k)].intersects(ring) and ctx["all_st_fh"][int(k)] != LANE_FH:
+        g = ctx["all_st"][0][int(k)]
+        if g.intersects(ring) and ctx["all_st_fh"][int(k)] != LANE_FH and not (g.length < STUB_MAX and g.difference(q).length < 12):
             return "cross"
     lots, l_t = ctx["lots"]
     near = [lots[int(k)] for k in l_t.query(q)]
@@ -115,10 +175,19 @@ def judge(q, ctx):
         run = run + 1 if v else 0; best = max(best, run)
     if best > LOT_RUN:
         return "lot"
+    b_g, b_t = ctx["bld"]
+    inb = np.zeros(len(P), bool)
+    for k in b_t.query(ring.buffer(BLD_IN + 1)):
+        inb |= shapely.contains(b_g[int(k)].buffer(-BLD_IN), P)
+    run = best = 0
+    for v in np.r_[inb, inb]:
+        run = run + 1 if v else 0; best = max(best, run)
+    if best > BLD_RUN:
+        return "building"
     Po = samples(q.buffer(ROAD_OUT, join_style=2).exterior, 1.0)
     inl = np.zeros(len(Po), bool)
-    for k in l_t.query(q.buffer(ROAD_OUT + 1)):
-        inl |= shapely.contains(lots[int(k)], Po)
+    for k in b_t.query(q.buffer(ROAD_OUT + 1)):
+        inl |= shapely.contains(b_g[int(k)], Po)
     run = best = 0
     for v in np.r_[inl, inl]:
         run = run + 1 if v else 0; best = max(best, run)
@@ -134,6 +203,31 @@ def judge(q, ctx):
     m = dn < AGREE_NEAR
     if m.sum() >= 10 and (dn[m] < AGREE_D).mean() < AGREE_MIN:
         return "disagree"
+    nb = np.zeros(len(P), bool)
+    d_g, d_t = ctx["drawn"]
+    near_out = q.buffer(NEAR_D).difference(q.buffer(0.5))
+    for k in d_t.query(near_out):
+        part = d_g[int(k)].intersection(near_out)
+        if not part.is_empty:
+            nb |= shapely.distance(P, part) < NEAR_D
+    run = best = 0
+    for v in np.r_[nb, nb]:
+        run = run + 1 if v else 0; best = max(best, run)
+    if best > NEAR_RUN:
+        return "no street between"
+    ev = np.zeros(len(P), bool)
+    ring_out = q.buffer(EVID_D).difference(q.buffer(1.0))
+    for src in ("raw", "drawn"):
+        g_, t_ = ctx[src]
+        for k in t_.query(ring_out):
+            part = g_[int(k)].intersection(ring_out)
+            if not part.is_empty:
+                ev |= shapely.distance(P, part) < EVID_D
+    run = best = 0
+    for v in np.r_[~ev, ~ev]:
+        run = run + 1 if v else 0; best = max(best, run)
+    if best > EVID_RUN:
+        return "no evidence"
     if ctx["off"] is not None:
         for k in ctx["off"][1].query(q.buffer(6)):
             if ctx["off"][0][int(k)].distance(ring) < 6:
@@ -163,12 +257,36 @@ def main(a):
             pr = f.get("properties") or {}
             if pr.get("roadontype") in (2, 3) and f.get("geometry"):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
-    ground = [(g, fh) for g, fh in kn.on_ground(roads, over) if fh not in ka.SKIP_FH]
-    st = ground
+    ongr = kn.on_ground(roads, over)
+    ground = [(g, fh) for g, fh in ongr if fh not in ka.SKIP_FH]
+    lt = STRtree(lots)
+    for g, fh in ongr:
+        if fh in MALL_FH and g.length >= 20:
+            zone = g.buffer(20).difference(g.buffer(3))
+            sides = [zone.intersection(g.buffer(20, single_sided=True)), zone.intersection(g.buffer(-20, single_sided=True))]
+            ok = all(sd.area > 0 and unary_union([lots[int(k)] for k in lt.query(sd)] or [Polygon()]).intersection(sd).area / sd.area >= MALL_LOTS for sd in sides)
+            if ok:
+                ground.append((g, MALL_FH[0]))
     R = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     R = [g for g in R if g.intersects(area.buffer(300))]
     D = [g for g in read_drawn(a[3], to) if g.intersects(area.buffer(300))]
-    ctx = {"raw": (R, STRtree(R)), "drawn": (D, STRtree(D)), "lots": (lots, STRtree(lots)),
+    B = []
+    for f in json.load(open(a[a.index("--buildings") + 1]))["features"]:
+        g = shape(f["geometry"])
+        g = Polygon([to(*c[:2]) for c in g.exterior.coords]).buffer(0)
+        if g.area > 10 and g.intersects(area.buffer(300)):
+            B.append(g)
+    bt = STRtree(B)
+    def covered(g):
+        u = unary_union([B[int(k)] for k in bt.query(g)] or [Polygon()])
+        return g.intersection(u).length > COVERED * g.length
+    ground = [(g, fh) for g, fh in ground if not covered(g)]
+    st = ground
+    gt = STRtree([g for g, fh in ground if fh != LANE_FH])
+    B = [b for b in B if not len(gt.query(b, predicate="dwithin", distance=SHELTER_D))]   # tram stops, canopies, footbridges on a street
+    bt = STRtree(B)
+    BLD[:] = [(B, bt)]
+    ctx = {"bld": (B, bt), "raw": (R, STRtree(R)), "drawn": (D, STRtree(D)), "lots": (lots, STRtree(lots)),
            "all_st": ([g for g, _ in ground], STRtree([g for g, _ in ground])), "all_st_fh": [fh for _, fh in ground], "off": None}
     if "--official" in a:
         O = [LineString([to(*c[:2]) for c in f["geometry"]["coordinates"]]) for f in json.load(open(a[a.index("--official") + 1]))["features"] if f["geometry"]["type"] == "LineString"]
