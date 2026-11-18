@@ -23,3 +23,11 @@ reviewers per 20 sheets (BRIEF in the run folder), `join2.py` (both OK, no grey 
 376 building, 1,420 reviewed, 1,140 both OK, 9 self-touching, 1 wobble cap: 1,130 added, 683 km.
 Lessons: the gate's roads folder must be current (stale Nov 5 roads made kerbreview flag 2 false gaps in the old version);
 kerbreview's 48-tile sheet is downsampled when an agent opens it whole, so a reviewer must judge it in 12-tile crops.
+
+## Run 18 Nov 2026 later (NSW ranks 1-5, inner Sydney, LiDAR traces from the 7 Nov inputs)
+523 drafted, 243 out at the building gate, 280 reviewed, 226 passed both reviewers. In the inner city two reviewers are not
+enough (about 1 in 4 of their passes was doubtful on a hand check), so two more looks: `brief-strict.md` (passed 52, but turned
+down too broadly with one generic reason) and `brief-sides.md` on the rest (name what is beside the line on each side; passed 37).
+A hand check of every pass dropped 17 (rear lanes beside narrow terrace strips, private loops in townhouse estates, a building
+forecourt by the water): 72 added, 37 km, version 2026-11-18-b, all gates pass. Lesson: the leftover inner-city blanks
+(terrace strips with rear lanes, estates) need a better street-edge source, not more review rounds.
