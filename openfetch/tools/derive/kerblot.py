@@ -50,7 +50,8 @@ CL_CLEAR = 0.5       # m the ring keeps from every street centreline outside the
 BLD_IN, BLD_RUN, BLD_A = 3.0, 3.0, 120.0   # roof guard (the same numbers as the version gate)
 AGREE_NEAR, AGREE_D, AGREE_MIN = 5.0, 1.5, 0.6
 MIN_A, MAX_A = 300.0, 250000.0
-SMOOTH = 0.6
+FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight past notches under 3 m wide in the lot fronts and
+                                                        # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
 NOMEASURE = []
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
@@ -169,6 +170,14 @@ def street_feet(stl, names, land0, raw, raw_t, drawn, drawn_t, foot):
                 foot.setdefault(nm, {}).setdefault(key, []).extend(d[(d >= D_MIN) & (d <= D_MAX)].round(2).tolist())
 
 
+
+def smooth(p):
+    """A kerb line, not a copy of every jog in the lot fronts: fill thin notches (lane mouths, set-back lots), then round the
+    corners. Without it 287 of 423 rings had kinks or wobbles (kerbaudit), seven times the rate of traced kerbs."""
+    c = p.buffer(FILL_E, quad_segs=16).buffer(-FILL_E, quad_segs=16).difference(p)
+    p = unary_union([p] + [g for g in getattr(c, "geoms", [c]) if g.area > 0 and g.buffer(-FILL_W / 2).is_empty])
+    return p.buffer(ROUND_C, quad_segs=16).buffer(-ROUND_C - ROUND_R, quad_segs=16).buffer(ROUND_R, quad_segs=16)
+
 def judge_block(comp, ctx):
     """Kerb ring for one block or (reason, None)."""
     P, N = front_samples(comp)
@@ -249,13 +258,17 @@ def judge_block(comp, ctx):
     D[fill] = np.interp(np.flatnonzero(fill), np.flatnonzero(~fill), D[~fill], period=len(D))
     segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
             for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
-    poly = unary_union(segs + [comp]).buffer(SMOOTH).buffer(-SMOOTH)
+    poly = smooth(unary_union(segs + [comp]))
+    if poly.geom_type != "Polygon" and sorted(g.area for g in poly.geoms)[-2] > 1.0:
+        return "ring splits when smoothed", None
     if poly.geom_type != "Polygon":
         poly = max(poly.geoms, key=lambda g: g.area)
     ring = Polygon(poly.exterior).simplify(0.15)
     q = ring.exterior
     if not q.is_simple:
         return "ring touches itself", None
+    if comp.difference(ring.buffer(0.3)).area > 1.0:
+        return "ring cuts into the lots", None
     if not (MIN_A <= ring.area <= MAX_A):
         return "size", None
     fold = []
