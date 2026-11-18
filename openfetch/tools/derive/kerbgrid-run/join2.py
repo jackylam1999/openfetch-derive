@@ -1,5 +1,5 @@
 import sys, json, gzip, os
-sys.path.insert(0, 'os.environ.get("DERIVE", "../..")')
+sys.path.insert(0, os.environ.get('DERIVE', '..'))
 import numpy as np, shapely
 from shapely.geometry import LineString
 from shapely.strtree import STRtree
