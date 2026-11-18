@@ -29,6 +29,7 @@ import kerbaudit as ka
 import kerbnet as kn
 import kerbregular as kr
 import kerbpcw as kpw
+import kerbreview as kv
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
@@ -246,7 +247,8 @@ def judge_block(comp, ctx):
     if fill.all():
         return "no footpath measure", None
     D[fill] = np.interp(np.flatnonzero(fill), np.flatnonzero(~fill), D[~fill], period=len(D))
-    segs = [LineString([P[i], P[(i + 1) % len(P)]]).buffer(max(D[i], D[(i + 1) % len(P)]), quad_segs=8) for i in range(len(P))]
+    segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
+            for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
     poly = unary_union(segs + [comp]).buffer(SMOOTH).buffer(-SMOOTH)
     if poly.geom_type != "Polygon":
         poly = max(poly.geoms, key=lambda g: g.area)
@@ -256,6 +258,10 @@ def judge_block(comp, ctx):
         return "ring touches itself", None
     if not (MIN_A <= ring.area <= MAX_A):
         return "size", None
+    fold = []
+    kv.folds(LineString(q.coords), fold)
+    if fold:
+        return "ring folds back on itself", None   # the version review (kerbreview fold) refuses these: never make one
     for g, fh in zip(SG, [ctx["st_fh"][i] for i in ext_st]):
         if fh == LANE_FH:
             continue   # a lane joined into this block or the next: the kerb crosses its mouth on purpose
