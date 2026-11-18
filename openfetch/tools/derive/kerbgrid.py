@@ -137,6 +137,8 @@ def jog(q):
 def judge(q, ctx):
     if not (MIN_A <= q.area <= MAX_A):
         return "size"
+    if not q.exterior.is_simple:   # a ring that touches itself (pinch between two buffers): kerbreview "self" (18 Nov 2026: 9 of 1,140)
+        return "self"
     for alt in (q.buffer(-NECK).buffer(NECK), q.buffer(NOTCH).buffer(-NOTCH)):
         dd = q.symmetric_difference(alt)
         if any(p.area > SHAPE_A for p in getattr(dd, "geoms", [dd])):
