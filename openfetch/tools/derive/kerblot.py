@@ -57,8 +57,25 @@ NOMEASURE = []
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
 
 
+EPSG = int(os.environ.get("KERB_EPSG", "7856"))   # 7855 for Victoria (kerblot_vic.py)
+SW_K, SW_FAR, SW_NEED = 2.17, 0.35, 0.4   # OSM footpath line: kerb at 2.17 x its distance from the lot front (Vic width study, 18 Nov 2026)
+
+
 def tf():
-    return Transformer.from_crs(4326, 7856, always_xy=True).transform, Transformer.from_crs(7856, 4326, always_xy=True).transform
+    return Transformer.from_crs(4326, EPSG, always_xy=True).transform, Transformer.from_crs(EPSG, 4326, always_xy=True).transform
+
+
+def sw_width(rays, m, C, W, ctx):
+    """Footpath width from the OSM footpath line on this side (Vic, no LiDAR): 5 City of Melbourne boxes against the council's own
+    kerbs put the kerb at 2.17 x the line's distance from the lot front, 61-74 % of samples within 1 m and 3 % over 3 m off. A line
+    further out than SW_FAR of the reserve is the other side's footpath; fewer than SW_NEED of the side's samples is not measured."""
+    if not ctx.get("sw"):
+        return None
+    hi = np.minimum(np.minimum(C, SW_FAR * W), 8.0)
+    s = first_hit(rays[m], ctx["sw_t"], ctx["sw"], lo=0.3, hi=hi[m])
+    if np.isfinite(s).sum() < max(5, SW_NEED * m.sum()):
+        return None
+    return float(SW_K * np.nanmedian(s))
 
 
 def lines_ll(path, to):
@@ -235,6 +252,13 @@ def judge_block(comp, ctx):
             v, how = float(np.nanmedian(d_opp[m])), "lidar other side"
         elif ctx["ground"] is not None and (pv := kpw.side_width(ctx["ground"], P[m], N[m], float(np.nanmedian(W[m])) / 2)) is not None:
             v, how = pv, "lidar step"
+        elif (sv := sw_width(rays, m, C, W, ctx)) is not None:
+            v, how = sv, "osm footpath this side"
+        elif not ctx.get("borrow", True):
+            if n * STEP < 12:
+                continue
+            NOMEASURE.append((nm, int(n), {}, 0, 0, 0))
+            return "no footpath measure", None
         elif np.isfinite(d_ownd[m]).sum() >= need:
             v, how = float(np.nanmedian(d_ownd[m])), "earlier kerb this side"
         elif street_ok(tab.get("lidar")):
@@ -323,7 +347,8 @@ def main(a):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
     nm_of = {id(g): n for (g, _), n in zip(roads, rname)}
     ground = [(g, fh, nm_of.get(id(g))) for g, fh in kn.on_ground(roads, over) if fh not in ka.SKIP_FH]
-    RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
+    RW = [LineString(t) for t in ka.read_kerbs(a[2], EPSG) if len(t) > 1]
+    SW = lines_ll(a[a.index("--sidewalks") + 1], to) if "--sidewalks" in a else []
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
     keep, why, cnt, done = [], [], {}, set()
@@ -368,7 +393,9 @@ def main(a):
         B = buildings(a[4], [(x + i, y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)], to)
         ctx = {"land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot,
                "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes,
-               "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None}
+               "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None,
+               "sw": [g for g in SW if g.intersects(frame)], "borrow": "--no-borrow" not in a}
+        ctx["sw_t"] = STRtree(ctx["sw"])
         for c in comps:
             rp = c.representative_point()
             if not cell.contains(rp) or not c.within(frame.buffer(-30)) or c.area < MIN_A:
