@@ -94,6 +94,11 @@ def selftest():
     json.dump({"features": [{"geometry": {"type": "LineString", "coordinates": [[-3, 18.5], [103, 18.5]]}}]}, open(fn, "w"))
     off, names = doubled([good, mouth, over], fn, lambda x, y: (x, y))   # good runs 1.5 m beside the council kerb: doubled
     assert list(off) == [0] and names == ["council.json"], off
+    json.dump({"features": []}, open(fn, "w"))
+    try:
+        doubled([good], fn, lambda x, y: (x, y)); raise AssertionError("empty council file passed")
+    except SystemExit:
+        pass
     assert doubled([good], None, None) == ({}, None) and doubled([good], "none", None) == ({}, [])
     print("kerbguard selftest pass")
     return 0
@@ -104,13 +109,18 @@ def doubled(G, files, to):
     if files is None:
         return {}, None
     names = [] if files == "none" else files.split(",")
-    O = []
+    O = []; empty = []
     for fn in names:
+        n0 = len(O)
         for f in json.load(open(fn))["features"]:
             g = f.get("geometry") or {}
             for c in ([g.get("coordinates")] if g.get("type") == "LineString" else g.get("coordinates") or [] if g.get("type") == "MultiLineString" else []):
                 if c and len(c) > 1:
                     O.append(LineString([to(*p[:2]) for p in c]))
+        if len(O) == n0:
+            empty.append(os.path.basename(fn))
+    if empty:
+        raise SystemExit("official council kerb file has no lines (a failed fetch is not 'no kerbs'; use --official none only for a place with no council kerbs): " + ", ".join(empty))
     if not O:
         return {}, [os.path.basename(n) for n in names]
     OT = STRtree(O); out = {}
