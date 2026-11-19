@@ -54,6 +54,9 @@ FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight
                                                         # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
 NOMEASURE = []
+SAME_STREET_SPREAD = 0   # Vic 1.5 m: one block face along one street measured twice with widths this far apart is left blank
+                         # (Vic review 19 Nov 2026: two rings wandered 4-8 m into the street between two pieces of one street)
+CORNER_MIN = False   # Vic True: corner_min()
 SHORT_SIDE = 12.0   # m: an unmeasured side shorter than this is filled between its neighbours (Vic 30: block ends between two streets)
 GUTTER = None   # Vic: an object with side_width(P, N, C) (kerbvic/mbdem.py), set by kerbvic/run_vic.py
 NARROW_JOIN_FH = ()   # Vic (6,): a local street in a reserve under LANE_W ("Little" streets, 5-7 m, flush or one-sided) is joined like a lane
@@ -211,6 +214,21 @@ def street_feet(stl, names, land0, raw, raw_t, drawn, drawn_t, foot):
 
 
 
+def corner_min(D, CID, street, k=4):
+    """Where the front turns from one street to the next, the narrower footpath runs round the corner (Vic review 19 Nov 2026: 6 of
+    40 rings swung 3-4 m out into the junction where a wide side's width was carried round the corner to a narrow side)."""
+    n = len(D); out = D.copy()
+    cid = np.where(street, CID, -1)
+    for i in range(n):
+        j = (i + 1) % n
+        if cid[i] >= 0 and cid[j] >= 0 and cid[i] != cid[j]:
+            idx = [(i + o) % n for o in range(-k - 3, k + 4)]
+            lo = min(D[(i + o) % n] for o in range(-k, k + 1))
+            for q in idx:
+                out[q] = min(out[q], lo)
+    return out
+
+
 def smooth(p):
     """A kerb line, not a copy of every jog in the lot fronts: fill thin notches (lane mouths, set-back lots), then round the
     corners. Without it 287 of 423 rings had kinks or wobbles (kerbaudit), seven times the rate of traced kerbs."""
@@ -301,10 +319,18 @@ def judge_block(comp, ctx):
         if v < D_MIN:
             return "street too narrow for a footpath", None
         D[m] = v; used[str(nm) + ":" + str(int(cid))] = (round(v, 2), how)
+    if SAME_STREET_SPREAD:
+        per = {}
+        for key, (val, _) in used.items():
+            per.setdefault(key.rsplit(":", 1)[0], []).append(val)
+        if any(max(v) - min(v) > SAME_STREET_SPREAD for v in per.values()):
+            return "widths differ along one street", None
     fill = np.isnan(D)
     if fill.all():
         return "no footpath measure", None
     D[fill] = np.interp(np.flatnonzero(fill), np.flatnonzero(~fill), D[~fill], period=len(D))
+    if CORNER_MIN:
+        D = corner_min(D, CID, street)
     segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
             for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
     poly = smooth(unary_union(segs + [comp]))

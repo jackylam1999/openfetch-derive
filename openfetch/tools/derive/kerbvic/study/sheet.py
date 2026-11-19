@@ -1,9 +1,15 @@
-import json, sys, random, numpy as np, matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+import json, os, sys, random, numpy as np, matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 sys.path.insert(0, "/home/user/openfetch-derive/openfetch/tools/derive/kerbvic"); import mbdem
 from pyproj import Transformer
 TO = Transformer.from_crs(4326, 7855, always_xy=True).transform
 R, rings_p, out = sys.argv[1], sys.argv[2], sys.argv[3]; k = int(sys.argv[4]) if len(sys.argv) > 4 else 12; seed = int(sys.argv[5]) if len(sys.argv) > 5 else 1
 dem = mbdem.Dem(R + "/dem"); F = json.load(open(rings_p))["features"]; random.seed(seed); pick = random.sample(F, min(k, len(F)))
+AT = [tuple(map(float, l.split())) for l in open(os.environ["AT"])] if os.environ.get("AT") else None
+if AT:
+    from shapely.geometry import shape as _sh, Point as _P
+    from shapely.ops import transform as _tf
+    G = [(_tf(TO, _sh(f["geometry"])), f) for f in F]
+    pick = [min(G, key=lambda g: g[0].distance(_P(*a)))[1] for a in AT]
 lots = json.load(open(R + "/lots/lots.json"))["features"]
 sw = [np.array([TO(*p) for p in f["geometry"]["coordinates"]]) for f in json.load(open(R + "/sidewalks.geojson"))["features"]]
 import os
@@ -12,7 +18,7 @@ for n, f in enumerate(pick):
     fig, ax = plt.subplots(1, 1, figsize=(7, 7))
     c = np.array([TO(*p) for p in f["geometry"]["coordinates"]]); cx, cy = c.mean(axis=0)
     # a 70 m window on one ring corner region (close-up): centre on a random vertex
-    vx, vy = c[random.randrange(len(c))]; h = 35
+    vx, vy = AT[n] if AT else c[random.randrange(len(c))]; h = 35
     xs = np.arange(vx - h, vx + h, 0.5); ys = np.arange(vy - h, vy + h, 0.5); X, Y = np.meshgrid(xs, ys)
     Z = dem.height(X.ravel(), Y.ravel()).reshape(X.shape)
     gy, gx = np.gradient(Z, 0.5); hs = np.clip(0.5 + (gx - gy) * 2.5, 0, 1)
