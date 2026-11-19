@@ -17,6 +17,7 @@ Here the block is built from the land itself:
     python3 kerblot.py lots_dir roads_dir traced_raw.json drawn.geojson[.gz] buildings_dir cells.txt out.json [--why why.json]
         [--measure kerbs.geojson.gz (earlier kerbs used only to measure footpath widths; default the drawn file)] [--foot foot.json] [--ground grids_dir (kerbpcw.py ground grids)] [--nomeasure nm.json]
         [--cad cad_dir (kerbcad.py: a ring with a run outside the official road reserve is left blank)]
+        [--calib calib.json (sides with a LiDAR kerb trace: trace width, ground step, every profile's kerb; tunes kerbpcw.py)]
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -45,7 +46,7 @@ D_MIN, D_MAX = 1.0, 7.0      # m, believable footpath widths (lot front to kerb)
 C_MAX = 16.0         # m: a street's centreline lies within this of the lot front (a centreline seen past a rail line, creek
                      # or park strip is not this side's street; 18 Nov 2026 review: 9 rings ran along rail and bush edges)
 CW_MIN = 2.5         # m, half a carriageway at least between the kerb and the centreline
-CW_OWN, OWN = 1.75, ("lidar this side", "lidar step")   # a kerb the LiDAR saw on this very side: narrow terrace streets (6-7 m
+CW_OWN, OWN = 1.75, ("lidar this side", "lidar step", "lidar profiles")   # a kerb the LiDAR saw on this very side: narrow terrace streets (6-7 m
                      # between lot fronts) keep 1-1.25 m footpaths and a 3.5 m carriageway; 45 such blocks were refused (19 Nov 2026)
 WIDE = 0.75          # a centreline past C_MAX still faces this side when it lies before the land across, within 3/4 of the way
                      # (wide streets, 25-45 m between lot fronts: 117 blocks were refused as facing no street, 19 Nov 2026)
@@ -223,6 +224,23 @@ def corridor_streets(P, N, W, rays, ri, gi, SG, ext_st, C, CID, cad):
                 C[r], CID[r] = d, ext_st[g]
 
 
+CALIB = [] if "--calib" in sys.argv else None
+
+
+def calib(G, P, N, W, d_tr, nm):
+    """--calib out.json: on sides with a LiDAR kerb trace (1-12 m out), the trace's width beside the median-profile step and every
+    profile's own kerb (all on the traces' footing), for tuning kerbpcw offline."""
+    reach = float(np.nanmedian(W)) / 2
+    t = np.arange(0.0, min(reach, 13.5), kpw.STEP_D)
+    H = kpw.profiles(G, P, N, t)
+    with np.errstate(all="ignore"):
+        pos = kpw.prof_positions(np.nanmedian(H, axis=0), t, 1.0 - kpw.P_SHIFT, 12.0 - kpw.P_SHIFT) + kpw.P_SHIFT
+        h = np.nanmedian(H.reshape(-1, len(t)), axis=0)
+    d = kpw.step_in(h, t, 1.0, 7.0) if np.isnan(h).mean() <= 0.3 else None
+    a = None if d is None or not 1.0 <= d + kpw.SHIFT <= 7.0 else d + kpw.SHIFT
+    CALIB.append([float(np.nanmedian(d_tr)), a, [None if np.isnan(v) else round(float(v), 2) for v in pos], round(reach * 2, 1), str(nm)])
+
+
 def judge_block(comp, ctx):
     """Kerb ring for one block or (reason, None)."""
     P, N = front_samples(comp)
@@ -293,12 +311,16 @@ def judge_block(comp, ctx):
         need = max(3, MEASURED * n)
         nm = ctx["st_name"][cid]
         tab = ctx["foot"].get(nm, {})
+        if CALIB is not None and ctx["ground"] is not None:
+            d_tr = np.where(street[m] & (near[m] < C[m]) & (near[m] >= D_MIN) & (near[m] <= 12.0), near[m], np.nan)
+            if np.isfinite(d_tr).sum() >= need:
+                calib(ctx["ground"], P[m], N[m], W[m], d_tr, nm)
         if np.isfinite(d_own[m]).sum() >= need:
             v, how = float(np.nanmedian(d_own[m])), "lidar this side"
         elif np.isfinite(d_opp[m]).sum() >= need:
             v, how = float(np.nanmedian(d_opp[m])), "lidar other side"
         elif ctx["ground"] is not None and (pv := kpw.side_width(ctx["ground"], P[m], N[m], float(np.nanmedian(W[m])) / 2)) is not None:
-            v, how = pv, "lidar step"
+            v, how = pv, kpw.LAST
         elif np.isfinite(d_ownd[m]).sum() >= need:
             v, how = float(np.nanmedian(d_ownd[m])), "earlier kerb this side"
         elif street_ok(tab.get("lidar")):
@@ -477,6 +499,8 @@ def main(a):
     if "--why" in a:
         json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"why": w, "id": b, "cell": n, "detail": dt},
                    "geometry": {"type": "LineString", "coordinates": ll(g)}} for w, g, b, n, dt in why]}, open(a[a.index("--why") + 1], "w"))
+    if CALIB is not None:
+        json.dump(CALIB, open(a[a.index("--calib") + 1], "w"))
     if "--nomeasure" in a:
         json.dump(NOMEASURE, open(a[a.index("--nomeasure") + 1], "w"))
     print("RESULT", json.dumps({"count": cnt, "km": round(sum(k[0].exterior.length for k in keep) / 1000, 2)}))
