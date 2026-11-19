@@ -12,6 +12,8 @@ Z = 17
 GUT_K = 0.55         # m from the gutter's low cell to the kerb line (Brunswick: 0.3 left the gutter widths 0.30 m wider than the OSM ones)
 PROF = 0.25          # m between profile points
 NEED = 6             # profiles a side needs
+G_DMIN = 1.6   # m: a low line nearer the lot is the footpath's own edge or a fence line, not the gutter (review 3, 19 Nov 2026:
+               # 1.2-1.5 m gutter widths drew the kerb on the footpath beside a clear gutter 3-4 m out)
 REL_DEEP, REL_NEED, REL_IQR, REL_SHIFT = 0.03, 0.4, 1.0, 0.3
 DIP = 0.04           # m: the gutter sits at least this far below both the footpath and the road crown in the median profile
 
@@ -78,11 +80,12 @@ class Dem:
         return out
 
 
-def side_width(dem, P, N, reach_m, dmin=1.0, dmax=7.0):
+def side_width(dem, P, N, reach_m, dmin=None, dmax=7.0):
     """Kerb distance from the lot front for one side (P points, N outward normals, reach_m: how far out the road crown may lie,
     half the reserve; Vicmap centrelines are metres off), or None. The gutter is the deepest valley of the side's median profile:
     lower by DIP than the highest point between it and the footpath and than the crown beyond it (a street lying higher or lower
     than its lots tilts the profile, so the valley, not the lowest point, is the gutter)."""
+    dmin = G_DMIN if dmin is None else dmin
     reach = float(np.nanmedian(reach_m))
     if not np.isfinite(reach) or reach < dmin + GUT_K + 1.0:
         return None
@@ -106,11 +109,12 @@ def side_width(dem, P, N, reach_m, dmin=1.0, dmax=7.0):
     return float(t[bi] - GUT_K)
 
 
-def relief_width(dem, P, N, reach, dmin=1.0, dmax=7.0):
+def relief_width(dem, P, N, reach, dmin=None, dmax=7.0):
     """Fallback where the median profile shows no valley (a street lying higher or lower than its lots, a road crown under 4 cm):
     each front sample's own profile minus its 10 m running mean (tilt and crown taken out) puts the gutter at its deepest point,
     at least REL_DEEP deep; the side's samples must agree (middle half within REL_IQR). Brunswick: measures 243 of 313 sides
     (the valley 197), within 1 m of the OSM width on 86 %, and of the valley on 99 %; it sits REL_SHIFT nearer the lot."""
+    dmin = G_DMIN if dmin is None else dmin
     if reach < dmin + 1.5:
         return None
     half = 5.0

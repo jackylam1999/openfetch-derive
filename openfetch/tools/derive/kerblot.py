@@ -56,7 +56,8 @@ PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a
 NOMEASURE = []
 SAME_STREET_SPREAD = 0   # Vic 1.5 m: one block face along one street measured twice with widths this far apart is left blank
                          # (Vic review 19 Nov 2026: two rings wandered 4-8 m into the street between two pieces of one street)
-CORNER_MIN = False   # Vic True: corner_min()
+CORNER_MIN = False   # corner_min(): tried for Vic 19 Nov 2026, made 17 of 48 rings step out past corners; kept off
+MITRE = False        # Vic True: mitre_parts()
 SHORT_SIDE = 12.0   # m: an unmeasured side shorter than this is filled between its neighbours (Vic 30: block ends between two streets)
 GUTTER = None   # Vic: an object with side_width(P, N, C) (kerbvic/mbdem.py), set by kerbvic/run_vic.py
 NARROW_JOIN_FH = ()   # Vic (6,): a local street in a reserve under LANE_W ("Little" streets, 5-7 m, flush or one-sided) is joined like a lane
@@ -214,6 +215,55 @@ def street_feet(stl, names, land0, raw, raw_t, drawn, drawn_t, foot):
 
 
 
+def mitre_parts(P, N, D, CID, fan=25.0):
+    """The kerb as each street side's own offset strip, joined at block corners where the two offset lines meet (then rounded by
+    smooth()), the way a kerb return is set out. Round buffers per sample (the default) carry the wider side's width round the
+    corner as an arc, which swings 2-4 m into the junction; carrying the narrower width instead stepped 2-4 m out 10 m past the
+    corner (Vic reviews 19 Nov 2026: 6 of 40, then 17 of 48). Corner samples whose normal turns more than `fan` deg off their
+    side's mean are left to the join."""
+    n = len(P)
+    if n < 4:
+        return []
+    start = next((i for i in range(n) if CID[i] != CID[i - 1]), None)
+    order = list(range(n)) if start is None else [(start + k) % n for k in range(n)]
+    runs, cur = [], [order[0]]
+    for i in order[1:]:
+        if CID[i] == CID[cur[-1]]:
+            cur.append(i)
+        else:
+            runs.append(cur); cur = [i]
+    runs.append(cur)
+    keep = []
+    for r in runs:
+        mn = N[r].mean(axis=0); mn /= max(np.hypot(*mn), 1e-9)
+        k = [i for i in r if float(np.dot(N[i], mn)) > np.cos(np.radians(fan))]
+        if len(k) >= 2:
+            keep.append(k)
+    parts = []
+    for k in keep:
+        off = P[k] + N[k] * D[k][:, None]
+        parts.append(Polygon(np.vstack([P[k], off[::-1]])).buffer(0))
+    if start is None or len(keep) < 2:
+        return parts
+    for a_, b_ in zip(keep, keep[1:] + keep[:1]):
+        a0, a1 = P[a_[-2]] + N[a_[-2]] * D[a_[-2]], P[a_[-1]] + N[a_[-1]] * D[a_[-1]]
+        b0, b1 = P[b_[0]] + N[b_[0]] * D[b_[0]], P[b_[1]] + N[b_[1]] * D[b_[1]]
+        da, db = a1 - a0, b1 - b0
+        den = da[0] * db[1] - da[1] * db[0]
+        ring = [P[a_[-1]], a1]
+        if abs(den) > 1e-6 * max(np.hypot(*da) * np.hypot(*db), 1e-9):
+            t = ((b0[0] - a0[0]) * db[1] - (b0[1] - a0[1]) * db[0]) / den
+            X = a0 + da * t
+            if t > 0.5 and np.hypot(*(X - a1)) < 2 * max(D[a_[-1]], D[b_[0]]) + 4 and np.hypot(*(X - b0)) < 2 * max(D[a_[-1]], D[b_[0]]) + 4:
+                ring.append(X)
+        ring += [b0, P[b_[0]]]
+        ring += [P[i] for i in order[order.index(a_[-1]):order.index(b_[0]) + 1][1:-1]] [::-1] if order.index(a_[-1]) < order.index(b_[0]) else []
+        g = Polygon(ring).buffer(0)
+        if g.area > 0:
+            parts.append(g)
+    return parts
+
+
 def corner_min(D, CID, street, k=4):
     """Where the front turns from one street to the next, the narrower footpath runs round the corner (Vic review 19 Nov 2026: 6 of
     40 rings swung 3-4 m out into the junction where a wide side's width was carried round the corner to a narrow side)."""
@@ -331,8 +381,11 @@ def judge_block(comp, ctx):
     D[fill] = np.interp(np.flatnonzero(fill), np.flatnonzero(~fill), D[~fill], period=len(D))
     if CORNER_MIN:
         D = corner_min(D, CID, street)
-    segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
-            for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
+    if MITRE:
+        segs = mitre_parts(P, N, D, np.where(street, CID, -2))
+    else:
+        segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
+                for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
     poly = smooth(unary_union(segs + [comp]))
     if poly.geom_type != "Polygon" and sorted(g.area for g in poly.geoms)[-2] > 1.0:
         return "ring splits when smoothed", None

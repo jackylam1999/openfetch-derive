@@ -6,7 +6,7 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kerblot as kl
-kl.EPSG, kl.C_MAX, kl.RAY, kl.NARROW_JOIN_FH, kl.SHORT_SIDE, kl.CORNER_MIN, kl.SAME_STREET_SPREAD = 7855, 31.0, 70.0, (6,), 30.0, True, 1.5
+kl.EPSG, kl.C_MAX, kl.RAY, kl.NARROW_JOIN_FH, kl.SHORT_SIDE, kl.MITRE, kl.SAME_STREET_SPREAD = 7855, 31.0, 70.0, (6,), 30.0, True, 1.5
 p, o = sys.argv[1], sys.argv[2]
 if os.path.isdir(f"{p}/dem"):
     import mbdem
