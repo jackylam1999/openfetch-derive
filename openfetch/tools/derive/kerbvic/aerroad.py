@@ -12,6 +12,9 @@ from PIL import Image
 RES, NEED, DMIN, DMAX, M = 0.25, 0.5, 0.75, 12.0, 64   # DMAX 12: grass verges up to 10 m (review 7)
 RUN_FAR = 10   # cells (2.5 m): review 8 (Reservoir, Heidelberg West, South Melbourne): a concrete footpath at the lot front read as road
 AER_IQR = float(os.environ.get("KERB_AER_IQR", "1.5"))
+STRIP_MAX = float(os.environ.get("KERB_AER_STRIP", "1.01"))   # OFF by default (19 Nov test: no gain on Carlton or North Melbourne); share of the strip lot-front to kerb that may look like road
+BAND_MIN = float(os.environ.get("KERB_AER_BAND", "0"))   # OFF by default (blanked 40% of rings, no accuracy gain); mean road probability over the 2.5 m past the kerb
+GAP_MAX = float(os.environ.get("KERB_AER_GAP", "1.2"))        # largest jump between sorted kerb offsets of one side (angle-parking bays make two levels)
 
 
 class Road:
@@ -48,9 +51,18 @@ class Road:
             far = np.array([np.median(v[i][q:q + RUN_FAR]) for q in range(len(t))])   # a carriageway, not a footpath beside a grass verge
             j = np.flatnonzero((run > 0.5) & (far > 0.5) & (t >= DMIN) & (t <= min(reach, DMAX)))
             if len(j):
-                k.append(t[j[0]])
+                q = j[0]
+                strip, band = v[i][:max(q - 1, 1)], v[i][q:q + RUN_FAR]
+                if (strip > 0.35).mean() > STRIP_MAX or band.mean() < BAND_MIN:
+                    continue
+                k.append(t[q])
         if len(k) < max(4, NEED * len(P)):
             return None
+        ks = np.sort(k)
+        if np.diff(ks).max() > GAP_MAX:
+            gap = int(np.argmax(np.diff(ks)))
+            if min(gap + 1, len(ks) - gap - 1) >= max(2, 0.15 * len(ks)):
+                return None   # two levels along one side: bays or a stepped kerb, left blank (blank beats odd)
         q1, q2, q3 = np.percentile(k, [25, 50, 75])
         return float(q2) if q3 - q1 <= AER_IQR else None
 
