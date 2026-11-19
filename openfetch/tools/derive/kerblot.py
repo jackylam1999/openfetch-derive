@@ -360,6 +360,11 @@ def judge_block(comp, ctx):
         if L.intersects(ring) and q.intersection(L.buffer(-0.3)).length > 3.0 and not L.within(comp.buffer(0.3)):
             return "along a lane", None
     if ctx["cad"] is not None:
+        if kc.inlet(ring) > kc.INLET_D:
+            DETAIL[comp.representative_point().wkt] = {"inlet_m": round(kc.inlet(ring), 1)}
+            return "deep inlet (cul-de-sac or slot into the block)", None
+        if kc.doubles(q, others, STRtree(others)) > kc.DOUBLE_RUN:
+            return "doubles a kerb already drawn", None
         w, m = kc.judge(ctx["cad"], q)
         if w:
             DETAIL[comp.representative_point().wkt] = {"run_m": m}

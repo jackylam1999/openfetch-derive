@@ -6,12 +6,13 @@ Unidentified, i.e. unlotted land). A kerb is the edge of a carriageway, so it li
 labelled by what it lies in; a ring with a run of points that are not in a road corridor is left blank (whole or blank).
 
     python3 kerbcad.py cad_dir rings.geojson[,..] out.json        label every ring (for tuning and review sheets)
+    python3 kerbcad.py --selftest
 cad_dir holds kerbtop10-run/fetchcad.py files <layer>_<x>_<y>.json (MGA56 polygons) for layers roadcor, rail, water, unid.
 """
 import glob, json, os, sys
 import numpy as np
 import shapely
-from shapely.geometry import shape
+from shapely.geometry import LineString, shape
 from shapely.strtree import STRtree
 
 TOL = 0.5        # m: a kerb point this close to a road corridor counts as in it (cadastre and kerb lines differ by decimetres)
@@ -119,6 +120,29 @@ def runs(lab):
     return best * STEP, max(set(seg), key=seg.count)
 
 
+INLET_W, INLET_D = 20.0, 25.0   # m: an inlet narrower than INLET_W reaching deeper than INLET_D into the block (a cul-de-sac or a
+                                # slot down a lane, a notch round a site) was refused by both close-up reviewers 49 times of 100
+                                # refused and 0 of 43 passed (19 Nov 2026); such a block is left blank
+DOUBLE_D, DOUBLE_RUN = 2.5, 15.0   # m: a ring this close to a kerb already drawn for longer than this doubles it
+
+
+def inlet(poly):
+    """Depth (m) of the deepest inlet under INLET_W wide in a ring's polygon."""
+    h = INLET_W / 2
+    fill = poly.buffer(h, join_style="mitre").buffer(-h, join_style="mitre").difference(poly)
+    return max([g.length / 2 for g in getattr(fill, "geoms", [fill]) if g.area > 30] or [0.0])
+
+
+def doubles(line, lines, tree):
+    """Longest run (m) of the ring within DOUBLE_D of lines already drawn."""
+    P = shapely.points(ring_points(line))
+    near = np.zeros(len(P), bool)
+    if lines:
+        i, _ = tree.query(P, predicate="dwithin", distance=DOUBLE_D)
+        near[np.unique(i)] = True
+    return longest(near) * STEP
+
+
 def judge(cad, line):
     """(reason, metres) when a ring runs over RUN_MAX m outside every road corridor or within RAIL_CLEAR m of a rail or water
     corridor, else (None, share in road)."""
@@ -136,6 +160,27 @@ def judge(cad, line):
         return {"rail": "beside a rail corridor", "water": "beside a creek or water corridor",
                 "unid": "beside unlotted land (park, bush, rail or crown land)"}.get(what, "outside the road reserve (yards, car park, private land)"), m
     return None, float((lab == "road").mean())
+
+
+def selftest():
+    """Synthetic cases (19 Nov 2026 close-up refusals): each must be caught, the plain block must pass."""
+    from shapely.geometry import Polygon, box
+    cad = Cad.__new__(Cad)
+    cad.g = {"roadcor": [box(-20, -20, 120, 120).difference(box(0, 0, 100, 100).buffer(-6))], "rail": [box(-20, 104, 120, 140)],
+             "water": [], "unid": []}
+    cad.t = {k: STRtree(v) for k, v in cad.g.items()}
+    ok = box(0, 0, 100, 100).exterior
+    assert judge(cad, ok)[0] is not None and "rail" in judge(cad, ok)[0], judge(cad, ok)
+    cad.g["rail"] = [box(-20, 118, 120, 140)]; cad.t["rail"] = STRtree(cad.g["rail"])
+    assert judge(cad, ok)[0] is None, judge(cad, ok)
+    yard = Polygon([(0, 0), (100, 0), (100, 100), (60, 100), (60, 70), (40, 70), (40, 100), (0, 100)]).exterior
+    assert judge(cad, yard)[0].startswith("outside the road reserve"), judge(cad, yard)
+    slot = Polygon([(0, 0), (100, 0), (100, 100), (55, 100), (55, 60), (45, 60), (45, 100), (0, 100)])
+    assert inlet(slot) > INLET_D and inlet(box(0, 0, 100, 100)) == 0, inlet(slot)
+    line = [LineString([(0, -1.5), (100, -1.5)])]
+    assert doubles(ok, line, STRtree(line)) > DOUBLE_RUN and doubles(ok, [], STRtree([])) == 0
+    assert longest([1, 1, 0, 0, 1, 1, 1]) == 5 and longest([0, 0]) == 0
+    print("kerbcad selftest ok")
 
 
 def main(a):
@@ -158,4 +203,4 @@ def main(a):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    selftest() if sys.argv[1:] == ["--selftest"] else main(sys.argv[1:])
