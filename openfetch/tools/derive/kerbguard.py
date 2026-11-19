@@ -25,6 +25,7 @@ BLD_IN, BLD_RUN, BLD_A = 3.0, 3.0, 120.0
 LANE_W, LANE_RUN, CLOSE, LANE_FH = 7.5, 6.0, 0.4, 7
 SKIP_FH = {8, 9, 10, 11}
 OFF_D, OFF_RUN = 2.5, 25.0
+COUNTS = {}   # council kerb lines read from each --official file (guards.json official_lines; kerbs-check refuses a 0)
 
 
 def is_street(pr):
@@ -117,6 +118,7 @@ def doubled(G, files, to):
             for c in ([g.get("coordinates")] if g.get("type") == "LineString" else g.get("coordinates") or [] if g.get("type") == "MultiLineString" else []):
                 if c and len(c) > 1:
                     O.append(LineString([to(*p[:2]) for p in c]))
+        COUNTS[os.path.basename(fn)] = len(O) - n0
         if len(O) == n0:
             empty.append(os.path.basename(fn))
     if empty:
@@ -173,7 +175,7 @@ def main(a):
     res = {"check": "openfetch-derive kerbguard.py", "file": os.path.basename(a[0]), "lines": len(G), "cells": len(cells),
            "missing_cells": missing, "roof": len(roof), "lane": len(lane),
            "roof_at": [[pt(i), v] for i, v in sorted(roof.items())][:200], "lane_at": [[pt(i), v] for i, v in sorted(lane.items())][:200],
-           "official_files": offn, "official": len(off) if offn is not None else None,
+           "official_files": offn, "official_lines": COUNTS, "official": len(off) if offn is not None else None,
            "official_at": [[pt(i), v] for i, v in sorted(off.items())][:200],
            "result": "pass" if not (missing or roof or lane or off or offn is None) else "fail"}
     json.dump(res, open(a[4], "w"), indent=1)
