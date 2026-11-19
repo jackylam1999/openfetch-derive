@@ -1,7 +1,7 @@
 import json, sys, os, time, urllib.request, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 B = "https://portal.spatial.nsw.gov.au/server/rest/services"
-LOTS = B + "/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query"
+LOTS = B + "/NSW_Land_Parcel_Property_Theme/FeatureServer/8/query"
 ROADS = B + "/NSW_Transport_Theme/FeatureServer/5/query"
 SUB = B + "/NSW_Administrative_Boundaries_Theme/FeatureServer/2/query"
 W = sys.argv[1]; SUBS = sys.argv[2].split(',')
