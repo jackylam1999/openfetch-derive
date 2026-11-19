@@ -10,6 +10,7 @@ import os, sys
 import numpy as np
 from PIL import Image
 RES, NEED, DMIN, DMAX, M = 0.25, 0.5, 0.75, 12.0, 64   # DMAX 12: grass verges up to 10 m (review 7)
+RUN_FAR = 10   # cells (2.5 m): review 8 (Reservoir, Heidelberg West, South Melbourne): a concrete footpath at the lot front read as road
 AER_IQR = float(os.environ.get("KERB_AER_IQR", "1.5"))
 
 
@@ -44,7 +45,8 @@ class Road:
         k = []
         for i in np.flatnonzero(np.isfinite(v).all(1)):
             run = np.convolve(v[i], np.ones(4) / 4, "full")[3:]
-            j = np.flatnonzero((run > 0.5) & (t >= DMIN) & (t <= min(reach, DMAX)))
+            far = np.array([np.median(v[i][q:q + RUN_FAR]) for q in range(len(t))])   # a carriageway, not a footpath beside a grass verge
+            j = np.flatnonzero((run > 0.5) & (far > 0.5) & (t >= DMIN) & (t <= min(reach, DMAX)))
             if len(j):
                 k.append(t[j[0]])
         if len(k) < max(4, NEED * len(P)):
