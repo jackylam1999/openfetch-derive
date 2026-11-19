@@ -11,6 +11,9 @@ p, o = sys.argv[1], sys.argv[2]
 if os.path.isdir(f"{p}/dem"):
     import mbdem
     kl.GUTTER = mbdem.Dem(f"{p}/dem")
+elif os.environ.get("KERB_AER"):   # a folder of aerial road squares (aerroad.py)
+    import aerroad
+    kl.GUTTER = aerroad.Road(os.environ["KERB_AER"])
 os.makedirs(o, exist_ok=True)
 kl.main([f"{p}/lots", f"{p}/roads", f"{p}/empty.geojson", f"{p}/empty.geojson", f"{p}/bld", f"{p}/cells.txt", f"{o}/rings.json",
          "--why", f"{o}/why.json", "--sidewalks", f"{p}/sidewalks.geojson", "--no-borrow", "--nomeasure", f"{o}/nomeasure.json"] + sys.argv[3:])

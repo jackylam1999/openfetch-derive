@@ -61,6 +61,7 @@ STRAIGHT_WIN = 15    # samples (2 m apart) for straighten()
 MITRE = False        # Vic True: mitre_parts()
 SHORT_SIDE = 12.0   # m: an unmeasured side shorter than this is filled between its neighbours (Vic 30: block ends between two streets)
 NOTCH = 5             # samples (10 m): a shorter stretch between two of one street's stretches is a notch
+GUTTER_WINS = bool(os.environ.get("KERB_GUTTER_WINS"))   # test only: the gutter is used even where the OSM path line lies past it
 GUTTER = None   # Vic: an object with side_width(P, N, C) (kerbvic/mbdem.py), set by kerbvic/run_vic.py
 NARROW_JOIN_FH = ()   # Vic (6,): a local street in a reserve under LANE_W ("Little" streets, 5-7 m, flush or one-sided) is joined like a lane
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
@@ -173,7 +174,7 @@ def two_judge(rays, m, C, W, P, N, ctx):
     g = ctx["gutter"].side_width(P[m], N[m], W[m] / 2) if ctx.get("gutter") is not None else None
     o = sw_width(rays, m, C, W, ctx)
     if g is not None:
-        if o is not None and o / SW_K + PATH_HALF > g:
+        if o is not None and o / SW_K + PATH_HALF > g and not GUTTER_WINS:
             return None, ""
         return g, "ground gutter" + (" (osm path inside)" if o is not None else "")
     if o is not None and float(np.nanmedian(W[m])) >= SW_ALONE_W:
