@@ -54,6 +54,7 @@ FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight
                                                         # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
 NOMEASURE = []
+SHORT_SIDE = 12.0   # m: an unmeasured side shorter than this is filled between its neighbours (Vic 30: block ends between two streets)
 GUTTER = None   # Vic: an object with side_width(P, N, C) (kerbvic/mbdem.py), set by kerbvic/run_vic.py
 NARROW_JOIN_FH = ()   # Vic (6,): a local street in a reserve under LANE_W ("Little" streets, 5-7 m, flush or one-sided) is joined like a lane
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
@@ -61,6 +62,8 @@ STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measure
 
 EPSG = int(os.environ.get("KERB_EPSG", "7856"))   # 7855 for Victoria (kerblot_vic.py)
 SW_K, SW_FAR, SW_NEED, SW_LO = 2.17, 0.35, 0.4, 0.5
+SW_ALONE_W = 24.0   # m: the OSM line alone measures only wide, fully paved streets (Carlton, East Melbourne 30 m: 66-74 % within
+                    # 1 m); in 20 m streets with grass verges (Kensington, Brunswick) it falls metres short
 PATH_HALF = 0.4   # m: half a footpath; the OSM path line must lie at least this far on the lot side of the gutter's kerb   # OSM footpath line: kerb at 2.17 x its distance from the lot front (Vic width study, 18 Nov 2026)
 
 
@@ -167,7 +170,7 @@ def two_judge(rays, m, C, W, P, N, ctx):
         if o is not None and o / SW_K + PATH_HALF > g:
             return None, ""
         return g, "ground gutter" + (" (osm path inside)" if o is not None else "")
-    if o is not None:
+    if o is not None and float(np.nanmedian(W[m])) >= SW_ALONE_W:
         return o, "osm footpath this side"
     return None
 
@@ -277,8 +280,8 @@ def judge_block(comp, ctx):
                 return "footpath measures disagree", None
             v, how = vv
         elif not ctx.get("borrow", True):
-            if n * STEP < 12:
-                continue
+            if n * STEP < SHORT_SIDE:
+                continue   # a short block end takes the width tapered between its measured neighbours
             NOMEASURE.append((nm, int(n), {}, 0, 0, 0))
             return "no footpath measure", None
         elif np.isfinite(d_ownd[m]).sum() >= need:

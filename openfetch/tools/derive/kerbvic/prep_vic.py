@@ -21,12 +21,24 @@ def get(url, data=None):
             time.sleep(4 * (i + 1))
 
 
-def arc(layer, bb, where="1=1"):
+def arc(layer, bb, where="1=1", depth=0):
+    """Features in the box; a box the service refuses (it answers 400 for some large boxes) is split in four, each feature once."""
     feats, off = [], 0
     while True:
         q = {"where": where, "geometry": ",".join(map(str, bb)), "geometryType": "esriGeometryEnvelope", "inSR": 4326, "outSR": 4326,
              "spatialRel": "esriSpatialRelIntersects", "outFields": "*", "f": "geojson", "resultOffset": off, "resultRecordCount": 2000}
         d = json.loads(get(f"{ARC}/{layer}/query?" + urllib.parse.urlencode(q)))
+        if "error" in d:
+            if depth >= 4:
+                raise RuntimeError(f"{layer} refused {bb}: {d['error']}")
+            mx, my = (bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2
+            seen, out = set(), []
+            for b in ((bb[0], bb[1], mx, my), (mx, bb[1], bb[2], my), (bb[0], my, mx, bb[3]), (mx, my, bb[2], bb[3])):
+                for f in arc(layer, b, where, depth + 1):
+                    k = (f.get("properties") or {}).get("OBJECTID", f.get("id"))
+                    if k not in seen:
+                        seen.add(k); out.append(f)
+            return out
         feats += d.get("features", [])
         if len(d.get("features", [])) < 2000 and not d.get("properties", {}).get("exceededTransferLimit"):
             return feats
