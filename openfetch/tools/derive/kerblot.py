@@ -57,8 +57,10 @@ NOMEASURE = []
 SAME_STREET_SPREAD = 0   # Vic 1.5 m: one block face along one street measured twice with widths this far apart is left blank
                          # (Vic review 19 Nov 2026: two rings wandered 4-8 m into the street between two pieces of one street)
 CORNER_MIN = False   # corner_min(): tried for Vic 19 Nov 2026, made 17 of 48 rings step out past corners; kept off
+STRAIGHT_WIN = 15    # samples (2 m apart) for straighten()
 MITRE = False        # Vic True: mitre_parts()
 SHORT_SIDE = 12.0   # m: an unmeasured side shorter than this is filled between its neighbours (Vic 30: block ends between two streets)
+NOTCH = 5             # samples (10 m): a shorter stretch between two of one street's stretches is a notch
 GUTTER = None   # Vic: an object with side_width(P, N, C) (kerbvic/mbdem.py), set by kerbvic/run_vic.py
 NARROW_JOIN_FH = ()   # Vic (6,): a local street in a reserve under LANE_W ("Little" streets, 5-7 m, flush or one-sided) is joined like a lane
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
@@ -215,6 +217,48 @@ def street_feet(stl, names, land0, raw, raw_t, drawn, drawn_t, foot):
 
 
 
+def straighten(off, win=STRAIGHT_WIN):
+    """A kerb runs straight (or on the street's own curve) past lots set back from the street: the side's offset points are put
+    on a running median of their distance from the side's best-fit line, over `win` samples (Vic review 5, 19 Nov 2026: 3 of 40
+    rings stepped 2-4 m sideways where a few lots' fronts jog in or out)."""
+    if len(off) < 5 or win < 3:
+        return off
+    c = off.mean(axis=0); u = np.linalg.svd(off - c)[2][0]; v = np.array([-u[1], u[0]])
+    t = (off - c) @ u; r = (off - c) @ v
+    h = win // 2
+    rs = np.array([np.median(r[max(0, i - h): i + h + 1]) for i in range(len(r))])
+    return c + np.outer(t, u) + np.outer(rs, v)
+
+
+def fill_notches(CID, most=NOTCH):
+    """A short stretch of front between two stretches facing the same street is a notch (a lane mouth, a set-back lot), not a
+    street side of its own: it takes that street's id, so the kerb runs straight across it (Vic review 5, 19 Nov 2026: a lane
+    mouth made its own side and the corner joins either side of it pushed a 2 m bump into Bell St)."""
+    c = np.asarray(CID).copy(); n = len(c)
+    for _ in range(4):
+        start = next((i for i in range(n) if c[i] != c[i - 1]), None)
+        if start is None:
+            return c
+        runs, cur = [], [start]
+        for k in range(1, n):
+            i = (start + k) % n
+            if c[i] == c[cur[-1]]:
+                cur.append(i)
+            else:
+                runs.append(cur); cur = [i]
+        runs.append(cur)
+        if len(runs) < 3:
+            return c
+        changed = False
+        for j, r in enumerate(runs):
+            a, b = runs[j - 1], runs[(j + 1) % len(runs)]
+            if len(r) <= most and c[r[0]] != c[a[-1]] and c[a[-1]] == c[b[0]] and c[a[-1]] >= 0:
+                c[r] = c[a[-1]]; changed = True
+        if not changed:
+            return c
+    return c
+
+
 def mitre_parts(P, N, D, CID, fan=25.0):
     """The kerb as each street side's own offset strip, joined at block corners where the two offset lines meet (then rounded by
     smooth()), the way a kerb return is set out. Round buffers per sample (the default) carry the wider side's width round the
@@ -224,6 +268,7 @@ def mitre_parts(P, N, D, CID, fan=25.0):
     n = len(P)
     if n < 4:
         return []
+    CID = fill_notches(CID)
     start = next((i for i in range(n) if CID[i] != CID[i - 1]), None)
     order = list(range(n)) if start is None else [(start + k) % n for k in range(n)]
     runs, cur = [], [order[0]]
@@ -240,14 +285,17 @@ def mitre_parts(P, N, D, CID, fan=25.0):
         if len(k) >= 2:
             keep.append(k)
     parts = []
+    offs = {}
     for k in keep:
-        off = P[k] + N[k] * D[k][:, None]
+        off = straighten(P[k] + N[k] * D[k][:, None])
+        offs[k[0]], offs[k[-1]] = off[0], off[-1]
         parts.append(Polygon(np.vstack([P[k], off[::-1]])).buffer(0))
     if start is None or len(keep) < 2:
         return parts
     for a_, b_ in zip(keep, keep[1:] + keep[:1]):
-        a0, a1 = P[a_[-2]] + N[a_[-2]] * D[a_[-2]], P[a_[-1]] + N[a_[-1]] * D[a_[-1]]
-        b0, b1 = P[b_[0]] + N[b_[0]] * D[b_[0]], P[b_[1]] + N[b_[1]] * D[b_[1]]
+        a0, a1 = P[a_[-2]] + N[a_[-2]] * D[a_[-2]], offs[a_[-1]]
+        b0, b1 = offs[b_[0]], P[b_[1]] + N[b_[1]] * D[b_[1]]
+        a0 = a1 - (P[a_[-1]] - P[a_[-2]]); b1 = b0 + (P[b_[1]] - P[b_[0]])
         da, db = a1 - a0, b1 - b0
         den = da[0] * db[1] - da[1] * db[0]
         ring = [P[a_[-1]], a1]
