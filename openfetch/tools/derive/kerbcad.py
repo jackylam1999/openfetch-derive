@@ -126,11 +126,45 @@ INLET_W, INLET_D = 20.0, 25.0   # m: an inlet narrower than INLET_W reaching dee
 DOUBLE_D, DOUBLE_RUN = 2.5, 15.0   # m: a ring this close to a kerb already drawn for longer than this doubles it
 
 
-def inlet(poly):
-    """Depth (m) of the deepest inlet under INLET_W wide in a ring's polygon."""
+DEAD_RUN = 15.0   # m of a named street inside an inlet, ending there with no other street at its end: a cul-de-sac (KN8, 19 Nov 2026:
+                  # 27 of the 57 refused inlet blocks in the top 10 hold one; the rest are slots, estate roads and notches)
+
+
+def dead_end(g, streets, poly):
+    """True when a street centreline (metres, lanes left out by the caller) ends inside inlet polygon g after DEAD_RUN m or more of it
+    inside, the end lies DEAD_RUN / 2 m or more from the inlet's mouth (the part of its outline that is not the block's), and no
+    other street touches that end."""
+    zone = g.buffer(1.0)
+    mouth = g.boundary.difference(poly.buffer(0.5))
+    for i, ln in enumerate(streets):
+        if not ln.intersects(g) or g.intersection(ln).length < DEAD_RUN:
+            continue
+        for e in (shapely.Point(ln.coords[0]), shapely.Point(ln.coords[-1])):
+            if zone.contains(e) and e.distance(mouth) >= DEAD_RUN / 2 and not any(j != i and o.distance(e) < 3.0 for j, o in enumerate(streets)):
+                return True
+    return False
+
+
+TIP = 6.0   # m: a cul-de-sac's centreline may poke this far into the ring at its free end (centrelines are metres off at a dead end)
+
+
+def tip_only(g, ring_poly, streets):
+    """True when the part of centreline g inside the ring polygon (0.5 m wider) is TIP m or less and holds a free end of g (no other
+    street within 3 m of that end): the kerb round a cul-de-sac head does not cross the street, the centreline just runs past it."""
+    inside = g.intersection(ring_poly.buffer(0.5))
+    if inside.is_empty or inside.length > TIP:
+        return inside.is_empty
+    for e in (shapely.Point(g.coords[0]), shapely.Point(g.coords[-1])):
+        if inside.distance(e) < 0.5 and not any(o is not g and o.distance(e) < 3.0 for o in streets):
+            return True
+    return False
+
+
+def inlet(poly, streets=()):
+    """Depth (m) of the deepest inlet under INLET_W wide in a ring's polygon; an inlet that holds a cul-de-sac (dead_end) is not one."""
     h = INLET_W / 2
     fill = poly.buffer(h, join_style="mitre").buffer(-h, join_style="mitre").difference(poly)
-    return max([g.length / 2 for g in getattr(fill, "geoms", [fill]) if g.area > 30] or [0.0])
+    return max([g.length / 2 for g in getattr(fill, "geoms", [fill]) if g.area > 30 and not dead_end(g, streets, poly)] or [0.0])
 
 
 def doubles(line, lines, tree):
@@ -177,6 +211,18 @@ def selftest():
     assert judge(cad, yard)[0].startswith("outside the road reserve"), judge(cad, yard)
     slot = Polygon([(0, 0), (100, 0), (100, 100), (55, 100), (55, 60), (45, 60), (45, 100), (0, 100)])
     assert inlet(slot) > INLET_D and inlet(box(0, 0, 100, 100)) == 0, inlet(slot)
+    pad = Polygon([(0, 0), (100, 0), (100, 100), (55, 100), (55, 64), (45, 64), (45, 100), (0, 100)])
+    tip = LineString([(50, 100), (50, 62)])                      # ends 2 m into the ring polygon: a dead end poking past the kerb
+    assert tip_only(tip, Polygon([(0, 0), (100, 0), (100, 100), (0, 100)]).difference(box(45, 64, 55, 100)), [tip])
+    thru = LineString([(50, 100), (50, 62)])                     # another street at its end: it crosses the ring
+    assert not tip_only(thru, pad.union(box(45, 62, 55, 64)), [thru, LineString([(50, 62), (80, 60)])])
+    long_in = LineString([(50, 100), (50, 20)])                  # 40 m inside the ring: a street, not a tip
+    assert not tip_only(long_in, box(0, 0, 100, 100), [long_in])
+    cds = LineString([(50, 100), (50, 62)])
+    assert inlet(slot, [cds]) == 0, inlet(slot, [cds])                                            # a street ending in the slot: a cul-de-sac
+    assert inlet(slot, [LineString([(50, 130), (50, 62)]), LineString([(50, 62), (50, 40)])]) > INLET_D   # it carries on: a slot
+    assert inlet(slot, [LineString([(50, 100), (50, 90)])]) > INLET_D                             # too short inside to be a street
+    assert inlet(slot, [cds, LineString([(50, 62), (80, 62)])]) > INLET_D                          # another street meets its end
     line = [LineString([(0, -1.5), (100, -1.5)])]
     assert doubles(ok, line, STRtree(line)) > DOUBLE_RUN and doubles(ok, [], STRtree([])) == 0
     assert longest([1, 1, 0, 0, 1, 1, 1]) == 5 and longest([0, 0]) == 0

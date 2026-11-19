@@ -376,6 +376,8 @@ def judge_block(comp, ctx):
         if fh == LANE_FH:
             continue   # a lane joined into this block or the next: the kerb crosses its mouth on purpose
         if g.distance(q) < CL_CLEAR or g.intersection(ring.buffer(-0.5)).length > 1.0 or g.intersects(q):
+            if ctx["cad"] is not None and kc.tip_only(g, ring, [h for h, f2 in zip(SG, [ctx["st_fh"][i] for i in ext_st]) if f2 != LANE_FH]):
+                continue   # a cul-de-sac's centreline runs a few metres past its kerb at the free end
             if CL_BAND and g.intersection(ring.buffer(CL_CLEAR)).within(comp.buffer(float(np.nanmax(D)) + CL_CLEAR)):
                 continue   # an offset centreline inside the footpath band (inner city and older streets: metres off), not a street crossed
             DETAIL[comp.representative_point().wkt] = {"fh": int(fh), "in_m": round(g.intersection(ring.buffer(-0.5)).length, 1),
@@ -389,9 +391,10 @@ def judge_block(comp, ctx):
         if L.intersects(ring) and q.intersection(L.buffer(-0.3)).length > 3.0 and not L.within(comp.buffer(0.3)):
             return "along a lane", None
     if ctx["cad"] is not None:
-        if kc.inlet(ring) > kc.INLET_D:
-            DETAIL[comp.representative_point().wkt] = {"inlet_m": round(kc.inlet(ring), 1)}
-            return "deep inlet (cul-de-sac or slot into the block)", None
+        road = [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh != LANE_FH and g.intersects(ring)]
+        if kc.inlet(ring, road) > kc.INLET_D:
+            DETAIL[comp.representative_point().wkt] = {"inlet_m": round(kc.inlet(ring, road), 1)}
+            return "deep inlet (slot or notch, no street ends in it)", None
         if kc.doubles(q, others, STRtree(others)) > kc.DOUBLE_RUN:
             return "doubles a kerb already drawn", None
         w, m = kc.judge(ctx["cad"], q)
