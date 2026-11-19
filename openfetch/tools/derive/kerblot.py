@@ -54,11 +54,14 @@ FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight
                                                         # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
 NOMEASURE = []
+GUTTER = None   # Vic: an object with side_width(P, N, C) (kerbvic/mbdem.py), set by kerbvic/run_vic.py
+NARROW_JOIN_FH = ()   # Vic (6,): a local street in a reserve under LANE_W ("Little" streets, 5-7 m, flush or one-sided) is joined like a lane
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
 
 
 EPSG = int(os.environ.get("KERB_EPSG", "7856"))   # 7855 for Victoria (kerblot_vic.py)
-SW_K, SW_FAR, SW_NEED = 2.17, 0.35, 0.4   # OSM footpath line: kerb at 2.17 x its distance from the lot front (Vic width study, 18 Nov 2026)
+SW_K, SW_FAR, SW_NEED, SW_LO = 2.17, 0.35, 0.4, 0.5
+PATH_HALF = 0.4   # m: half a footpath; the OSM path line must lie at least this far on the lot side of the gutter's kerb   # OSM footpath line: kerb at 2.17 x its distance from the lot front (Vic width study, 18 Nov 2026)
 
 
 def tf():
@@ -72,10 +75,10 @@ def sw_width(rays, m, C, W, ctx):
     if not ctx.get("sw"):
         return None
     hi = np.minimum(np.minimum(C, SW_FAR * W), 8.0)
-    s = first_hit(rays[m], ctx["sw_t"], ctx["sw"], lo=0.3, hi=hi[m])
+    s = first_hit(rays[m], ctx["sw_t"], ctx["sw"], lo=SW_LO, hi=hi[m])
     if np.isfinite(s).sum() < max(5, SW_NEED * m.sum()):
         return None
-    return float(SW_K * np.nanmedian(s))
+    return float(SW_K * np.nanmedian(s))   # a line drawn on the lot boundary (under SW_LO out) says nothing about the width
 
 
 def lines_ll(path, to):
@@ -150,6 +153,23 @@ def front_samples(comp):
     flip = shapely.contains(comp, test)
     nrm[flip] *= -1
     return P, nrm
+
+
+def two_judge(rays, m, C, W, P, N, ctx):
+    """Vic width without LiDAR points: the gutter in a coarse ground model (ctx["gutter"], kerbvic/mbdem.py) first, the OSM footpath
+    line second. The OSM line marks the path, not the kerb: where a grass verge lies between them (Brunswick back streets, 20 m
+    reserves, 7 m carriageways) 2.17 x its distance falls metres short (Brunswick, 325 sides measured both ways: the gutter was
+    1.5-3.6 m wider on 10 %, all of them 15-20 m streets whose OSM width left a 13-16 m carriageway). So with a gutter, the OSM line
+    only has to lie on the lot side of it; a side whose path line lies beyond the gutter is left blank."""
+    g = ctx["gutter"].side_width(P[m], N[m], W[m] / 2) if ctx.get("gutter") is not None else None
+    o = sw_width(rays, m, C, W, ctx)
+    if g is not None:
+        if o is not None and o / SW_K + PATH_HALF > g:
+            return None, ""
+        return g, "ground gutter" + (" (osm path inside)" if o is not None else "")
+    if o is not None:
+        return o, "osm footpath this side"
+    return None
 
 
 def street_ok(vals):
@@ -252,8 +272,10 @@ def judge_block(comp, ctx):
             v, how = float(np.nanmedian(d_opp[m])), "lidar other side"
         elif ctx["ground"] is not None and (pv := kpw.side_width(ctx["ground"], P[m], N[m], float(np.nanmedian(W[m])) / 2)) is not None:
             v, how = pv, "lidar step"
-        elif (sv := sw_width(rays, m, C, W, ctx)) is not None:
-            v, how = sv, "osm footpath this side"
+        elif (vv := two_judge(rays, m, C, W, P, N, ctx)) is not None:
+            if vv[0] is None:
+                return "footpath measures disagree", None
+            v, how = vv
         elif not ctx.get("borrow", True):
             if n * STEP < 12:
                 continue
@@ -363,9 +385,9 @@ def main(a):
         stg = [(g, fh, n) for g, fh, n in ground if g.intersects(frame)]
         lanes = []
         for p in narrow:
-            inside = sum(g.intersection(p).length for g, fh, _ in stg if fh != LANE_FH and g.intersects(p))
+            inside = sum(g.intersection(p).length for g, fh, _ in stg if fh != LANE_FH and fh not in NARROW_JOIN_FH and g.intersects(p))
             if not (long_side(p) > 15 and inside > STREET_LONG * long_side(p)) and not any(
-                    fh == NARROW_ST and g.intersection(p).length > 10 for g, fh, _ in stg if g.intersects(p)):
+                    fh == NARROW_ST and fh not in NARROW_JOIN_FH and g.intersection(p).length > 10 for g, fh, _ in stg if g.intersects(p)):
                 lanes.append(p)
         raw = [g for g in RW if g.intersects(frame)]; dr = [g for g in DR if g.intersects(frame)]; ms = [g for g in MS if g.intersects(frame)]
         inner = [(g.intersection(cell), n) for g, fh, n in stg if fh != LANE_FH and g.intersects(cell)]
@@ -394,7 +416,7 @@ def main(a):
         ctx = {"land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot,
                "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes,
                "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None,
-               "sw": [g for g in SW if g.intersects(frame)], "borrow": "--no-borrow" not in a}
+               "sw": [g for g in SW if g.intersects(frame)], "borrow": "--no-borrow" not in a, "gutter": GUTTER}
         ctx["sw_t"] = STRtree(ctx["sw"])
         for c in comps:
             rp = c.representative_point()
