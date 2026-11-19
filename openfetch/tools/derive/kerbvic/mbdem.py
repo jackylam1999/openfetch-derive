@@ -12,6 +12,7 @@ Z = 17
 GUT_K = 0.55         # m from the gutter's low cell to the kerb line (Brunswick: 0.3 left the gutter widths 0.30 m wider than the OSM ones)
 PROF = 0.25          # m between profile points
 NEED = 6             # profiles a side needs
+REL_DEEP, REL_NEED, REL_IQR, REL_SHIFT = 0.03, 0.4, 1.0, 0.3
 DIP = 0.04           # m: the gutter sits at least this far below both the footpath and the road crown in the median profile
 
 
@@ -101,8 +102,36 @@ def side_width(dem, P, N, reach_m, dmin=1.0, dmax=7.0):
         if depth > best + 1e-6:
             best, bi = depth, i
     if bi < 0 or best < DIP:
-        return None
+        return relief_width(dem, P, N, reach)
     return float(t[bi] - GUT_K)
+
+
+def relief_width(dem, P, N, reach, dmin=1.0, dmax=7.0):
+    """Fallback where the median profile shows no valley (a street lying higher or lower than its lots, a road crown under 4 cm):
+    each front sample's own profile minus its 10 m running mean (tilt and crown taken out) puts the gutter at its deepest point,
+    at least REL_DEEP deep; the side's samples must agree (middle half within REL_IQR). Brunswick: measures 243 of 313 sides
+    (the valley 197), within 1 m of the OSM width on 86 %, and of the valley on 99 %; it sits REL_SHIFT nearer the lot."""
+    if reach < dmin + 1.5:
+        return None
+    half = 5.0
+    t = np.arange(-half, reach + half + 1e-6, PROF)
+    H = dem.height(P[:, 0][:, None] + N[:, 0][:, None] * t[None, :], P[:, 1][:, None] + N[:, 1][:, None] * t[None, :])
+    k = int(half / PROF); w = np.ones(2 * k + 1) / (2 * k + 1)
+    win = np.flatnonzero((t >= dmin + GUT_K) & (t <= min(dmax + GUT_K, reach - 0.75)))
+    if not len(win):
+        return None
+    vals = []
+    for h in H:
+        if not np.isfinite(h).all():
+            continue
+        rel = h - np.convolve(h, w, mode="same")
+        i = win[np.argmin(rel[win])]
+        if rel[i] <= -REL_DEEP:
+            vals.append(t[i] - GUT_K + REL_SHIFT)
+    if len(vals) < max(NEED, REL_NEED * len(P)):
+        return None
+    q1, q2, q3 = np.percentile(vals, [25, 50, 75])
+    return float(q2) if q3 - q1 <= REL_IQR else None
 
 
 if __name__ == "__main__":
