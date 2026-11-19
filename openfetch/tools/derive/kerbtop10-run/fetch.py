@@ -37,7 +37,7 @@ def tile(a):
     if kind == "lots":
         f = env(LOTS, (x, y, x + 500, y + 500), "OBJECTID", 100)
     else:
-        f = env(ROADS, (x, y, x + 500, y + 500), "OBJECTID,functionhierarchy,roadontype,operationalstatus,roadnameoid,roadnamebase,roadnametype", 1000)
+        f = env(ROADS, (x, y, x + 500, y + 500), "OBJECTID,functionhierarchy,roadontype,operationalstatus,roadnameoid,roadnamebase,roadnametype,lanecount,surface", 1000)
     json.dump({"type": "FeatureCollection", "features": f}, open(fn + ".tmp", "w")); os.rename(fn + ".tmp", fn)
 
 
