@@ -22,8 +22,8 @@ STEP_SUPPORT = 0.10   # share of profiles that must find their own kerb near the
                       # sides: sides off by over 1.5 m 80 -> 26, 676 kept); a smeared median shows a step where no profile has one
 PROFILES = "--no-profiles" not in sys.argv
 P_W, P_SLOPE, P_FLAT = 0.8, 0.10, 0.05   # m, slope, m: each side of a kerb in one profile: 80 cm, crossfall under 10 %, within 5 cm of a line
-P_NMIN, P_HIT, P_SHARE, P_WIN = 4, 0.25, 0.7, 1.2   # the densest 1.2 m of the profiles' kerbs holds 4 profiles at least, a quarter of
-                                                    # the side's profiles and 70 % of those that found a kerb
+P_NMIN, P_HIT, P_SHARE, P_WIN = 3, 0.10, 0.6, 1.2   # the densest 1.2 m of the profiles' kerbs holds 3 profiles at least, a tenth of
+                                                    # the side's profiles and 60 % of those that found a kerb
 P_NEAR = 0.6     # m: a profile's kerb this near the median-profile step supports it
 P_SHIFT = 0.25                           # m, per-profile kerb face to the LiDAR kerb traces (2,154 traced sides, 19 Nov 2026: kerblot --calib)
 FLAT = 0.07      # m: the 60 cm either side of the step must each be flat within this (a ramp or slope is not a kerb)
