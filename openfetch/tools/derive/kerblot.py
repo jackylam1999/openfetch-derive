@@ -16,6 +16,7 @@ Here the block is built from the land itself:
 
     python3 kerblot.py lots_dir roads_dir traced_raw.json drawn.geojson[.gz] buildings_dir cells.txt out.json [--why why.json]
         [--measure kerbs.geojson.gz (earlier kerbs used only to measure footpath widths; default the drawn file)] [--foot foot.json] [--ground grids_dir (kerbpcw.py ground grids)] [--nomeasure nm.json]
+        [--cad cad_dir (kerbcad.py: a ring with a run outside the official road reserve is left blank)]
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -30,6 +31,7 @@ import kerbnet as kn
 import kerbregular as kr
 import kerbpcw as kpw
 import kerbreview as kv
+import kerbcad as kc
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
@@ -62,6 +64,8 @@ FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight
                                                         # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
 NOMEASURE = []
+LANE_RUN = 12.0  # m: a longer run of the front facing only a lane centreline is a rear or service lane, never kerbed here (with
+                 # --cad; 19 Nov 2026 close-up reviews: 7 of 30 refused rings ran a slot or spur down a lane wider than LANE_W)
 STREET_N, STREET_IQR = 8, 1.2   # a named street's own footpath width: 8 measures at least, middle half within 1.2 m
 
 
@@ -135,7 +139,7 @@ def drop_road_lots(lots, streets):
             run[i] = run.get(i, 0.0) + streets[j].intersection(inner).length
     drop = {i for i, v in run.items() if v > ROADLOT_RUN}
     print("road lots", len(drop), "of", len(lots), flush=True)
-    return [g for i, g in enumerate(lots) if i not in drop]
+    return [g for i, g in enumerate(lots) if i not in drop], [lots[i] for i in sorted(drop)]
 
 
 def long_side(p):
@@ -202,6 +206,23 @@ def smooth(p):
     p = unary_union([p] + [g for g in getattr(c, "geoms", [c]) if g.area > 0 and g.buffer(-FILL_W / 2).is_empty])
     return p.buffer(ROUND_C, quad_segs=16).buffer(-ROUND_C - ROUND_R, quad_segs=16).buffer(ROUND_R, quad_segs=16)
 
+def corridor_streets(P, N, W, rays, ri, gi, SG, ext_st, C, CID, cad):
+    """A side faces a street when the official road corridor it opens onto holds a street centreline before the land across
+    (or within RAY when there is none), however far: wide streets and centrelines drawn off-centre were "faces no street"
+    (19 Nov 2026: 124 blocks had the centreline past 3/4 of the way across, 177 faced open ground). Fills C and CID in place."""
+    cor = cad.corridor_at(P + N * 1.0)
+    for r, g in zip(ri, gi):
+        if not np.isnan(C[r]) or cor[r] < 0:
+            continue
+        x = rays[r].intersection(SG[g])
+        for q in getattr(x, "geoms", [x]):
+            if q.is_empty or q.geom_type != "Point" or not cad.in_corridor(q, cor[r]):
+                continue
+            d = Point(rays[r].coords[0]).distance(q)
+            if d < W[r] and (np.isnan(C[r]) or d < C[r]):
+                C[r], CID[r] = d, ext_st[g]
+
+
 def judge_block(comp, ctx):
     """Kerb ring for one block or (reason, None)."""
     P, N = front_samples(comp)
@@ -224,7 +245,14 @@ def judge_block(comp, ctx):
             d = Point(rays[r].coords[0]).distance(q)
             if d < min(W[r], max(C_MAX, WIDE * W[r] if W[r] < RAY else 0)) and (np.isnan(C[r]) or d < C[r]):
                 C[r], CID[r] = d, ext_st[g]
+    if ctx["cad"] is not None:
+        corridor_streets(P, N, W, rays, ri, gi, SG, ext_st, C, CID, ctx["cad"])
     street = ~np.isnan(C)
+    if ctx["cad"] is not None:
+        lane = street & np.isin(CID, [i for i, fh in enumerate(ctx["st_fh"]) if fh == LANE_FH])
+        if kc.longest(lane) * STEP > LANE_RUN:
+            DETAIL[comp.representative_point().wkt] = {"lane_m": round(float(kc.longest(lane) * STEP), 1)}
+            return "side runs along a lane", None
     if (~street).mean() > NO_STREET:
         far = np.full(len(rays), np.nan)
         for r, g in zip(ri, gi):
@@ -331,6 +359,11 @@ def judge_block(comp, ctx):
     for L in ctx["lanes"]:
         if L.intersects(ring) and q.intersection(L.buffer(-0.3)).length > 3.0 and not L.within(comp.buffer(0.3)):
             return "along a lane", None
+    if ctx["cad"] is not None:
+        w, m = kc.judge(ctx["cad"], q)
+        if w:
+            DETAIL[comp.representative_point().wkt] = {"run_m": m}
+            return w, None
     pts = shapely.points(np.asarray([q.interpolate(t).coords[0] for t in np.arange(0, q.length, 1.0)]))
     near_raw = np.asarray([min([ctx["raw"][int(k)].distance(p) for k in ctx["raw_t"].query(p.buffer(AGREE_NEAR))] or [99]) for p in pts])
     seen = near_raw < AGREE_NEAR
@@ -367,7 +400,8 @@ def main(a):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
     nm_of = {id(g): n for (g, _), n in zip(roads, rname)}
     ground = [(g, fh, nm_of.get(id(g))) for g, fh in kn.on_ground(roads, over) if fh not in ka.SKIP_FH]
-    lots_all = drop_road_lots(lots_all, [g for g, fh, _ in ground if fh != LANE_FH])
+    lots_all, road_lots = drop_road_lots(lots_all, [g for g, fh, _ in ground if fh != LANE_FH])
+    cad = kc.Cad(a[a.index("--cad") + 1], road_lots) if "--cad" in a else None
     LT = STRtree(lots_all)
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
@@ -410,10 +444,10 @@ def main(a):
     for x, y, cell, frame, land0, lanes, stg, raw, dr, ms in prep:
         land = unary_union([land0] + lanes)
         comps = [Polygon(g.exterior) for g in getattr(land, "geoms", [land]) if g.geom_type == "Polygon"]
-        LB = [c.exterior for c in comps]
+        LB = [c.exterior for c in comps] + (cad.barriers(frame) if cad is not None else [])
         B = buildings(a[4], [(x + i, y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)], to)
         ctx = {"land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot,
-               "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes,
+               "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes, "cad": cad,
                "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None}
         for c in comps:
             rp = c.representative_point()
