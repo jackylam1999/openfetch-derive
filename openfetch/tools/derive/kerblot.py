@@ -43,6 +43,10 @@ D_MIN, D_MAX = 1.0, 7.0      # m, believable footpath widths (lot front to kerb)
 C_MAX = 16.0         # m: a street's centreline lies within this of the lot front (a centreline seen past a rail line, creek
                      # or park strip is not this side's street; 18 Nov 2026 review: 9 rings ran along rail and bush edges)
 CW_MIN = 2.5         # m, half a carriageway at least between the kerb and the centreline
+CW_OWN, OWN = 1.75, ("lidar this side", "lidar step")   # a kerb the LiDAR saw on this very side: narrow terrace streets (6-7 m
+                     # between lot fronts) keep 1-1.25 m footpaths and a 3.5 m carriageway; 45 such blocks were refused (19 Nov 2026)
+WIDE = 0.75          # a centreline past C_MAX still faces this side when it lies before the land across, within 3/4 of the way
+                     # (wide streets, 25-45 m between lot fronts: 117 blocks were refused as facing no street, 19 Nov 2026)
 MEASURED = 0.25      # share of a side's samples that must have a trace for its own median to be used
 NO_STREET = 0.08     # share of front samples that may face no street (corner rays, splays)
 COVER_RUN = 10.0     # m of front already kerbed (drawn or council kerb in front of it): not a blank block
@@ -50,6 +54,10 @@ CL_CLEAR = 0.5       # m the ring keeps from every street centreline outside the
 BLD_IN, BLD_RUN, BLD_A = 3.0, 3.0, 120.0   # roof guard (the same numbers as the version gate)
 AGREE_NEAR, AGREE_D, AGREE_MIN = 5.0, 1.5, 0.6
 MIN_A, MAX_A = 300.0, 250000.0
+FRAME = 800.0   # m of land read round each 1 km square: big blocks (industrial, bushland) were never judged with 300 m (19 Nov 2026)
+DETAIL = {}
+ROADLOT_IN, ROADLOT_RUN = 3.0, 15.0   # m (drop_road_lots)
+CL_BAND = '--cl-band' in sys.argv   # centrelines are tolerated inside the footpath band (19 Nov 2026)
 FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight past notches under 3 m wide in the lot fronts and
                                                         # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
@@ -112,6 +120,22 @@ def reserves(lots, frame):
     wide = res.buffer(-LANE_W / 2).buffer(LANE_W / 2)
     narrow = res.difference(wide.buffer(0.05)).buffer(-0.1).buffer(0.1)
     return land0, [p for p in getattr(narrow, "geoms", [narrow]) if p.area > 5]
+
+
+def drop_road_lots(lots, streets):
+    """Cadastre lots that carry a street (road lots, closed roads kept as lots, stratum lots under a road) join the blocks on
+    both sides into one block of 50-150 ha that is never judged (19 Nov 2026: 29 km of street sides in the top 10 suburbs).
+    A lot with more than ROADLOT_RUN m of street centreline more than ROADLOT_IN m inside it is road, not land."""
+    T = STRtree(streets)
+    li, si = T.query(lots, predicate="intersects")
+    run = {}
+    for i, j in zip(li.tolist(), si.tolist()):
+        inner = lots[i].buffer(-ROADLOT_IN)
+        if not inner.is_empty:
+            run[i] = run.get(i, 0.0) + streets[j].intersection(inner).length
+    drop = {i for i, v in run.items() if v > ROADLOT_RUN}
+    print("road lots", len(drop), "of", len(lots), flush=True)
+    return [g for i, g in enumerate(lots) if i not in drop]
 
 
 def long_side(p):
@@ -198,10 +222,22 @@ def judge_block(comp, ctx):
             if q.is_empty or q.geom_type != "Point":
                 continue
             d = Point(rays[r].coords[0]).distance(q)
-            if d < min(W[r], C_MAX) and (np.isnan(C[r]) or d < C[r]):
+            if d < min(W[r], max(C_MAX, WIDE * W[r] if W[r] < RAY else 0)) and (np.isnan(C[r]) or d < C[r]):
                 C[r], CID[r] = d, ext_st[g]
     street = ~np.isnan(C)
     if (~street).mean() > NO_STREET:
+        far = np.full(len(rays), np.nan)
+        for r, g in zip(ri, gi):
+            x = rays[r].intersection(SG[g])
+            for q in getattr(x, "geoms", [x]):
+                if q.geom_type == "Point":
+                    d = Point(rays[r].coords[0]).distance(q)
+                    if d < W[r] and (np.isnan(far[r]) or d < far[r]):
+                        far[r] = d
+        ns = ~street
+        DETAIL[comp.representative_point().wkt] = {"no_street_m": round(float(ns.sum() * STEP), 1), "share": round(float(ns.mean()), 3),
+            "wide_street": int(np.sum(ns & ~np.isnan(far))), "land_across": int(np.sum(ns & np.isnan(far) & (W < RAY))),
+            "open": int(np.sum(ns & np.isnan(far) & (W >= RAY))), "w_med": round(float(np.nanmedian(np.where(ns, W, np.nan))), 1)}
         return "side faces no street", None
     reach = comp.buffer(D_MAX + 1.0)
     def part(g):   # an earlier closed ring round only a part of this block (a half block cut off by its rear lane)
@@ -247,9 +283,13 @@ def judge_block(comp, ctx):
             continue
         else:
             NOMEASURE.append((nm, int(n), {k: len(v) for k, v in tab.items()}, int(np.isfinite(d_own[m]).sum()), int(np.isfinite(d_opp[m]).sum()), int(np.isfinite(d_oppd[m]).sum())))
+            DETAIL[comp.representative_point().wkt] = {"street": nm, "fh": int(ctx["st_fh"][cid]), "side_m": round(float(n * STEP), 1),
+                "w_med": round(float(np.nanmedian(W[m])), 1), "at": [round(float(v), 1) for v in np.median(P[m], axis=0)]}
             return "no footpath measure", None
-        v = min(v, float(np.nanmedian(W[m])) / 2 - CW_MIN)   # the reserve, not the centreline: centrelines are metres off here
+        v = min(v, float(np.nanmedian(W[m])) / 2 - (CW_OWN if how in OWN else CW_MIN))   # the reserve, not the centreline: centrelines are metres off here
         if v < D_MIN:
+            DETAIL[comp.representative_point().wkt] = {"street": nm, "fh": int(ctx["st_fh"][cid]), "side_m": round(float(n * STEP), 1),
+                "w_med": round(float(np.nanmedian(W[m])), 1), "measured": round(v + CW_MIN, 2) if how else None, "how": how}
             return "street too narrow for a footpath", None
         D[m] = v; used[str(nm) + ":" + str(int(cid))] = (round(v, 2), how)
     fill = np.isnan(D)
@@ -279,6 +319,10 @@ def judge_block(comp, ctx):
         if fh == LANE_FH:
             continue   # a lane joined into this block or the next: the kerb crosses its mouth on purpose
         if g.distance(q) < CL_CLEAR or g.intersection(ring.buffer(-0.5)).length > 1.0 or g.intersects(q):
+            if CL_BAND and g.intersection(ring.buffer(CL_CLEAR)).within(comp.buffer(float(np.nanmax(D)) + CL_CLEAR)):
+                continue   # an offset centreline inside the footpath band (inner city and older streets: metres off), not a street crossed
+            DETAIL[comp.representative_point().wkt] = {"fh": int(fh), "in_m": round(g.intersection(ring.buffer(-0.5)).length, 1),
+                "past_band_m": round(g.intersection(ring.buffer(CL_CLEAR)).difference(comp.buffer(float(np.nanmax(D)) + CL_CLEAR)).length, 1)}
             return "street centreline inside or too close", None
     for k in ctx["bld_t"].query(q):
         part = q.intersection(ctx["bld"][int(k)].buffer(-BLD_IN))
@@ -323,6 +367,8 @@ def main(a):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
     nm_of = {id(g): n for (g, _), n in zip(roads, rname)}
     ground = [(g, fh, nm_of.get(id(g))) for g, fh in kn.on_ground(roads, over) if fh not in ka.SKIP_FH]
+    lots_all = drop_road_lots(lots_all, [g for g, fh, _ in ground if fh != LANE_FH])
+    LT = STRtree(lots_all)
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
@@ -332,7 +378,7 @@ def main(a):
         pass
     for x, y in cells:
         cell = box(x * 1000, y * 1000, x * 1000 + 1000, y * 1000 + 1000)
-        frame = cell.buffer(300, join_style="mitre")
+        frame = cell.buffer(FRAME, join_style="mitre")
         lots = [lots_all[int(k)] for k in LT.query(frame)]
         land0, narrow = reserves(lots, frame)
         stg = [(g, fh, n) for g, fh, n in ground if g.intersects(frame)]
@@ -381,7 +427,7 @@ def main(a):
             cnt[w or "kept"] = cnt.get(w or "kept", 0) + 1
             bid = f"L{x}{y}-{len(keep) + len(why)}"
             if w:
-                why.append((w, Polygon(c.exterior), bid, f"{x}_{y}"))
+                why.append((w, Polygon(c.exterior), bid, f"{x}_{y}", DETAIL.pop(c.representative_point().wkt, None)))
             else:
                 ring, used, seen, inside = res
                 keep.append((ring, used, seen, bid, f"{x}_{y}", [[[round(v, 7) for v in back(*p)] for p in g.coords] for g in inside]))
@@ -390,8 +436,8 @@ def main(a):
     json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"id": b, "cell": n, "d": {str(k): v for k, v in u.items()},
                "lidar_seen": round(s, 2), "source": "lot front", "replaces": rp}, "geometry": {"type": "LineString", "coordinates": ll(r)}} for r, u, s, b, n, rp in keep]}, open(a[6], "w"))
     if "--why" in a:
-        json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"why": w, "id": b, "cell": n},
-                   "geometry": {"type": "LineString", "coordinates": ll(g)}} for w, g, b, n in why]}, open(a[a.index("--why") + 1], "w"))
+        json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"why": w, "id": b, "cell": n, "detail": dt},
+                   "geometry": {"type": "LineString", "coordinates": ll(g)}} for w, g, b, n, dt in why]}, open(a[a.index("--why") + 1], "w"))
     if "--nomeasure" in a:
         json.dump(NOMEASURE, open(a[a.index("--nomeasure") + 1], "w"))
     print("RESULT", json.dumps({"count": cnt, "km": round(sum(k[0].exterior.length for k in keep) / 1000, 2)}))

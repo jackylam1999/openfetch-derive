@@ -7,9 +7,12 @@ tools/mirror/kerbs-check.py can refuse the version:
         it) for over LANE_RUN m. A kerb crossing a lane mouth or turning a few metres into it is not a run along it.
 Every 1 km square a line touches must have lots, roads and footprints, or the guard fails (no input = not checked).
 
-    python3 kerbguard.py kerbs.geojson[.gz] lots_dir roads_dir buildings_dir out.json [--drop kept.geojson.gz]
+    python3 kerbguard.py kerbs.geojson[.gz] lots_dir roads_dir buildings_dir out.json --official a.json[,b.json] [--drop kept.geojson.gz]
     python3 kerbguard.py --selftest
 buildings_dir holds kerbgrid-run/bldall.py files <x>_<y>.json (km square numbers, lon/lat footprints).
+official: a line runs within OFF_D m of an official council kerb line for OFF_RUN m or more (it doubles the council kerb; 19 Nov
+        2026, 102 lines doubled the City of Parramatta kerbs). --official names every council kerb file (lon/lat GeoJSON) for the
+        version's area; "--official none" records that no council has kerbs there. kerbs-check.py refuses a guard without this check.
 --drop writes the version without the failing lines (whole lines only: a line is kept whole or left out, never cut).
 """
 import glob, gzip, json, os, sys
@@ -21,6 +24,7 @@ from shapely.ops import unary_union
 BLD_IN, BLD_RUN, BLD_A = 3.0, 3.0, 120.0
 LANE_W, LANE_RUN, CLOSE, LANE_FH = 7.5, 6.0, 0.4, 7
 SKIP_FH = {8, 9, 10, 11}
+OFF_D, OFF_RUN = 2.5, 25.0
 
 
 def is_street(pr):
@@ -85,8 +89,38 @@ def selftest():
     roof, lane = check([good, mouth, over, along], lots, streets, blds)
     assert [i for i, _ in roof] == [2], roof
     assert [i for i, _ in lane] == [3], lane
+    import tempfile
+    fn = os.path.join(tempfile.mkdtemp(), "council.json")
+    json.dump({"features": [{"geometry": {"type": "LineString", "coordinates": [[-3, 18.5], [103, 18.5]]}}]}, open(fn, "w"))
+    off, names = doubled([good, mouth, over], fn, lambda x, y: (x, y))   # good runs 1.5 m beside the council kerb: doubled
+    assert list(off) == [0] and names == ["council.json"], off
+    assert doubled([good], None, None) == ({}, None) and doubled([good], "none", None) == ({}, [])
     print("kerbguard selftest pass")
     return 0
+
+
+def doubled(G, files, to):
+    """Lines running OFF_RUN m or more within OFF_D m of an official council kerb: {line index: metres}; (None) when not asked."""
+    if files is None:
+        return {}, None
+    names = [] if files == "none" else files.split(",")
+    O = []
+    for fn in names:
+        for f in json.load(open(fn))["features"]:
+            g = f.get("geometry") or {}
+            for c in ([g.get("coordinates")] if g.get("type") == "LineString" else g.get("coordinates") or [] if g.get("type") == "MultiLineString" else []):
+                if c and len(c) > 1:
+                    O.append(LineString([to(*p[:2]) for p in c]))
+    if not O:
+        return {}, [os.path.basename(n) for n in names]
+    OT = STRtree(O); out = {}
+    for i, g in enumerate(G):
+        near = OT.query(g.buffer(OFF_D))
+        if len(near):
+            run = g.intersection(unary_union([O[int(k)].buffer(OFF_D) for k in near])).length
+            if run >= OFF_RUN:
+                out[i] = round(run, 1)
+    return out, [os.path.basename(n) for n in names]
 
 
 def main(a):
@@ -123,16 +157,19 @@ def main(a):
             roof[idx[k]] = max(run, roof.get(idx[k], 0))
         for k, run in l:
             lane[idx[k]] = max(run, lane.get(idx[k], 0))
+    off, offn = doubled(G, a[a.index("--official") + 1] if "--official" in a else None, to)
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
     pt = lambda i: [round(v, 6) for v in back(*G[i].interpolate(0.5, normalized=True).coords[0])]
     res = {"check": "openfetch-derive kerbguard.py", "file": os.path.basename(a[0]), "lines": len(G), "cells": len(cells),
            "missing_cells": missing, "roof": len(roof), "lane": len(lane),
            "roof_at": [[pt(i), v] for i, v in sorted(roof.items())][:200], "lane_at": [[pt(i), v] for i, v in sorted(lane.items())][:200],
-           "result": "pass" if not (missing or roof or lane) else "fail"}
+           "official_files": offn, "official": len(off) if offn is not None else None,
+           "official_at": [[pt(i), v] for i, v in sorted(off.items())][:200],
+           "result": "pass" if not (missing or roof or lane or off or offn is None) else "fail"}
     json.dump(res, open(a[4], "w"), indent=1)
-    print(res["result"], json.dumps({k: res[k] for k in ("lines", "cells", "roof", "lane")}), "missing", len(missing))
+    print(res["result"], json.dumps({k: res[k] for k in ("lines", "cells", "roof", "lane", "official")}), "missing", len(missing))
     if "--drop" in a:
-        bad = set(roof) | set(lane)
+        bad = set(roof) | set(lane) | set(off)
         json.dump({"type": "FeatureCollection", "features": [f for i, f in enumerate(F) if i not in bad]}, gzip.open(a[a.index("--drop") + 1], "wt"))
         print("dropped", len(bad), "km", round(sum(G[i].length for i in bad) / 1000, 2))
     return 0 if res["result"] == "pass" else 1
