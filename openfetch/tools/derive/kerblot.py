@@ -33,6 +33,7 @@ import kerbregular as kr
 import kerbpcw as kpw
 import kerbreview as kv
 import kerbcad as kc
+import kerbside
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
@@ -241,6 +242,10 @@ def calib(G, P, N, W, d_tr, nm):
     CALIB.append([float(np.nanmedian(d_tr)), a, [None if np.isnan(v) else round(float(v), 2) for v in pos], round(reach * 2, 1), str(nm)])
 
 
+SIDE = {}   # outline samples of the block last refused as facing no street, for kerbside.py (--sides)
+SIDES = '--sides' in sys.argv   # --sides out.json: street-side lines (kerbside.py)
+
+
 def judge_block(comp, ctx):
     """Kerb ring for one block or (reason, None)."""
     P, N = front_samples(comp)
@@ -272,6 +277,7 @@ def judge_block(comp, ctx):
             DETAIL[comp.representative_point().wkt] = {"lane_m": round(float(kc.longest(lane) * STEP), 1)}
             return "side runs along a lane", None
     if (~street).mean() > NO_STREET:
+        SIDE.update(P=P, N=N, W=W, C=C, CID=CID, street=street, rays=rays)
         far = np.full(len(rays), np.nan)
         for r, g in zip(ri, gi):
             x = rays[r].intersection(SG[g])
@@ -433,7 +439,7 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
-    keep, why, cnt, done = [], [], {}, set()
+    keep, why, cnt, done, sidel = [], [], {}, set(), []
     foot, prep = {}, []
     if "--foot-only" in a:
         pass
@@ -485,6 +491,9 @@ def main(a):
                 continue
             done.add(key)
             w, res = judge_block(c, ctx)
+            if w == "side faces no street" and SIDES:
+                for ln, info in kerbside.lines(c, SIDE, ctx, sys.modules[__name__]):
+                    sidel.append((ln, info, f"{x}_{y}"))
             cnt[w or "kept"] = cnt.get(w or "kept", 0) + 1
             bid = f"L{x}{y}-{len(keep) + len(why)}"
             if w:
@@ -496,6 +505,10 @@ def main(a):
     ll = lambda g: [[round(v, 7) for v in back(*p)] for p in g.exterior.coords]
     json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"id": b, "cell": n, "d": {str(k): v for k, v in u.items()},
                "lidar_seen": round(s, 2), "source": "lot front", "replaces": rp}, "geometry": {"type": "LineString", "coordinates": ll(r)}} for r, u, s, b, n, rp in keep]}, open(a[6], "w"))
+    if SIDES:
+        json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"id": f"S{i}", "cell": n, "side": True, "info": inf},
+                   "geometry": {"type": "LineString", "coordinates": [[round(v, 7) for v in back(*p)] for p in g.coords]}} for i, (g, inf, n) in enumerate(sidel)]},
+                  open(a[a.index("--sides") + 1], "w"))
     if "--why" in a:
         json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"why": w, "id": b, "cell": n, "detail": dt},
                    "geometry": {"type": "LineString", "coordinates": ll(g)}} for w, g, b, n, dt in why]}, open(a[a.index("--why") + 1], "w"))
@@ -503,6 +516,8 @@ def main(a):
         json.dump(CALIB, open(a[a.index("--calib") + 1], "w"))
     if "--nomeasure" in a:
         json.dump(NOMEASURE, open(a[a.index("--nomeasure") + 1], "w"))
+    if SIDES:
+        print("SIDES", dict(kerbside.STATS))
     print("RESULT", json.dumps({"count": cnt, "km": round(sum(k[0].exterior.length for k in keep) / 1000, 2)}))
 
 
