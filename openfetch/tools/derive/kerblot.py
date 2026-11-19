@@ -33,6 +33,7 @@ import kerbregular as kr
 import kerbpcw as kpw
 import kerbreview as kv
 import kerbcad as kc
+import kerblane
 import kerbside
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
@@ -397,6 +398,8 @@ def judge_block(comp, ctx):
         if w:
             DETAIL[comp.representative_point().wkt] = {"run_m": m}
             return w, None
+    if kerblane.bad(q, [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH and g.intersects(ring)]):
+        return "ring across lane mouths", None
     pts = shapely.points(np.asarray([q.interpolate(t).coords[0] for t in np.arange(0, q.length, 1.0)]))
     near_raw = np.asarray([min([ctx["raw"][int(k)].distance(p) for k in ctx["raw_t"].query(p.buffer(AGREE_NEAR))] or [99]) for p in pts])
     seen = near_raw < AGREE_NEAR
