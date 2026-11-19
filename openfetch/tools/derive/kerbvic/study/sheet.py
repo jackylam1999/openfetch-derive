@@ -15,7 +15,11 @@ sw = [np.array([TO(*p) for p in f["geometry"]["coordinates"]]) for f in json.loa
 import os
 os.makedirs(out, exist_ok=True); tag = sys.argv[6] if len(sys.argv) > 6 else "x"
 for n, f in enumerate(pick):
-    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+    AER = os.environ.get("AER")
+    if AER:
+        fig, (ax, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+    else:
+        fig, ax = plt.subplots(1, 1, figsize=(7, 7))
     c = np.array([TO(*p) for p in f["geometry"]["coordinates"]]); cx, cy = c.mean(axis=0)
     # a 70 m window on one ring corner region (close-up): centre on a random vertex
     vx, vy = AT[n] if AT else c[random.randrange(len(c))]; h = 35
@@ -33,6 +37,12 @@ for n, f in enumerate(pick):
     for a in sw:
         if abs(a[:, 0].mean() - vx) < 120 and abs(a[:, 1].mean() - vy) < 120: ax.plot(a[:, 0], a[:, 1], color="#0a0", lw=0.8, ls="--")
     ax.plot(c[:, 0], c[:, 1], color="#f0f", lw=1.6); ax.set_xlim(vx - h, vx + h); ax.set_ylim(vy - h, vy + h); ax.set_aspect("equal")
+    if AER:
+        import aerial
+        img, ext = aerial.window(vx - h, vy - h, vx + h, vy + h)
+        ax2.imshow(img, extent=ext, origin="lower"); ax2.plot(c[:, 0], c[:, 1], color="#f0f", lw=1.4)
+        ax2.set_xlim(vx - h, vx + h); ax2.set_ylim(vy - h, vy + h); ax2.set_aspect("equal"); ax2.set_xticks([]); ax2.set_yticks([])
+        ax2.set_title("same window on aerial photo (look only)", fontsize=7)
     ax.set_title(f"{tag}{n + 1:02d}: magenta = our kerb; blue = low ground (gutters); black = lot lines; green dashed = OSM path. 70 m across", fontsize=7)
     ax.set_xticks([]); ax.set_yticks([]); plt.tight_layout(); plt.savefig(os.path.join(out, f"{tag}{n + 1:02d}.png"), dpi=80); plt.close(fig)
     open(os.path.join(out, "key.txt"), "a").write(f"{tag}{n + 1:02d} {f['properties']['id']} {vx:.1f} {vy:.1f}\n")
