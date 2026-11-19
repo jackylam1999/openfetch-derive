@@ -7,12 +7,13 @@ tools/mirror/kerbs-check.py can refuse the version:
         it) for over LANE_RUN m. A kerb crossing a lane mouth or turning a few metres into it is not a run along it.
 Every 1 km square a line touches must have lots, roads and footprints, or the guard fails (no input = not checked).
 
-    python3 kerbguard.py kerbs.geojson[.gz] lots_dir roads_dir buildings_dir out.json --official a.json[,b.json] [--drop kept.geojson.gz]
+    python3 kerbguard.py kerbs.geojson[.gz] lots_dir roads_dir buildings_dir out.json --official a.json[,b.json] [--zones zone_dir] [--drop kept.geojson.gz]
     python3 kerbguard.py --selftest
 buildings_dir holds kerbgrid-run/bldall.py files <x>_<y>.json (km square numbers, lon/lat footprints).
 official: a line runs within OFF_D m of an official council kerb line for OFF_RUN m or more (it doubles the council kerb; 19 Nov
         2026, 102 lines doubled the City of Parramatta kerbs). --official names every council kerb file (lon/lat GeoJSON) for the
         version's area; "--official none" records that no council has kerbs there. kerbs-check.py refuses a guard without this check.
+--zones <dir> (or "none" for a place with no NSW zoning, e.g. Victoria; recorded in guards.json) adds the land-use and private-land guards of kerbland.py (zoning cells <x>_<y>.json; kerbs-check refuses a guard without them).
 --drop writes the version without the failing lines (whole lines only: a line is kept whole or left out, never cut).
 """
 import glob, gzip, json, os, sys
@@ -135,6 +136,27 @@ def doubled(G, files, to):
     return out, [os.path.basename(n) for n in names]
 
 
+def landuse(G, zdir, lots, cells):
+    """Land-use and private-land guards (kerbland.py, case P-0197): zdir holds <x>_<y>.json zoning cells next to the lots and roads cells.
+    A cell with no zoning file fails the version (no input is not 'nothing there')."""
+    import kerbland
+    seen, polys, absent = set(), [], []
+    for (x, y) in sorted(cells):
+        fn = os.path.join(zdir, f"{x * 1000}_{y * 1000}.json")
+        if not os.path.exists(fn):
+            absent.append(fn); continue
+        for f in json.load(open(fn))["features"]:
+            oid = (f.get("properties") or {}).get("OBJECTID")
+            if oid in seen or not f.get("geometry") or not kerbland.zone_blocks(f["properties"]):
+                continue
+            seen.add(oid)
+            g = shape(f["geometry"])
+            polys += [q for q in getattr(g, "geoms", [g]) if q.geom_type == "Polygon"]
+    if absent:
+        raise SystemExit("no zoning file for: " + ", ".join(absent[:5]))
+    return kerbland.land_bad(G, polys), kerbland.lot_bad(G, lots)
+
+
 def main(a):
     from pyproj import Transformer
     to = Transformer.from_crs(4326, 7856, always_xy=True).transform
@@ -148,6 +170,7 @@ def main(a):
             for y in range(int(y0 // 1000), int(y1 // 1000) + 1):
                 cells.setdefault((x, y), []).append(i)
     missing, roof, lane = [], {}, {}
+    alllots = {}
     for (x, y), idx in sorted(cells.items()):
         n = f"{x * 1000}_{y * 1000}"
         paths = [os.path.join(a[1], n + ".json"), os.path.join(a[2], n + ".json"), os.path.join(a[3], f"{x}_{y}.json")]
@@ -158,6 +181,8 @@ def main(a):
         lots = [q for g in lots for q in getattr(g, "geoms", [g]) if q.geom_type == "Polygon"]
         st = [shape(f["geometry"]) for f in json.load(open(paths[1]))["features"] if f.get("geometry") and is_street(f.get("properties") or {})]
         st = [q for g in st for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString"]
+        for q in lots:
+            alllots[q.wkb] = q
         bl = []
         for f in json.load(open(paths[2]))["features"]:
             p = Polygon([to(*c[:2]) for c in f["geometry"]["coordinates"][0]]).buffer(0)
@@ -169,19 +194,24 @@ def main(a):
             roof[idx[k]] = max(run, roof.get(idx[k], 0))
         for k, run in l:
             lane[idx[k]] = max(run, lane.get(idx[k], 0))
+    land, lotin, zdir = {}, {}, a[a.index("--zones") + 1] if "--zones" in a else None
+    if zdir and zdir != "none":
+        land, lotin = landuse(G, zdir, list(alllots.values()), cells)
     off, offn = doubled(G, a[a.index("--official") + 1] if "--official" in a else None, to)
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
     pt = lambda i: [round(v, 6) for v in back(*G[i].interpolate(0.5, normalized=True).coords[0])]
     res = {"check": "openfetch-derive kerbguard.py", "file": os.path.basename(a[0]), "lines": len(G), "cells": len(cells),
            "missing_cells": missing, "roof": len(roof), "lane": len(lane),
            "roof_at": [[pt(i), v] for i, v in sorted(roof.items())][:200], "lane_at": [[pt(i), v] for i, v in sorted(lane.items())][:200],
+           "zones": zdir, "land": len(land) if zdir else None, "lot": len(lotin) if zdir else None,
+           "land_at": [[pt(i), v] for i, v in sorted(land.items())][:200], "lot_at": [[pt(i), v] for i, v in sorted(lotin.items())][:200],
            "official_files": offn, "official_lines": COUNTS, "official": len(off) if offn is not None else None,
            "official_at": [[pt(i), v] for i, v in sorted(off.items())][:200],
-           "result": "pass" if not (missing or roof or lane or off or offn is None) else "fail"}
+           "result": "pass" if not (missing or roof or lane or off or offn is None or land or lotin or not zdir) else "fail"}
     json.dump(res, open(a[4], "w"), indent=1)
-    print(res["result"], json.dumps({k: res[k] for k in ("lines", "cells", "roof", "lane", "official")}), "missing", len(missing))
+    print(res["result"], json.dumps({k: res[k] for k in ("lines", "cells", "roof", "lane", "official", "land", "lot")}), "missing", len(missing))
     if "--drop" in a:
-        bad = set(roof) | set(lane) | set(off)
+        bad = set(roof) | set(lane) | set(off) | set(land) | set(lotin)
         json.dump({"type": "FeatureCollection", "features": [f for i, f in enumerate(F) if i not in bad]}, gzip.open(a[a.index("--drop") + 1], "wt"))
         print("dropped", len(bad), "km", round(sum(G[i].length for i in bad) / 1000, 2))
     return 0 if res["result"] == "pass" else 1

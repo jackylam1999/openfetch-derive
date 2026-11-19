@@ -331,12 +331,8 @@ def check(a):
     for s in spots:                                     # the sheet shows the worst of every kind first, then the rest
         if s['kind'] not in seen: pick.append(s); seen.add(s['kind'])
     pick += [s for s in spots if s not in pick]
-    import random
-    rnd, rand = random.Random(os.path.basename(src)), []; tot = sum(ln.length for ln in lines)
-    for _ in range(8 if len(spots) >= 12 else 16):      # few flags left: look at more ordinary places
-        r, i = rnd.uniform(0, tot), 0
-        while r > lines[i].length: r -= lines[i].length; i += 1
-        p = lines[i].interpolate(r); rand.append({'kind': 'random', 'x': p.x, 'y': p.y, 'size': 0})
+    import kerbland
+    rand = [{'kind': 'random', 'x': x, 'y': y, 'size': 0} for x, y in kerbland.area_sample(lines, 8 if len(spots) >= 12 else 16, os.path.basename(src))]   # by area, P-0197
     pick = pick[:12] + rand
     if opt.get('prev') and os.path.exists(opt['prev']):   # the last version's worst spots: fixed, or only deleted?
         was = json.load(open(opt['prev'])).get('sheet_spots', [])
