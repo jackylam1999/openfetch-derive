@@ -9,7 +9,8 @@ and they agree (IQR at most AER_IQR). Held-out check 19 Nov 2026: Carlton rings 
 import os, sys
 import numpy as np
 from PIL import Image
-RES, NEED, AER_IQR, DMIN, DMAX, M = 0.25, 0.5, 1.0, 0.75, 9.0, 64
+RES, NEED, DMIN, DMAX, M = 0.25, 0.5, 0.75, 12.0, 64   # DMAX 12: grass verges up to 10 m (review 7)
+AER_IQR = float(os.environ.get("KERB_AER_IQR", "1.5"))
 
 
 class Road:

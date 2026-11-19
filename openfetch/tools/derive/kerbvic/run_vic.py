@@ -14,6 +14,7 @@ if os.path.isdir(f"{p}/dem"):
 elif os.environ.get("KERB_AER"):   # a folder of aerial road squares (aerroad.py)
     import aerroad
     kl.GUTTER = aerroad.Road(os.environ["KERB_AER"])
+    kl.GUTTER_WINS, kl.OSM_ALONE = True, False   # Carlton + North Melbourne held out: the aerial alone 83-88% within 1 m, 98% within 2 m (with the OSM check 84-87%, fewer blocks)
 os.makedirs(o, exist_ok=True)
 kl.main([f"{p}/lots", f"{p}/roads", f"{p}/empty.geojson", f"{p}/empty.geojson", f"{p}/bld", f"{p}/cells.txt", f"{o}/rings.json",
          "--why", f"{o}/why.json", "--sidewalks", f"{p}/sidewalks.geojson", "--no-borrow", "--nomeasure", f"{o}/nomeasure.json"] + sys.argv[3:])
