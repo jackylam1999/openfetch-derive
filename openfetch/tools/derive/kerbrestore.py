@@ -9,7 +9,8 @@ cut end is finished with a kerb return into that street (quadratic fillet, radiu
   2. block side = the stretch between two mouths (or a line end). Every metre of it is measured against the cadastre:
        hug  = nearer than HUG_M to a lot (kerb along a wall, a lane or in a yard; Erskineville n18, n09 on the 20 Nov labels);
        far  = farther than FAR_M from any lot (kerb in the carriageway more than about 3 m past a normal footpath, a mall; n15, n17);
-     a side is kept when at most BAD_SHARE of it is hug or far and no flagged stretch is longer than BAD_RUN; else it is left out whole
+     a side is left out whole when it hugs lots (within 0.5 m of a lot line for 25 m or more), sits in the carriageway (over 8 m from any lot and
+     within 3 m of a street centreline for over 15 % of it) or is not along a road (over 10 % of it farther than the street's half width + 6 m)
      (blank beats odd). Nothing measured the other way (LiDAR needs a grid, the cadastre is everywhere), so the review does the rest;
   3. a side shorter than MIN_SIDE is left out.
 Kept geometry that was never cut is the published line, byte for byte (no smoothing, no moves).
@@ -25,8 +26,9 @@ from shapely.geometry import LineString, Point, shape
 from shapely.strtree import STRtree
 
 HALF_W = {1: 9.0, 2: 8.0, 3: 7.0, 4: 6.5, 5: 5.5, 6: 4.5, 7: 3.0}   # as kerbgrid.HALF_W; paths (8-11) are not streets
-HUG_M, FAR_M = 1.5, 8.0
-BAD_SHARE, BAD_RUN, MIN_SIDE = 0.15, 25.0, 12.0
+HUG_M, HUG_RUN, FAR_M, CARRIAGE_M = 0.5, 25.0, 8.0, 3.0   # kerb lead 20 Nov: the first rule left out 24 good sides of 28
+AWAY_M, ROAD_SHARE = 6.0, 0.9
+BAD_SHARE, MIN_SIDE = 0.15, 15.0
 RADIUS, SAME_ST_DEG, MERGE_M = 4.0, 25.0, 6.0
 TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
 
@@ -131,23 +133,35 @@ def sides_of(L, cuts):
     return out
 
 
-def flags(L, s0, s1, lots, lt):
-    """Per metre distance to the nearest lot along [s0, s1] and the judgement (share flagged, longest flagged stretch, why)."""
+def flags(L, s0, s1, lots, lt, streets, st_tree):
+    """Per metre judgement of [s0, s1] -> (share flagged, longest flagged stretch, why).
+    hug  = within HUG_M of a lot line (cadastre), flagged only as a stretch of HUG_RUN m or more (a wall, lane or yard edge);
+    far  = farther than FAR_M from any lot AND within CARRIAGE_M of a street centreline (the kerb is in the carriageway or a mall);
+    away = farther than AWAY_M past the nearest street's half width: not along a road at all (a diagonal through trees, a yard);
+           a side with over AWAY_SHARE of its length away is left out whole (kerb lead, 20 Nov)."""
     S = np.arange(s0 + 0.5, s1, 1.0)
     if len(S) < 3:
         return 0.0, 0.0, None
     P = shapely.points(np.array([L.interpolate(s).coords[0] for s in S]))
     d = shapely.distance(np.array(lots, dtype=object)[lt.nearest(P)], P) if len(lots) else np.full(len(S), 99.0)
-    hug, far = d < HUG_M, d > FAR_M
-    bad = hug | far
+    j = st_tree.nearest(P)
+    sg = np.array([g for g, _ in streets], dtype=object)[j]
+    dc = shapely.distance(sg, P)
+    hw = np.array([HALF_W[fh] for _, fh in streets])[j]
+    hug, far, away = d < HUG_M, (d > FAR_M) & (dc < CARRIAGE_M), dc > hw + AWAY_M
     run = best = 0
-    for b in bad:
+    for b in hug:
         run = run + 1 if b else 0
         best = max(best, run)
     why = None
-    if bad.mean() > BAD_SHARE or best > BAD_RUN:
-        why = "hugs lots" if hug.sum() >= far.sum() else "in the carriageway"
-    return float(bad.mean()), float(best), why
+    if best >= HUG_RUN:
+        why = "hugs lots"
+    elif far.mean() > BAD_SHARE:
+        why = "in the carriageway"
+    elif away.mean() > 1 - ROAD_SHARE:
+        why = "away from the road"
+    bad = (hug if best >= HUG_RUN else np.zeros(len(S), bool)) | far | away
+    return float(bad.mean()), float(max(best if best >= HUG_RUN else 0, 0)), why
 
 
 def judge(line_xy, streets, st_tree, lots, lt):
@@ -156,7 +170,7 @@ def judge(line_xy, streets, st_tree, lots, lt):
     cuts = mouths(L, streets, st_tree)
     sides, pieces = [], []
     for s0, s1, cb, ca in sides_of(L, cuts):
-        share, run, why = flags(L, s0, s1, lots, lt)
+        share, run, why = flags(L, s0, s1, lots, lt, streets, st_tree)
         n = {"s0": round(s0, 1), "s1": round(s1, 1), "len_m": round(s1 - s0, 1), "flagged": round(share, 2), "longest_flag_m": run}
         if s1 - s0 < MIN_SIDE:
             why = "short side"
@@ -203,13 +217,19 @@ def selftest():
     assert 92.0 < left[-1][0] < 100.0 and left[-1][1] > 6.5 + 3.0, left[-3:]
     assert 100.0 < right[0][0] < 108.0 and right[0][1] > 6.5 + 3.0, right[:3]
     # a kerb hugging the lots (0.5 m off them, 10.5 m from the centreline) is left out whole; one in the road 12 m from the lots too
-    hug = [(-50 + 0.4 * k, 10.5) for k in range(0, 751)]
+    hug = [(-50 + 0.4 * k, 10.8) for k in range(0, 751)]
     _, sides = judge(hug, st, tree, lots, lt)
     assert [s["why"] for s in sides] == ["hugs lots", "hugs lots"], sides
-    far = [(-50 + 0.4 * k, -1.0) for k in range(0, 751)]
+    far = [(-50 + 0.4 * k, 2.0) for k in range(0, 751)]
     far = [(x, y) for x, y in far]
     _, sides = judge(far, st, tree, [box(-50, 20, 250, 40)], STRtree([box(-50, 20, 250, 40)]))
     assert [s["why"] for s in sides] == ["in the carriageway", "in the carriageway"], sides
+    away = [(-50 + 0.4 * k, 25.0) for k in range(0, 751)]               # 25 m from the street, 14 m behind the lot fronts: not along a road
+    _, sides = judge(away, st, tree, [box(-50, 40, 250, 60)], STRtree([box(-50, 40, 250, 60)]))
+    assert [s["why"] for s in sides] == ["away from the road", "away from the road"], sides
+    away = [(-50 + 0.4 * k, 25.0) for k in range(0, 751)]               # 25 m from the street, 14 m behind the lot fronts: not along a road
+    _, sides = judge(away, st, tree, [box(-50, 40, 250, 60)], STRtree([box(-50, 40, 250, 60)]))
+    assert [s["why"] for s in sides] == ["away from the road", "away from the road"], sides
     # a shallow crossing (the street curving under the kerb) is not a mouth; an untouched line comes back unchanged
     bend = LineString([(0, 0), (200, 0)])
     assert mouths(LineString([(0, 2), (200, 2)]), [(bend, 4)], STRtree([bend])) == []
