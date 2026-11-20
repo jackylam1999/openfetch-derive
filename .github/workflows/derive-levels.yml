@@ -1,0 +1,52 @@
+# Stepped buildings ("levels") for one CBD area from an ELVIS order (copy of tools/derive/github/derive-levels.yml; tools/derive/github/sync.sh
+# copies it and tools/derive into the public openfetch-derive repo: no secrets, ever). Run by hand (Actions > derive-levels > Run workflow)
+# while the zip link is live (about 2 days). One job: the LAZ tiles touching the box, roofer (Docker image 3dgi/roofer:develop) and the
+# clean-up rules (tools/derive/levels.py). The area FAILS when a gate trips (crane-like spikes, neighbour leaks, ragged edges): nothing is used.
+# Result: artifact levels-NAME (nsw-levels-NAME.json + .bbox.json, report.md, stats.json) for tools/mirror/build.mjs and levels-publish.py.
+name: derive-levels
+on:
+  workflow_dispatch:
+    inputs:
+      name: {description: 'Short name for the CBD area, e.g. parramatta-cbd', required: true}
+      zip_url: {description: 'ELVIS zip link (https://elvis-downloads.s3.amazonaws.com/DATA_....zip)', required: true}
+      box: {description: 'Area box in MGA56 metres: xmin ymin xmax ymax', required: true}
+jobs:
+  levels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12', cache: pip, cache-dependency-path: openfetch/tools/derive/requirements.txt}
+      - run: pip install -r openfetch/tools/derive/requirements.txt remotezip pmtiles mapbox_vector_tile
+      - run: docker pull 3dgi/roofer:develop
+      - name: LAZ tiles touching the box
+        run: |
+          python3 - "$URL" $BOX <<'PY'
+          import sys, struct, os, shutil
+          from remotezip import RemoteZip
+          url, b = sys.argv[1], list(map(float, sys.argv[2:6])); os.makedirs("laz", exist_ok=True)
+          with RemoteZip(url) as z:
+              for n in [n for n in z.namelist() if n.lower().endswith(".laz")]:
+                  with z.open(n) as f: h = f.read(227)
+                  xmax, xmin, ymax, ymin = struct.unpack("<4d", h[179:211])
+                  if xmin < b[2] + 60 and xmax > b[0] - 60 and ymin < b[3] + 60 and ymax > b[1] - 60:
+                      with z.open(n) as s, open(os.path.join("laz", os.path.basename(n)), "wb") as d: shutil.copyfileobj(s, d, 16 << 20)
+          print(len(os.listdir("laz")), "tiles")
+          PY
+        env:
+          URL: ${{ inputs.zip_url }}
+          BOX: ${{ inputs.box }}
+      - run: python3 openfetch/tools/derive/levels.py "$NAME" out $BOX laz/*.laz
+        env:
+          NAME: ${{ inputs.name }}
+          BOX: ${{ inputs.box }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: levels-${{ inputs.name }}
+          path: |
+            out/nsw-levels-*.json
+            out/report.md
+            out/stats.json
+          if-no-files-found: warn
