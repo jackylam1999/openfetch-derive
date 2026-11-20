@@ -154,6 +154,33 @@ def judge_ring(road, ring_xy, minlen=15.0):
     return None
 
 
+def side_report(road, ring_xy, minlen=15.0):
+    """Per-side numbers behind judge_ring, for close-up crops: [{from, to, len_m, edge_m (median asphalt start from the kerb line, m),
+    seen (share of samples that see the road edge), inroad (share of the 0.5-2.5 m inside band that is road)}]."""
+    P = np.asarray(ring_xy, float)
+    A = 0.5 * np.sum(P[:-1, 0] * P[1:, 1] - P[1:, 0] * P[:-1, 1])
+    t = np.arange(-6.0, 10.01, 0.25)
+    out = []
+    for a, b in zip(P[:-1], P[1:]):
+        L = float(np.hypot(*(b - a)))
+        if L < minlen:
+            continue
+        dd = (b - a) / L
+        n = np.array([dd[1], -dd[0]]) if A > 0 else np.array([-dd[1], dd[0]])
+        S = np.arange(3, L - 3, 1.0)
+        Q = a + dd * S[:, None]
+        M = profiles(road, Q, np.repeat(n[None], len(Q), 0), t)
+        r = {"from": [round(float(a[0]), 1), round(float(a[1]), 1)], "to": [round(float(b[0]), 1), round(float(b[1]), 1)], "len_m": round(L, 1)}
+        if np.isnan(M).all():
+            r.update(edge_m=None, seen=0.0, inroad=None)
+        else:
+            e = np.asarray([(min(q, key=abs) if (q := runs(row, t)) else np.nan) for row in M])
+            band = np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean()
+            r.update(edge_m=None if np.isnan(e).all() else round(float(np.nanmedian(e)), 2), seen=round(float(np.isfinite(e).mean()), 2), inroad=round(float(band), 2))
+        out.append(r)
+    return out
+
+
 class _Fake:
     """Test road: road surface everywhere outside a 100 x 60 m block of land (x 0-100, y 0-60), except under holes (x ranges)."""
 

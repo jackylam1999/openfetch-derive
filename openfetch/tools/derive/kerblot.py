@@ -408,7 +408,7 @@ def judge_block(comp, ctx):
     if kerblane.bad(q, [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH and g.intersects(ring)]):
         return "ring across lane mouths", None
     if ctx.get("road") is not None and (w := krd.judge_ring(ctx["road"], list(q.coords))):
-        return w   # every side on the road edge the LiDAR intensity shows (KN11: verge, roadway and canopy sides)
+        return w, None   # every side on the road edge the LiDAR intensity shows (KN11: verge, roadway and canopy sides)
     pts = shapely.points(np.asarray([q.interpolate(t).coords[0] for t in np.arange(0, q.length, 1.0)]))
     near_raw = np.asarray([min([ctx["raw"][int(k)].distance(p) for k in ctx["raw_t"].query(p.buffer(AGREE_NEAR))] or [99]) for p in pts])
     seen = near_raw < AGREE_NEAR
