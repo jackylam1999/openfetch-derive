@@ -18,6 +18,7 @@ Here the block is built from the land itself:
         [--measure kerbs.geojson.gz (earlier kerbs used only to measure footpath widths; default the drawn file)] [--foot foot.json] [--ground grids_dir (kerbpcw.py ground grids)] [--nomeasure nm.json]
         [--cad cad_dir (kerbcad.py: a ring with a run outside the official road reserve is left blank)]
         [--calib calib.json (sides with a LiDAR kerb trace: trace width, ground step, every profile's kerb; tunes kerbpcw.py)]
+        [--road igrid_dir (kerbroad.py intensity grids: footpath width to the asphalt edge, and every ring side must sit on it)]
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -35,6 +36,7 @@ import kerbreview as kv
 import kerbcad as kc
 import kerblane
 import kerbside
+import kerbroad as krd
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
@@ -48,7 +50,7 @@ D_MIN, D_MAX = 1.0, 7.0      # m, believable footpath widths (lot front to kerb)
 C_MAX = 16.0         # m: a street's centreline lies within this of the lot front (a centreline seen past a rail line, creek
                      # or park strip is not this side's street; 18 Nov 2026 review: 9 rings ran along rail and bush edges)
 CW_MIN = 2.5         # m, half a carriageway at least between the kerb and the centreline
-CW_OWN, OWN = 1.75, ("lidar this side", "lidar step", "lidar profiles")   # a kerb the LiDAR saw on this very side: narrow terrace streets (6-7 m
+CW_OWN, OWN = 1.75, ("lidar this side", "lidar step", "lidar profiles", "lidar road edge")   # a kerb the LiDAR saw on this very side: narrow terrace streets (6-7 m
                      # between lot fronts) keep 1-1.25 m footpaths and a 3.5 m carriageway; 45 such blocks were refused (19 Nov 2026)
 WIDE = 0.75          # a centreline past C_MAX still faces this side when it lies before the land across, within 3/4 of the way
                      # (wide streets, 25-45 m between lot fronts: 117 blocks were refused as facing no street, 19 Nov 2026)
@@ -326,6 +328,8 @@ def judge_block(comp, ctx):
             v, how = float(np.nanmedian(d_own[m])), "lidar this side"
         elif np.isfinite(d_opp[m]).sum() >= need:
             v, how = float(np.nanmedian(d_opp[m])), "lidar other side"
+        elif ctx.get("road") is not None and (rv := krd.side_width(ctx["road"], P[m], N[m], float(np.nanmedian(W[m])) / 2)) is not None:
+            v, how = rv, "lidar road edge"   # where the asphalt starts in the LiDAR ground intensity (kerbroad.py, KN11)
         elif ctx["ground"] is not None and (pv := kpw.side_width(ctx["ground"], P[m], N[m], float(np.nanmedian(W[m])) / 2)) is not None:
             v, how = pv, kpw.LAST
         elif np.isfinite(d_ownd[m]).sum() >= need:
@@ -403,6 +407,8 @@ def judge_block(comp, ctx):
             return w, None
     if kerblane.bad(q, [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH and g.intersects(ring)]):
         return "ring across lane mouths", None
+    if ctx.get("road") is not None and (w := krd.judge_ring(ctx["road"], list(q.coords))):
+        return w   # every side on the road edge the LiDAR intensity shows (KN11: verge, roadway and canopy sides)
     pts = shapely.points(np.asarray([q.interpolate(t).coords[0] for t in np.arange(0, q.length, 1.0)]))
     near_raw = np.asarray([min([ctx["raw"][int(k)].distance(p) for k in ctx["raw_t"].query(p.buffer(AGREE_NEAR))] or [99]) for p in pts])
     seen = near_raw < AGREE_NEAR
@@ -445,6 +451,7 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
+    ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
     keep, why, cnt, done, sidel = [], [], {}, set(), []
     foot, prep = {}, []
     if "--foot-only" in a:
@@ -485,7 +492,7 @@ def main(a):
         comps = [Polygon(g.exterior) for g in getattr(land, "geoms", [land]) if g.geom_type == "Polygon"]
         LB = [c.exterior for c in comps] + (cad.barriers(frame) if cad is not None else [])
         B = buildings(a[4], [(x + i, y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)], to)
-        ctx = {"land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot,
+        ctx = {"road": ROAD, "land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot,
                "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes, "cad": cad,
                "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None}
         for c in comps:
