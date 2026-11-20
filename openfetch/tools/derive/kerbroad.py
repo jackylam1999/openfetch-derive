@@ -17,7 +17,7 @@ RUN = 2.0         # m of unbroken road surface that counts as the carriageway (a
 SMOOTH = 5        # cells (2.5 m): the road mask is the majority of the seen cells round each cell
 PAD, CAL_N, HI_DEF = 2.0, 300, 11.0   # road = intensity <= 75th percentile on the cell's own centrelines + 2 (calibrated per survey)
 SEEN = 0.4        # share of a side's samples that must see the road edge, or the side is not drawn (canopy, KN10 Apsley St)
-AGREE = float(os.environ.get("KR_AGREE", 3.0))   # m: a ring side's kerb line must lie within this of the road edge (Jacky 20 Nov 15:30Z: up to about 3 m off is fine in 2D, only odd shapes fail; was 2.0, KR_AGREE=2.0 reproduces that)
+AGREE = float(os.environ.get("KR_AGREE", 2.0))   # m: a ring side's kerb line must lie within this of the road edge (2.0 is the default: KR_AGREE=3.0, the 3 m bar of Jacky 20 Nov 15:30Z, was tried on suburbs 21-40 and let through 5 of 6 odd rings 5-15 m off the road while refusing 25 of 28 OK ones at 2.0, so the intensity gate cannot carry a 3 m bar: KN17, P-0237)
 BAND = (-2.5 - (AGREE - 2.0), -0.5 - (AGREE - 2.0))   # m: the band inside a ring side that must not be road; moves out with AGREE so a parked-car row is not "in the roadway"
 INROAD = 0.5      # share of the 0.5-2.5 m band inside a ring side, over the whole side, that may be road surface
 NOSIDE = 255

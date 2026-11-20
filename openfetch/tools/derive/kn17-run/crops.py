@@ -12,25 +12,33 @@ def tile(z,tx,ty):
     if os.path.exists(fn):
         try: return np.asarray(Image.open(fn).convert('RGB'))
         except Exception: pass
+    if os.path.exists(fn+'.404'): return None
     u=f"https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{z}/{ty}/{tx}"
     for k in range(3):
         try:
             b=urllib.request.urlopen(u,timeout=25).read(); open(fn,'wb').write(b); return np.asarray(Image.open(io.BytesIO(b)).convert('RGB'))
         except urllib.error.HTTPError as e:
-            if e.code==404: break
+            if e.code==404: open(fn+'.404','w').close(); return None
             time.sleep(2*(k+1))
         except Exception: time.sleep(2*(k+1))
-    return np.full((256,256,3),128,np.uint8)
+    return None
 def crop(cx,cy,S,PX,Z=20):
-    res=2*ORG/256/2**Z
     xs=cx-S/2+(np.arange(PX)+.5)*S/PX; ys=cy+S/2-(np.arange(PX)+.5)*S/PX
-    X,Y=np.meshgrid(xs,ys); mx,my=INV.transform(X,Y)
-    c=((mx+ORG)/res).astype(int); r=((ORG-my)/res).astype(int); o=np.zeros((PX,PX,3),np.uint8)
-    for tx in range(c.min()//256,c.max()//256+1):
-        for ty in range(r.min()//256,r.max()//256+1):
-            t=tile(Z,tx,ty); m=(c//256==tx)&(r//256==ty); o[m]=t[r[m]%256,c[m]%256]
-    return Image.fromarray(o)
-ids=set(json.load(open('draw.json'))['ids']); F=[f for f in json.load(open(new))['features'] if f['properties']['id'] in ids]
+    X,Y=np.meshgrid(xs,ys); mx,my=INV.transform(X,Y); o=np.full((PX,PX,3),-1,np.int16)
+    for z in (Z,Z-1,Z-2,Z-3):
+        res=2*ORG/256/2**z
+        c=((mx+ORG)/res).astype(int); r=((ORG-my)/res).astype(int)
+        need=(o[:,:,0]<0)
+        if not need.any(): break
+        for tx in range(c.min()//256,c.max()//256+1):
+            for ty in range(r.min()//256,r.max()//256+1):
+                m=(c//256==tx)&(r//256==ty)&need
+                if not m.any(): continue
+                t=tile(z,tx,ty)
+                if t is not None: o[m]=t[(((ORG-my[m])/res-ty*256)*1).astype(int).clip(0,255),(((mx[m]+ORG)/res-tx*256)).astype(int).clip(0,255)]
+    o[o<0]=128
+    return Image.fromarray(o.astype(np.uint8))
+ids=set(json.load(open(os.environ.get('DRAW','draw.json')))['ids']); F=[f for f in json.load(open(new))['features'] if f['properties']['id'] in ids]
 O=[Polygon([to(*c[:2]) for c in f['geometry']['coordinates']]).buffer(0) for f in json.load(open(old))['features']]
 OT=STRtree(O)
 D=[LineString([to(*c[:2]) for c in f['geometry']['coordinates']]) for f in json.load(open('drawn-merged.geojson'))['features'] if f['geometry']['type']=='LineString']
