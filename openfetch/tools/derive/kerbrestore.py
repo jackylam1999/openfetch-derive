@@ -1,0 +1,265 @@
+"""Win back kerb lines dropped whole (card KN23, 20 Nov 2026; Jacky 15:30Z: "for 2D it does not have to be that precise, only odd shapes
+fail"; case P-0237). Lines were dropped by batch because they sat 2-3 m inside the road or behind the verge, and by the old bar that was a
+fail. Under the 20 Nov bar (about 3 m off is fine in 2D; odd shapes fail) most of those lines are fine, so each dropped line is judged
+again, side by side, and only the odd piece is cut. Cuts are made only where a real kerb turns: at a side-street or lane mouth, and each
+cut end is finished with a kerb return into that street (quadratic fillet, radius up to 4 m) so no end is left free.
+
+  1. mouths: the line crosses a street centreline (ground level, street or lane class, not along the line's own street): cut the
+     mouth (half the crossed street's class width, as kerbgrid.HALF_W, stretched for a slanting crossing) and add a return at each end;
+  2. block side = the stretch between two mouths (or a line end). Every metre of it is measured against the cadastre:
+       hug  = nearer than HUG_M to a lot (kerb along a wall, a lane or in a yard; Erskineville n18, n09 on the 20 Nov labels);
+       far  = farther than FAR_M from any lot (kerb in the carriageway more than about 3 m past a normal footpath, a mall; n15, n17);
+     a side is kept when at most BAD_SHARE of it is hug or far and no flagged stretch is longer than BAD_RUN; else it is left out whole
+     (blank beats odd). Nothing measured the other way (LiDAR needs a grid, the cadastre is everywhere), so the review does the rest;
+  3. a side shorter than MIN_SIDE is left out.
+Kept geometry that was never cut is the published line, byte for byte (no smoothing, no moves).
+
+    python3 kerbrestore.py lines.geojson lots_dir roads_dir out.geojson report.json
+    python3 kerbrestore.py --selftest
+lots_dir and roads_dir hold <x>_<y>.json km-square cells from kerbgrid-run/fetchin.py (MGA56 metres, lots plus 300 m margin).
+"""
+import glob, gzip, json, os, sys
+import numpy as np
+import shapely
+from shapely.geometry import LineString, Point, shape
+from shapely.strtree import STRtree
+
+HALF_W = {1: 9.0, 2: 8.0, 3: 7.0, 4: 6.5, 5: 5.5, 6: 4.5, 7: 3.0}   # as kerbgrid.HALF_W; paths (8-11) are not streets
+HUG_M, FAR_M = 1.5, 8.0
+BAD_SHARE, BAD_RUN, MIN_SIDE = 0.15, 25.0, 12.0
+RADIUS, SAME_ST_DEG, MERGE_M = 4.0, 25.0, 6.0
+TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
+
+
+def load_streets(roads_dir):
+    """[(LineString, functionhierarchy)] of ground-level streets and lanes (fh 1-7), each road segment once."""
+    out, seen = [], set()
+    for fn in sorted(glob.glob(os.path.join(roads_dir, "*.json"))):
+        for f in json.load(open(fn))["features"]:
+            p = f.get("properties") or {}
+            oid = p.get("OBJECTID", p.get("objectid"))
+            if oid in seen or not f.get("geometry") or p.get("roadontype", 1) != 1 or p.get("functionhierarchy") not in HALF_W:
+                continue
+            seen.add(oid)
+            g = shape(f["geometry"])
+            out += [(q, p["functionhierarchy"]) for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString" and q.length > 0]
+    return out
+
+
+def load_lots(lots_dir):
+    lots, seen = [], set()
+    for fn in sorted(glob.glob(os.path.join(lots_dir, "*.json"))):
+        for f in json.load(open(fn))["features"]:
+            if not f.get("geometry"):
+                continue
+            g = shape(f["geometry"])
+            if g.wkb in seen:
+                continue
+            seen.add(g.wkb)
+            lots += [q for q in getattr(g, "geoms", [g]) if q.geom_type == "Polygon"]
+    return lots
+
+
+def tangent(L, s, h=2.5):
+    a, b = np.array(L.interpolate(max(0.0, s - h)).coords[0]), np.array(L.interpolate(min(L.length, s + h)).coords[0])
+    v = b - a
+    n = np.hypot(*v)
+    return v / n if n > 1e-9 else np.array([1.0, 0.0])
+
+
+def mouths(L, streets, tree):
+    """Cut spans [(s0, s1, point, u, hw)] where L crosses a street other than its own: merged within MERGE_M, u = the crossed street's
+    direction pointing away from the street L runs beside (None when that street is not found)."""
+    found = []
+    for j in tree.query(L):
+        st, fh = streets[int(j)]
+        x = L.intersection(st)
+        for p in getattr(x, "geoms", [x]):
+            if p.is_empty or p.geom_type != "Point":
+                continue
+            s = L.project(p)
+            t, c = tangent(L, s), tangent(st, st.project(p))
+            ang = np.degrees(np.arccos(min(1.0, abs(float(np.dot(t, c))))))
+            if ang < SAME_ST_DEG:
+                continue                      # a shallow crossing is the line's own street curving, not a mouth
+            found.append((s, p, fh, c, ang, int(j)))
+    found.sort(key=lambda r: r[0])
+    out = []
+    for s, p, fh, c, ang, j in found:
+        hw = min(HALF_W[fh] / max(np.sin(np.radians(ang)), 0.4), 2.5 * HALF_W[fh])
+        if out and s - out[-1][0] < MERGE_M + hw:
+            if hw > out[-1][4]:
+                out[-1] = (s, out[-1][1], out[-1][2], out[-1][3], hw, out[-1][5])
+            continue
+        out.append((s, p, fh, c, hw, j))
+    res = []
+    for s, p, fh, c, hw, j in out:
+        near = [k for k in tree.query(p.buffer(HALF_W[1] + 12.0)) if int(k) != j]
+        u = None
+        if near:
+            k = min(near, key=lambda k: streets[int(k)][0].distance(p))
+            m = streets[int(k)][0]
+            if m.distance(p) < 30.0:
+                q = np.array(m.interpolate(m.project(p)).coords[0])
+                away = np.array(p.coords[0]) - q
+                u = c if float(np.dot(c, away)) >= 0 else -c
+        res.append((max(0.0, s - hw), min(L.length, s + hw), p, u, hw))
+    return res
+
+
+def arc(L, s_edge, direction, u, hw, room):
+    """Kerb return at a cut end: Q is the mouth edge on the kerb (distance s_edge along L); the kerb leaves Q along direction (+1 or -1
+    along L, away from the mouth) and the return turns into the side street along u. Quadratic fillet, radius up to RADIUS (not more
+    than the street's half width or the room left on the side); points run from the kerb tangent point to the street."""
+    r = min(RADIUS, hw, room)
+    q = np.array(L.interpolate(s_edge).coords[0])
+    a = np.array(L.interpolate(s_edge + direction * r).coords[0])
+    b = q + u * r
+    return r, [tuple(map(float, (1 - k) ** 2 * a + 2 * (1 - k) * k * q + k ** 2 * b)) for k in np.linspace(0.0, 1.0, 9)]
+
+
+def sides_of(L, cuts):
+    """[(s0, s1, cut_before, cut_after)] stretches of L between cut spans."""
+    out, s = [], 0.0
+    prev = None
+    for c in cuts:
+        if c[0] > s:
+            out.append((s, c[0], prev, c))
+        s, prev = c[1], c
+    if s < L.length:
+        out.append((s, L.length, prev, None))
+    return out
+
+
+def flags(L, s0, s1, lots, lt):
+    """Per metre distance to the nearest lot along [s0, s1] and the judgement (share flagged, longest flagged stretch, why)."""
+    S = np.arange(s0 + 0.5, s1, 1.0)
+    if len(S) < 3:
+        return 0.0, 0.0, None
+    P = shapely.points(np.array([L.interpolate(s).coords[0] for s in S]))
+    d = shapely.distance(np.array(lots, dtype=object)[lt.nearest(P)], P) if len(lots) else np.full(len(S), 99.0)
+    hug, far = d < HUG_M, d > FAR_M
+    bad = hug | far
+    run = best = 0
+    for b in bad:
+        run = run + 1 if b else 0
+        best = max(best, run)
+    why = None
+    if bad.mean() > BAD_SHARE or best > BAD_RUN:
+        why = "hugs lots" if hug.sum() >= far.sum() else "in the carriageway"
+    return float(bad.mean()), float(best), why
+
+
+def judge(line_xy, streets, st_tree, lots, lt):
+    """-> (pieces [list of xy], sides [dict]). Each kept side is one piece; a cut end carries its kerb return."""
+    L = LineString(line_xy)
+    cuts = mouths(L, streets, st_tree)
+    sides, pieces = [], []
+    for s0, s1, cb, ca in sides_of(L, cuts):
+        share, run, why = flags(L, s0, s1, lots, lt)
+        n = {"s0": round(s0, 1), "s1": round(s1, 1), "len_m": round(s1 - s0, 1), "flagged": round(share, 2), "longest_flag_m": run}
+        if s1 - s0 < MIN_SIDE:
+            why = "short side"
+        n["why"] = why
+        sides.append(n)
+        if why:
+            continue
+        room = (s1 - s0) / 3.0
+        r0 = r1 = 0.0
+        head, tail = [], []
+        if cb is not None and cb[3] is not None:
+            r0, c = arc(L, s0, +1, cb[3], cb[4], room)
+            head = c[::-1]
+        if ca is not None and ca[3] is not None:
+            r1, c = arc(L, s1, -1, ca[3], ca[4], room)
+            tail = c
+        lo, hi = (s0 + r0, s1 - r1)
+        if s0 == 0 and s1 == L.length and not head and not tail:
+            mid = [tuple(c) for c in L.coords]        # never cut: the published line, byte for byte
+        else:
+            body = [(x, y) for x, y in L.coords if lo + 0.01 < L.project(Point(x, y)) < hi - 0.01]
+            pa, pb = L.interpolate(lo).coords[0], L.interpolate(hi).coords[0]
+            mid = ([] if not head else head[:-1]) + [(pa[0], pa[1])] + body + [(pb[0], pb[1])] + ([] if not tail else tail[1:])
+        n["returns"] = int(bool(head)) + int(bool(tail))
+        pieces.append(mid)
+    return pieces, sides
+
+
+def selftest():
+    """A 10 m collector (fh 4, x axis) with a local street (fh 6) crossing at x=100, lots 4.5 m back along the north side."""
+    from shapely.geometry import box
+    main = (LineString([(-50, 0), (250, 0)]), 4)
+    side = (LineString([(100, -80), (100, 80)]), 6)
+    st = [main, side]
+    tree = STRtree([s for s, _ in st])
+    lots = [box(-50, 11, 90, 40), box(110, 11, 250, 40)]
+    lt = STRtree(lots)
+    kerb = [(-50 + 0.4 * k, 6.5) for k in range(0, 751)]                 # kerb 6.5 m north of the centreline: lot front at 11 is 4.5 m behind
+    piece, sides = judge(kerb, st, tree, lots, lt)
+    assert len(sides) == 2 and all(s["why"] is None for s in sides), sides
+    assert len(piece) == 2 and all(p[0] != p[-1] for p in piece)
+    # the gap between the two pieces is the mouth (about 4.5 m each side of x=100), and each end turns north into the side street
+    left, right = piece
+    assert 92.0 < left[-1][0] < 100.0 and left[-1][1] > 6.5 + 3.0, left[-3:]
+    assert 100.0 < right[0][0] < 108.0 and right[0][1] > 6.5 + 3.0, right[:3]
+    # a kerb hugging the lots (0.5 m off them, 10.5 m from the centreline) is left out whole; one in the road 12 m from the lots too
+    hug = [(-50 + 0.4 * k, 10.5) for k in range(0, 751)]
+    _, sides = judge(hug, st, tree, lots, lt)
+    assert [s["why"] for s in sides] == ["hugs lots", "hugs lots"], sides
+    far = [(-50 + 0.4 * k, -1.0) for k in range(0, 751)]
+    far = [(x, y) for x, y in far]
+    _, sides = judge(far, st, tree, [box(-50, 20, 250, 40)], STRtree([box(-50, 20, 250, 40)]))
+    assert [s["why"] for s in sides] == ["in the carriageway", "in the carriageway"], sides
+    # a shallow crossing (the street curving under the kerb) is not a mouth; an untouched line comes back unchanged
+    bend = LineString([(0, 0), (200, 0)])
+    assert mouths(LineString([(0, 2), (200, 2)]), [(bend, 4)], STRtree([bend])) == []
+    keep, _ = judge(kerb[:200], st, tree, lots, lt)
+    assert keep == [[tuple(c) for c in kerb[:200]]], "uncut line moved"
+    print("kerbrestore selftest pass")
+    return 0
+
+
+def main(a):
+    from pyproj import Transformer
+    to = Transformer.from_crs(4326, 7856, always_xy=True).transform
+    back = Transformer.from_crs(7856, 4326, always_xy=True).transform
+    op = gzip.open if a[0].endswith(".gz") else open
+    F = json.load(op(a[0], "rt"))["features"]
+    lots, streets = load_lots(a[1]), load_streets(a[2])
+    lt, st_tree = STRtree(lots), STRtree([s for s, _ in streets])
+    out, rep, funnel = [], [], {}
+    for k, f in enumerate(F):
+        xy = [to(*c[:2]) for c in f["geometry"]["coordinates"]]
+        pieces, sides = judge(xy, streets, st_tree, lots, lt)
+        p = f["properties"]
+        area = (p.get("areas") or "").split(",")[0] or "?"
+        z = funnel.setdefault(area, {"lines": 0, "km": 0.0, "sides": 0, "sides_kept": 0, "km_kept": 0.0, "why": {}, "returns": 0})
+        z["lines"] += 1
+        z["km"] += LineString(xy).length / 1000
+        z["sides"] += len(sides)
+        for s in sides:
+            if s["why"]:
+                z["why"][s["why"]] = z["why"].get(s["why"], 0.0) + s["len_m"] / 1000
+        for q in pieces:
+            z["sides_kept"] += 1
+            z["km_kept"] += LineString(q).length / 1000
+        z["returns"] += sum(s.get("returns", 0) for s in sides)
+        kept = [n for n in sides if not n["why"]]
+        for i, (q, n) in enumerate(zip(pieces, kept)):
+            tier = "A" if n["flagged"] <= TIER_A_SHARE and n["longest_flag_m"] <= TIER_A_RUN else "B"
+            out.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[round(v, 7) for v in back(*c)] for c in q]},
+                        "properties": dict(p, piece=i, of=len(pieces), tier=tier, flagged=n["flagged"], returns=n.get("returns", 0))})
+        rep.append({"i": p.get("src_index", k), "area": area, "sides": sides})
+    for z in funnel.values():
+        z["km"], z["km_kept"] = round(z["km"], 1), round(z["km_kept"], 1)
+        z["why"] = {w: round(v, 1) for w, v in z["why"].items()}
+    json.dump({"type": "FeatureCollection", "features": out}, open(a[3], "w"))
+    json.dump({"check": "openfetch-derive kerbrestore.py", "file": os.path.basename(a[0]), "funnel": funnel, "lines": rep}, open(a[4], "w"))
+    print(json.dumps(funnel, indent=0)[:3000])
+    return 0
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--selftest"]:
+        sys.exit(selftest())
+    sys.exit(main(sys.argv[1:]))
