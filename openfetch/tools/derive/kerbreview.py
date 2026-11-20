@@ -334,6 +334,13 @@ def photo(x0, y0, x1, y1, px):
                 return im
         except Exception:
             time.sleep(2 * (k + 1))
+    for z in (19, 18):
+        try:
+            im = photo_tiles(x0, y0, x1, y1, px, z)
+            if not blank(im):
+                return im
+        except Exception:
+            pass
     raise SystemExit(f"no aerial image for the box {x0:.0f} {y0:.0f} {x1:.0f} {y1:.0f}: the review sheet is not made (no flat tiles)")
 
 
