@@ -387,7 +387,7 @@ def check(a):
     if opt.get('prev') and os.path.exists(opt['prev']): best = json.load(open(opt['prev'])).get('best_per_km', {})
     rv = {'check': 'openfetch-derive tools/derive/kerbreview.py', 'source': src, 'km': round(km, 1), 'count': count,
           'per_km': rate, 'caps': cap, 'case_hits': hits, 'fails': fails,
-          'result': 'fail' if fails else 'pending visual', 'sheet': 'review-sheet.jpg' if '--no-photo' not in a else None,
+          'result': 'fail' if fails else 'pending visual', 'sheet': 'review-sheet.jpg' if '--no-photo' not in a else None, 'photo_tiles': 0 if '--no-photo' in a else len(pick),
           'sheet_spots': pick, 'spots': spots,
           'best_per_km': best if fails else {k: min(rate[k], best.get(k, rate[k])) for k in KINDS}}
     json.dump(rv, open(os.path.join(out, 'review.json'), 'w'), indent=1)
