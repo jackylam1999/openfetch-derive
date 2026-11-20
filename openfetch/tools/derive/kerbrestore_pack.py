@@ -2,7 +2,9 @@
 out, shuffled, key hidden. Each crop is 60 m square on the NSW aerial (zoom 20, falling back to 19 and 18 where a tile is missing; a
 crop made only of missing tiles is refused), the line as drawn in magenta, a cyan ring at the centre, the banner is the draw number only.
 
-    python3 kerbrestore_pack.py restored.geojson dropped.geojson report.json "Suburb,Suburb" seed n_kept n_cut out_dir
+    python3 kerbrestore_pack.py restored.geojson dropped.geojson report.json "Suburb,Suburb" seed n_kept n_cut out_dir [mid]
+With "mid" (card KN24) the kept crops are over mid-side cut pieces only (half of them centred 6 m inside a cut end, so the return is in the
+crop) and the cut crops are over the removed stretches (cut_spans_m of the report), all drawn alike.
 writes out_dir/cNN.jpg, out_dir/sheetN.jpg (8 crops a sheet) and out_dir/key.json (what each crop is; the reviewer never sees it).
 """
 import io, json, os, sys, time, urllib.request
@@ -120,7 +122,73 @@ def pick(rng, items, n, area, seen):
     return out
 
 
+def main_mid(a):
+    kept = [(P, p) for P, p in lines(json.load(open(a[0]))) if p.get("cut_mid")]
+    dropped = lines(json.load(open(a[1])))
+    rep = json.load(open(a[2]))
+    area = set(a[3].split(","))
+    seed, nk, nc, out = int(a[4]), int(a[5]), int(a[6]), a[7]
+    os.makedirs(out, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    by = {p["src_index"]: (P, p) for P, p in dropped}
+    spans = []
+    for l in rep["lines"]:
+        if l["i"] not in by or l["area"] not in area:
+            continue
+        P, p = by[l["i"]]
+        L = LineString(P)
+        for s in l["sides"]:
+            for a0, a1 in s.get("cut_spans_m", []):
+                if a1 - a0 >= 8:
+                    seg = np.array([L.interpolate(t).coords[0] for t in np.append(np.arange(a0, a1, 2.0), a1)])
+                    spans.append((seg, dict(p, side="removed stretch")))
+    kept = [(P, p) for P, p in kept if (p.get("areas") or "").split(",")[0] in area]
+    spots, seen = [], []
+    order = rng.permutation(len(kept))
+    for i in order:
+        if sum(sp[0] == "kept" for sp in spots) >= nk:
+            break
+        P, p = kept[int(i)]
+        L = LineString(P)
+        t = (6.0 if rng.random() < 0.5 else L.length - 6.0) if rng.random() < 0.5 and L.length > 20 else rng.uniform(0, L.length)
+        m = np.array(L.interpolate(t).coords[0])
+        if any(np.hypot(*(m - q)) < 60 for q in seen):
+            continue
+        seen.append(m)
+        spots.append(("kept", m, p, P))
+    for i in rng.permutation(len(spans)):
+        if sum(sp[0] == "cut" for sp in spots) >= nc:
+            break
+        seg, p = spans[int(i)]
+        m = seg[int(rng.integers(0, len(seg)))]
+        if any(np.hypot(*(m - q)) < 60 for q in seen):
+            continue
+        seen.append(m)
+        spots.append(("cut", m, p, seg))
+    prefetch([sp[1] for sp in spots])
+    allL = [Q for Q, _ in kept] + [Q for Q, _ in spans]
+    key, n = {}, 0
+    for o in rng.permutation(len(spots)):
+        kind, m, p, P = spots[int(o)]
+        im = draw(n + 1, kind, kind, m, allL)
+        if im is None:
+            continue
+        n += 1
+        im.save(os.path.join(out, f"c{n:02d}.jpg"), quality=85)
+        key[f"crop {n:02d}"] = {"kind": kind, "area": (p.get("areas") or "").split(",")[0], "tier": p.get("tier"), "why": p.get("side") or p.get("why_whole"),
+                                "src_index": p.get("src_index"), "lonlat": [round(v, 6) for v in BK.transform(*m)]}
+    json.dump(key, open(os.path.join(out, "key.json"), "w"), indent=0)
+    for s in range(0, n, 8):
+        Sh = Image.new("RGB", (4 * 360, 2 * 360), "white")
+        for q in range(min(8, n - s)):
+            Sh.paste(Image.open(os.path.join(out, f"c{s + q + 1:02d}.jpg")).resize((360, 360)), ((q % 4) * 360, (q // 4) * 360))
+        Sh.save(os.path.join(out, f"sheet{s // 8 + 1}.jpg"), quality=85)
+    print("crops", n, "kept", sum(v["kind"] == "kept" for v in key.values()), "cut", sum(v["kind"] == "cut" for v in key.values()))
+
+
 def main(a):
+    if a[-1] == "mid":
+        return main_mid(a[:-1])
     kept, dropped = lines(json.load(open(a[0]))), lines(json.load(open(a[1])))
     rep = json.load(open(a[2]))
     area = set(a[3].split(","))
