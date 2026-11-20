@@ -1,21 +1,27 @@
 """Do two identical kerblot runs give identical rings? (KN14, 20 Nov 2026, P-0231.)
 Runs kerblot.py twice on the same inputs, once with the cells reversed and a different hash seed, and compares the rings
-(drawn file and why file) byte for byte. Any difference fails.
+(drawn file and why file) byte for byte. Then runs the first cell on its own and checks its rings are the ones the whole run
+drew for that cell (a ring must not depend on which other cells are in the run; footpath widths pool over the cell and its 8
+neighbours only). Any difference fails.
 
     python3 kerbrepeat.py <kerblot arguments, as for kerblot.py>     e.g. lots roads raw drawn bld cells.txt out.json --ground g --road r
     python3 kerbrepeat.py --selftest
 The out file (argument 7) and --why file are written next to it with .a / .b suffixes and left for inspection.
 """
-import hashlib, os, subprocess, sys, tempfile
+import hashlib, json, os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def run(args, cells_rev, seed, tag):
+def run(args, cells_rev, seed, tag, first_only=False):
     a = list(args)
     out = a[6] + "." + tag
     a[6] = out
-    if cells_rev:
+    if first_only:
+        one = out + ".cells"
+        open(one, "w").write(open(a[5]).readline())
+        a[5] = one
+    elif cells_rev:
         rev = out + ".cells"
         open(rev, "w").write("".join(reversed(open(a[5]).readlines())))
         a[5] = rev
@@ -30,6 +36,13 @@ def run(args, cells_rev, seed, tag):
 def compare(args):
     ha, hb = run(args, False, 1, "a"), run(args, True, 2, "b")
     ok = ha == hb
+    if ok:
+        run(args, False, 3, "c", True)
+        cell = open(args[5]).readline().split()
+        c = "_".join(cell[:2])
+        mine = lambda fn: sorted(json.dumps(f["geometry"]["coordinates"]) + f["properties"]["id"] for f in json.load(open(fn))["features"] if f["properties"]["cell"] == c)
+        ok = mine(args[6] + ".a") == mine(args[6] + ".c")
+        print("first cell alone vs inside the run:", "same" if ok else "DIFFERENT")
     print("kerbrepeat", "pass: identical" if ok else f"FAIL: {ha} vs {hb}")
     return 0 if ok else 1
 
