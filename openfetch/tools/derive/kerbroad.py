@@ -287,6 +287,17 @@ def selftest():
     w = side_width(road, P, N, 12.0)
     assert w is not None and abs(w - (4.0 - OFFSET)) < 0.3, w             # lot front 4 m from the asphalt: 3.25 m footpath
     assert side_width(_Fake([(0, 80)]), P, N, 12.0) is None               # mostly unseen: no width
+    from shapely.geometry import LineString
+    cen = [LineString([(-60, -10), (160, -10)])]   # a street south of the land block; the road side of a line is the south
+    ln = lambda y: [(10.0, y), (90.0, y)]
+    assert judge_line(_Fake(), ln(0.0), cen) is None                       # kerb on the land edge, asphalt 0 m out
+    assert judge_line(_Fake(), ln(1.0), cen) is None                       # a metre or two off is fine
+    assert judge_line(_Fake(), ln(-2.5), cen) == "side in the roadway"      # 2.5 m into the carriageway
+    assert judge_line(_Fake(), ln(3.5), cen) == "side behind the verge"     # 3.5 m back from the asphalt edge
+    assert judge_line(_Fake(), [(10.0, -2.5), (40.0, -2.5)], cen) is None   # 30 m of odd is under bad_m (corners, gaps)
+    assert judge_line(_Fake(), ln(-2.5), [LineString([(-60, 200), (160, 200)])]) is None   # no street within 40 m: nothing to judge
+    rep = line_report(_Fake(), ln(-2.5), cen)
+    assert len(rep) == 4 and all(w["why"] == "side in the roadway" for w in rep), rep
     print("kerbroad selftest pass")
     return 0
 
