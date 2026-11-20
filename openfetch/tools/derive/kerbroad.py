@@ -181,6 +181,83 @@ def side_report(road, ring_xy, minlen=15.0):
     return out
 
 
+WIN = 20.0        # m: an open line is judged in windows this long (a ring side is judged whole; a line passes many streets)
+BAD_M = 40.0      # m of failed windows that refuse a line (KN13); shorter stretches are corners, driveways and gaps in the survey
+
+
+def line_report(road, line_xy, centres, win=WIN, far=40.0):
+    """Per-window numbers for an open line (MGA56 coords): the road side of every sample is the side the nearest street centreline
+    lies on (centres: shapely LineStrings, lanes included, footpaths and tracks not). Window = {s0, len_m, edge_m, seen, inroad, why}
+    with why one of None, 'side in the roadway', 'side behind the verge', 'road edge not seen'; windows with no street within `far`
+    m are left out."""
+    from shapely.geometry import LineString, Point
+    from shapely.strtree import STRtree
+    L = LineString(np.asarray(line_xy, float))
+    n = int(L.length)
+    if n < 6:
+        return []
+    S = np.arange(0.5, L.length - 0.4, 1.0)
+    Q = np.array([L.interpolate(s).coords[0] for s in S])
+    A = np.array([L.interpolate(max(0.0, s - 2.5)).coords[0] for s in S]); B = np.array([L.interpolate(min(L.length, s + 2.5)).coords[0] for s in S])
+    D = B - A; D /= np.maximum(np.hypot(D[:, 0], D[:, 1]), 1e-6)[:, None]
+    N = np.c_[D[:, 1], -D[:, 0]]
+    tree = STRtree(centres)
+    side = np.zeros(len(S)); dist = np.full(len(S), np.inf)
+    for k, q in enumerate(Q):
+        j = tree.nearest(Point(q))
+        if j is None:
+            continue
+        c = centres[int(j)]
+        dist[k] = c.distance(Point(q))
+        if dist[k] > far:
+            continue
+        cp = np.array(c.interpolate(c.project(Point(q))).coords[0])
+        side[k] = 1.0 if np.dot(cp - q, N[k]) >= 0 else -1.0
+    t = np.arange(-6.0, 10.01, 0.25)
+    out = []
+    for w0 in np.arange(0.0, L.length - win / 2, win):
+        m = (S >= w0) & (S < w0 + win) & (side != 0)
+        if m.sum() < 8:
+            continue
+        P, NN = Q[m], N[m] * side[m, None]
+        M = profiles(road, P, NN, t)
+        r = {"s0": round(float(w0), 1), "len_m": round(float(min(win, L.length - w0)), 1), "at": [round(float(P[len(P) // 2][0]), 1), round(float(P[len(P) // 2][1]), 1)]}
+        if np.isnan(M).all():
+            r.update(edge_m=None, seen=0.0, inroad=None, why="no road surface data")
+            out.append(r); continue
+        e = np.asarray([(min(q, key=abs) if (q := runs(row, t)) else np.nan) for row in M])
+        band = float(np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean())
+        seen = float(np.isfinite(e).mean())
+        med = None if np.isnan(e).all() else float(np.nanmedian(e))
+        why = None
+        if band > INROAD:
+            why = "side in the roadway"
+        elif seen < SEEN:
+            why = "road edge not seen"
+        elif abs(med - OFFSET) > AGREE:
+            why = "side in the roadway" if med < OFFSET else "side behind the verge"
+        r.update(edge_m=None if med is None else round(med, 2), seen=round(seen, 2), inroad=round(band, 2), why=why)
+        out.append(r)
+    return out
+
+
+def judge_line(road, line_xy, centres, bad_m=BAD_M, **kw):
+    """Reason an open line fails the road-surface gate, or None: windows that fail add up to bad_m m or more (the worst reason wins:
+    roadway, then behind the verge, then not seen). A line with no road surface data at all is not judged (None)."""
+    rep = line_report(road, line_xy, centres, **kw)
+    if not rep or all(r["why"] == "no road surface data" for r in rep):
+        return None
+    tot = {}
+    for r in rep:
+        if r["why"] and r["why"] != "no road surface data":
+            tot[r["why"]] = tot.get(r["why"], 0.0) + r["len_m"]
+    if sum(tot.values()) < bad_m:
+        return None
+    for w in ("side in the roadway", "side behind the verge", "road edge not seen"):
+        if tot.get(w):
+            return w
+
+
 class _Fake:
     """Test road: road surface everywhere outside a 100 x 60 m block of land (x 0-100, y 0-60), except under holes (x ranges)."""
 
