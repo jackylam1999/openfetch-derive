@@ -417,6 +417,18 @@ def judge_block(comp, ctx):
     return None, (ring, used, float(seen.mean()), inside)
 
 
+def block_id(x, y, comp, ids):
+    """Id of a block from where it is, never from how many blocks came before it: the same block gets the same id whatever
+    cells a run holds or the order they come in (KN14, P-0231: counter ids made two identical runs differ byte for byte
+    and made verdicts and reviews keyed by id land on the wrong block)."""
+    rp = comp.representative_point()
+    bid = f"L{x}_{y}-{int(rp.x - x * 1000):03d}{int(rp.y - y * 1000):03d}"
+    while bid in ids:
+        bid += "b"
+    ids.add(bid)
+    return bid
+
+
 def main(a):
     to, back = tf()
     cells = [tuple(map(int, l.split())) for l in open(a[5]) if l.strip()]
@@ -452,7 +464,7 @@ def main(a):
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
-    keep, why, cnt, done, sidel = [], [], {}, set(), []
+    keep, why, cnt, done, sidel, ids = [], [], {}, set(), [], set()
     foot, prep = {}, []
     if "--foot-only" in a:
         pass
@@ -508,13 +520,14 @@ def main(a):
                 for ln, info in kerbside.lines(c, SIDE, ctx, sys.modules[__name__]):
                     sidel.append((ln, info, f"{x}_{y}"))
             cnt[w or "kept"] = cnt.get(w or "kept", 0) + 1
-            bid = f"L{x}{y}-{len(keep) + len(why)}"
+            bid = block_id(x, y, c, ids)
             if w:
                 why.append((w, Polygon(c.exterior), bid, f"{x}_{y}", DETAIL.pop(c.representative_point().wkt, None)))
             else:
                 ring, used, seen, inside = res
                 keep.append((ring, used, seen, bid, f"{x}_{y}", [[[round(v, 7) for v in back(*p)] for p in g.coords] for g in inside]))
         print(x, y, json.dumps(cnt), flush=True)
+    keep.sort(key=lambda k: k[3]); why.sort(key=lambda k: k[2])
     ll = lambda g: [[round(v, 7) for v in back(*p)] for p in g.exterior.coords]
     json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"id": b, "cell": n, "d": {str(k): v for k, v in u.items()},
                "lidar_seen": round(s, 2), "source": "lot front", "replaces": rp}, "geometry": {"type": "LineString", "coordinates": ll(r)}} for r, u, s, b, n, rp in keep]}, open(a[6], "w"))
