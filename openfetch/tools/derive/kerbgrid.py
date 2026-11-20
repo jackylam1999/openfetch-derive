@@ -3,7 +3,12 @@ drawn yet: the block face between ground street centrelines, minus each street's
 from the traced kerbs on that same side), corners rounded. Kept whole or left blank. Lessons kept from the 6-7 Nov centreline
 loops (kerbnet.py): never replace a drawn kerb (only blank blocks), lanes and tunnels/bridges never shape a block, no open ends.
 
-    python3 kerbgrid.py lots_dir roads_dir raw.json drawn_dir out.json --box x0 y0 x1 y1 --buildings footprints.json(lon/lat) [--why why.json] [--official o.json]
+    python3 kerbgrid.py lots_dir roads_dir raw.json drawn_dir out.json --box x0 y0 x1 y1 --buildings footprints.json(lon/lat) [--why why.json] [--official o.json] [--road intensity_grid_dir] [--class-width]
+
+Road surface (KN13, 20 Nov 2026, case P-0220): a block's street bands are the width measured from traced kerbs on that side, or, with none,
+the road-class width (HALF_W). Class-width rings put Lidcombe kerbs 2-3 m inside the roadway (version 2026-11-18: 26 of 30 reviewed refused
+lines odd). Now a ring is judged on the LiDAR road surface (kerbroad.judge_ring) wherever --road has a grid for it; a ring with any side
+at an assumed class width and no road-surface data is refused ("class width, no road surface") unless --class-width is given.
 """
 import glob, json, os, sys
 import numpy as np
@@ -15,6 +20,7 @@ from pyproj import Transformer
 import kerbaudit as ka
 import kerbnet as kn
 import kerbregular as kr
+import kerbroad as krd
 
 HALF_W = {1: 9.0, 2: 8.0, 3: 7.0, 4: 6.5, 5: 5.5, 6: 4.5, 7: 3.0, 8: 4.0}
 LANE_FH = 7
@@ -249,6 +255,18 @@ REVIEW = {"SHAPE_A": 40.0, "STEP_TURN": 45.0, "HULL_MIN": 0.6, "LOT_RUN": 1e9, "
 # building, no road, open area, no street between, official, size.
 
 
+def road_gate(q, road, sides_measured, class_width_ok=False):
+    """Reason a drafted ring fails the road-surface rule, or None. With road-surface data under the ring the surface decides
+    (kerbroad.judge_ring); without it every side must be measured from traced kerbs: a class width is a guess."""
+    xy = list(q.exterior.coords)
+    if road is not None and road.covers(np.asarray(xy)):
+        r = krd.judge_ring(road, xy)
+        return ("road surface: " + r) if r else None
+    if sides_measured < 1.0 and not class_width_ok:
+        return "class width, no road surface"
+    return None
+
+
 def main(a):
     if "--review" in a:
         globals().update(REVIEW)
@@ -299,13 +317,14 @@ def main(a):
         ctx["off"] = (O, STRtree(O))
     streets = ([g for g, _ in st], [fh for _, fh in st], STRtree([g for g, _ in st]))
     faces = [f for f in polygonize(unary_union([g for g, _ in st])) if area.contains(f.representative_point())]
+    ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh in ground if fh != LANE_FH]) if "--road" in a else None
     keep, why, cnt = [], [], {}
     for f in faces:
         qs, seen_sides = ring_for(f, streets, ctx["raw"])
         if not qs:
             cnt["no ring"] = cnt.get("no ring", 0) + 1
         for q in qs:
-            w = judge(q, ctx)
+            w = judge(q, ctx) or road_gate(q, ROAD, seen_sides, "--class-width" in a)
             cnt[w or "kept"] = cnt.get(w or "kept", 0) + 1
             (why.append((w, q)) if w else keep.append((q, seen_sides)))
     fc = lambda items, pr: {"type": "FeatureCollection", "features": [
@@ -316,5 +335,19 @@ def main(a):
     print("RESULT", json.dumps({"faces": len(faces), "count": cnt, "km": round(sum(q.exterior.length for q, _ in keep) / 1000, 2)}))
 
 
+def selftest():
+    f = krd._Fake()
+    blk = lambda d: Polygon([(-d, -d), (100 + d, -d), (100 + d, 60 + d), (-d, 60 + d)])
+    assert road_gate(blk(0.0), f, 0.0) is None                                   # road surface says the kerb is on the edge: kept, measured or not
+    assert road_gate(blk(-3.0), f, 1.0) == "road surface: side behind the verge"  # band 3 m back from the road
+    assert road_gate(blk(0.0), None, 0.5) == "class width, no road surface"      # a side at an assumed class width, no road data: refused
+    assert road_gate(blk(0.0), None, 1.0) is None                                # every side measured from traced kerbs: kept
+    assert road_gate(blk(0.0), None, 0.0, class_width_ok=True) is None           # explicit --class-width
+    print("kerbgrid selftest pass")
+
+
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    if sys.argv[1:] == ["--selftest"]:
+        selftest()
+    else:
+        main(sys.argv[1:])

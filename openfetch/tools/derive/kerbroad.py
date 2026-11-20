@@ -41,6 +41,35 @@ def grid(paths, out):
         np.savez_compressed(os.path.join(out, f"{a}_{b}.npz"), i=g)
 
 
+def mask(g, hi):
+    """(road, seen) masks of one intensity grid: road = intensity <= hi (a number, or hi(g) for a calibrated one), majority over 2.5 m."""
+    from scipy.ndimage import uniform_filter
+    seen = g != NOSIDE
+    a = (seen & (g <= (hi(g) if callable(hi) else hi))).astype(np.float32)
+    # the road share among the cells that hold a ground point, 2.5 m round each cell: a cell with no ground point (a sparse
+    # survey, a parked car) takes its neighbours' answer, so a hole is not a road edge
+    ns = uniform_filter(seen.astype(np.float32), size=SMOOTH)
+    with np.errstate(all="ignore"):
+        return (uniform_filter(a, size=SMOOTH) / ns > 0.5, ns >= 0.2)
+
+
+class Crop:
+    """A road-surface test window from a stored intensity crop g (uint8) whose lower-left corner is (x0, y0) m and threshold hi:
+    the same masks and the same at() / covers() as Road, for regression tests with real survey data."""
+
+    def __init__(self, g, x0, y0, hi):
+        self.m, self.x0, self.y0 = mask(g, hi), x0, y0
+
+    def at(self, X, Y):
+        c = np.floor((X - self.x0) / RES).astype(int); r = np.floor((Y - self.y0) / RES).astype(int)
+        ok = (c >= 0) & (c < self.m[0].shape[1]) & (r >= 0) & (r < self.m[0].shape[0])
+        cc, rr = c.clip(0, self.m[0].shape[1] - 1), r.clip(0, self.m[0].shape[0] - 1)
+        return np.where(ok & self.m[1][rr, cc], self.m[0][rr, cc].astype(float), np.nan)
+
+    def covers(self, P):
+        return True
+
+
 class Road:
     """Road-surface mask per 1 km cell; centrelines (shapely LineStrings in MGA56) calibrate each cell's asphalt brightness."""
 
@@ -68,15 +97,7 @@ class Road:
             if not os.path.exists(fn):
                 self.mem[(i, j)] = None
             else:
-                from scipy.ndimage import uniform_filter
-                g = np.load(fn)["i"]
-                seen = g != NOSIDE
-                a = (seen & (g <= self._cal(g, i, j))).astype(np.float32)
-                # the road share among the cells that hold a ground point, 2.5 m round each cell: a cell with no ground point (a sparse
-                # survey, a parked car) takes its neighbours' answer, so a hole is not a road edge
-                ns = uniform_filter(seen.astype(np.float32), size=SMOOTH)
-                with np.errstate(all="ignore"):
-                    self.mem[(i, j)] = (uniform_filter(a, size=SMOOTH) / ns > 0.5, ns >= 0.2)
+                self.mem[(i, j)] = mask(np.load(fn)["i"], lambda g: self._cal(g, i, j))
         return self.mem[(i, j)]
 
     def at(self, X, Y):
@@ -298,6 +319,13 @@ def selftest():
     assert judge_line(_Fake(), ln(-2.5), [LineString([(-60, 200), (160, 200)])]) is None   # no street within 40 m: nothing to judge
     rep = line_report(_Fake(), ln(-2.5), cen)
     assert len(rep) == 4 and all(w["why"] == "side in the roadway" for w in rep), rep
+    import json, base64, io
+    from shapely.geometry import LineString
+    fx = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "kerbroad-kn13-fixture.json")))
+    for c in fx:    # real NSW LiDAR intensity, 140 m windows: Lidcombe street-grid lines (class width, version 2026-11-18, reviewed odd) and older lines
+        g = np.load(io.BytesIO(base64.b64decode(c["grid_npz_b64"])))["i"]
+        r = judge_line(Crop(g, c["x0"], c["y0"], c["hi"]), c["line_xy"], [LineString(p) for p in c["centres"]])
+        assert (r is not None) == (c["expect"] == "refused"), (c["name"], c["expect"], r)   # the old Lidcombe lines must be refused, the older OK ones kept
     print("kerbroad selftest pass")
     return 0
 
