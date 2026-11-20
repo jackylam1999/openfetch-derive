@@ -18,7 +18,7 @@ SMOOTH = 5        # cells (2.5 m): the road mask is the majority of the seen cel
 PAD, CAL_N, HI_DEF = 2.0, 300, 11.0   # road = intensity <= 75th percentile on the cell's own centrelines + 2 (calibrated per survey)
 SEEN = 0.4        # share of a side's samples that must see the road edge, or the side is not drawn (canopy, KN10 Apsley St)
 AGREE = 2.0       # m: a ring side's kerb line must lie within this of the road edge (a metre or two off is fine; Jacky 14 Nov)
-INROAD = 0.4      # share of the 0.5-2.5 m band inside a ring side that may be road surface
+INROAD = 0.5      # share of the 0.5-2.5 m band inside a ring side, over the whole side, that may be road surface
 NOSIDE = 255
 
 
@@ -144,8 +144,8 @@ def judge_ring(road, ring_xy, minlen=15.0):
         if np.isnan(M).all():
             return "no road surface data"
         e = np.asarray([(min(r, key=abs) if (r := runs(row, t)) else np.nan) for row in M])
-        inside = np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean() > 0.5
-        if np.mean(inside) >= INROAD:
+        if np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean() > INROAD:   # over the whole side: asphalt footpaths and
+            # driveways make single samples dark (a per-sample share refused 54 of 62 KN12 rings, 20 Nov 2026)
             return "side in the roadway"
         if np.isfinite(e).mean() < SEEN:
             return "road edge not seen"
