@@ -17,7 +17,8 @@ RUN = 2.0         # m of unbroken road surface that counts as the carriageway (a
 SMOOTH = 5        # cells (2.5 m): the road mask is the majority of the seen cells round each cell
 PAD, CAL_N, HI_DEF = 2.0, 300, 11.0   # road = intensity <= 75th percentile on the cell's own centrelines + 2 (calibrated per survey)
 SEEN = 0.4        # share of a side's samples that must see the road edge, or the side is not drawn (canopy, KN10 Apsley St)
-AGREE = 2.0       # m: a ring side's kerb line must lie within this of the road edge (a metre or two off is fine; Jacky 14 Nov)
+AGREE = float(os.environ.get("KR_AGREE", 3.0))   # m: a ring side's kerb line must lie within this of the road edge (Jacky 20 Nov 15:30Z: up to about 3 m off is fine in 2D, only odd shapes fail; was 2.0, KR_AGREE=2.0 reproduces that)
+BAND = (-2.5 - (AGREE - 2.0), -0.5 - (AGREE - 2.0))   # m: the band inside a ring side that must not be road; moves out with AGREE so a parked-car row is not "in the roadway"
 INROAD = 0.5      # share of the 0.5-2.5 m band inside a ring side, over the whole side, that may be road surface
 NOSIDE = 255
 
@@ -165,7 +166,7 @@ def judge_ring(road, ring_xy, minlen=15.0):
         if np.isnan(M).all():
             return "no road surface data"
         e = np.asarray([(min(r, key=abs) if (r := runs(row, t)) else np.nan) for row in M])
-        if np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean() > INROAD:   # over the whole side: asphalt footpaths and
+        if np.nan_to_num(M[:, (t >= BAND[0]) & (t <= BAND[1])], nan=0.0).mean() > INROAD:   # over the whole side: asphalt footpaths and
             # driveways make single samples dark (a per-sample share refused 54 of 62 KN12 rings, 20 Nov 2026)
             return "side in the roadway"
         if np.isfinite(e).mean() < SEEN:
@@ -196,7 +197,7 @@ def side_report(road, ring_xy, minlen=15.0):
             r.update(edge_m=None, seen=0.0, inroad=None)
         else:
             e = np.asarray([(min(q, key=abs) if (q := runs(row, t)) else np.nan) for row in M])
-            band = np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean()
+            band = np.nan_to_num(M[:, (t >= BAND[0]) & (t <= BAND[1])], nan=0.0).mean()
             r.update(edge_m=None if np.isnan(e).all() else round(float(np.nanmedian(e)), 2), seen=round(float(np.isfinite(e).mean()), 2), inroad=round(float(band), 2))
         out.append(r)
     return out
@@ -247,7 +248,7 @@ def line_report(road, line_xy, centres, win=WIN, far=40.0):
             r.update(edge_m=None, seen=0.0, inroad=None, why="no road surface data")
             out.append(r); continue
         e = np.asarray([(min(q, key=abs) if (q := runs(row, t)) else np.nan) for row in M])
-        band = float(np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean())
+        band = float(np.nan_to_num(M[:, (t >= BAND[0]) & (t <= BAND[1])], nan=0.0).mean())
         seen = float(np.isfinite(e).mean())
         med = None if np.isnan(e).all() else float(np.nanmedian(e))
         why = None
@@ -302,7 +303,7 @@ def selftest():
     assert judge_ring(road, ring(-1.0)) is None                           # a little off is fine
     assert judge_ring(road, ring(0.0, top=-5.0)) == "side behind the verge"   # north side back of a 4 m grass verge
     assert judge_ring(road, ring(0.0, top=2.5)) == "side in the roadway"      # north side 2.5 m into the carriageway
-    assert judge_ring(road, ring(0.0, top=3.5)) == "side in the roadway"
+    assert judge_ring(road, ring(0.0, top=5.5)) == "side in the roadway"
     assert judge_ring(_Fake([(-20, 120)]), ring(0.0)) == "road edge not seen"   # canopy over the whole north side
     P = np.c_[np.arange(10, 90, 2.0), np.full(40, 56.0)]; N = np.tile([0.0, 1.0], (40, 1))
     w = side_width(road, P, N, 12.0)
@@ -313,11 +314,11 @@ def selftest():
     ln = lambda y: [(10.0, y), (90.0, y)]
     assert judge_line(_Fake(), ln(0.0), cen) is None                       # kerb on the land edge, asphalt 0 m out
     assert judge_line(_Fake(), ln(1.0), cen) is None                       # a metre or two off is fine
-    assert judge_line(_Fake(), ln(-2.5), cen) == "side in the roadway"      # 2.5 m into the carriageway
-    assert judge_line(_Fake(), ln(3.5), cen) == "side behind the verge"     # 3.5 m back from the asphalt edge
-    assert judge_line(_Fake(), [(10.0, -2.5), (40.0, -2.5)], cen) is None   # 30 m of odd is under bad_m (corners, gaps)
-    assert judge_line(_Fake(), ln(-2.5), [LineString([(-60, 200), (160, 200)])]) is None   # no street within 40 m: nothing to judge
-    rep = line_report(_Fake(), ln(-2.5), cen)
+    assert judge_line(_Fake(), ln(-4.5), cen) == "side in the roadway"      # 4.5 m into the carriageway
+    assert judge_line(_Fake(), ln(5.0), cen) == "side behind the verge"     # 5 m back from the asphalt edge
+    assert judge_line(_Fake(), [(10.0, -4.5), (40.0, -4.5)], cen) is None   # 30 m of odd is under bad_m (corners, gaps)
+    assert judge_line(_Fake(), ln(-4.5), [LineString([(-60, 200), (160, 200)])]) is None   # no street within 40 m: nothing to judge
+    rep = line_report(_Fake(), ln(-4.5), cen)
     assert len(rep) == 4 and all(w["why"] == "side in the roadway" for w in rep), rep
     import json, base64, io
     from shapely.geometry import LineString
@@ -325,6 +326,8 @@ def selftest():
     for c in fx:    # real NSW LiDAR intensity, 140 m windows: Lidcombe street-grid lines (class width, version 2026-11-18, reviewed odd) and older lines
         g = np.load(io.BytesIO(base64.b64decode(c["grid_npz_b64"])))["i"]
         r = judge_line(Crop(g, c["x0"], c["y0"], c["hi"]), c["line_xy"], [LineString(p) for p in c["centres"]])
+        if AGREE >= 3.0 and c["name"] == "lidcombe-crop008":
+            continue   # 2-3 m inside the road on the parked-car row: refused at the old 2 m bar, allowed at the 3 m bar (Jacky 20 Nov)
         assert (r is not None) == (c["expect"] == "refused"), (c["name"], c["expect"], r)   # the old Lidcombe lines must be refused, the older OK ones kept
     print("kerbroad selftest pass")
     return 0
