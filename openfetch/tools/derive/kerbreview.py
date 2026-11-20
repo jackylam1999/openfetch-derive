@@ -4,6 +4,7 @@ to be automated and improved overtime").
 
     python3 kerbreview.py check kerbs.json[.gz] out_dir --roads roads_dir [--prev review.json] [--cases kerbreview-cases.json] [--no-photo]
     python3 kerbreview.py visual out_dir verdicts.json        (the visual reviewer's tile verdicts -> review.json result)
+    python3 kerbreview.py selftest-img   (a sheet of flat tiles is refused, P-0220)
     python3 kerbreview.py selftest kerbs.json[.gz] version    (every case found in that version must be caught by the checks)
     python3 kerbreview.py addcase x y version "Jacky's words" kinds [--r 20]   (kinds: comma list of KINDS, x y in EPSG 7856)
 
@@ -278,16 +279,54 @@ def against_cases(spots, cases_path, fails):
     return hits
 
 
-def photo(x0, y0, x1, y1, px):
+TILE = "https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{}/{}/{}"
+BLANK_SPREAD = 6.0   # a photo tile whose pixel values spread (std) less than this has no image (flat grey, white or black)
+
+
+def blank(im):
+    """True when an image has no picture in it: the aerial failed to load and a flat fill took its place."""
+    import numpy as np
+    return float(np.asarray(im.convert('L'), float).std()) < BLANK_SPREAD
+
+
+def photo_tiles(x0, y0, x1, y1, px, z=20):
+    """The same box from the NSW imagery tile cache (zoom 20, web mercator, north up); loads when the export service answers 500."""
     from PIL import Image
-    for k in range(4):
+    from pyproj import Transformer
+    W = Transformer.from_crs(7856, 3857, always_xy=True).transform
+    (ax, ay), (bx, by) = W(x0, y0), W(x1, y1)
+    org, res = 20037508.342789244, 156543.03392804097 / 2 ** z
+    l, r, t, b = (ax + org) / res, (bx + org) / res, (org - by) / res, (org - ay) / res
+    i0, i1, j0, j1 = int(l // 256), int(r // 256), int(t // 256), int(b // 256)
+    big = Image.new('RGB', ((i1 - i0 + 1) * 256, (j1 - j0 + 1) * 256))
+    for i in range(i0, i1 + 1):
+        for j in range(j0, j1 + 1):
+            rq = urllib.request.urlopen(urllib.request.Request(TILE.format(z, j, i), headers={'User-Agent': 'openfetch-derive'}), timeout=60)
+            big.paste(Image.open(io.BytesIO(rq.read())).convert('RGB'), ((i - i0) * 256, (j - j0) * 256))
+    return big.crop((int(l - i0 * 256), int(t - j0 * 256), int(r - i0 * 256), int(b - j0 * 256))).resize((px, px))
+
+
+def photo(x0, y0, x1, y1, px):
+    """The NSW aerial for a box, never a stand-in: the export service, then the tile cache, else the review stops (a sheet of flat
+    tiles let nobody judge anything, 20 Nov 2026, P-0220)."""
+    from PIL import Image
+    for k in range(3):
         try:
             r = urllib.request.urlopen(urllib.request.Request(IMG.format(x0, y0, x1, y1, px, px),
                                                               headers={'User-Agent': 'openfetch-derive'}), timeout=60)
-            return Image.open(io.BytesIO(r.read())).convert('RGB').resize((px, px))
+            im = Image.open(io.BytesIO(r.read())).convert('RGB').resize((px, px))
+            if not blank(im):
+                return im
         except Exception:
             time.sleep(2 * (k + 1))
-    return Image.new('RGB', (px, px), (60, 60, 60))
+    for k in range(3):
+        try:
+            im = photo_tiles(x0, y0, x1, y1, px)
+            if not blank(im):
+                return im
+        except Exception:
+            time.sleep(2 * (k + 1))
+    raise SystemExit(f"no aerial image for the box {x0:.0f} {y0:.0f} {x1:.0f} {y1:.0f}: the review sheet is not made (no flat tiles)")
 
 
 def sheet(lines, tree, spots, out, n=12, m=70, px=420, use_photo=True):
@@ -297,6 +336,8 @@ def sheet(lines, tree, spots, out, n=12, m=70, px=420, use_photo=True):
     for t, s in enumerate(spots[:n]):
         x0, y0, x1, y1 = s['x'] - m / 2, s['y'] - m / 2, s['x'] + m / 2, s['y'] + m / 2
         tl = photo(x0, y0, x1, y1, px) if use_photo else Image.new('RGB', (px, px), (60, 60, 60))
+        if use_photo and blank(tl):
+            raise SystemExit(f"review tile {t + 1} has no image: the sheet is not saved")
         d = ImageDraw.Draw(tl); f = lambda p: ((p[0] - x0) / m * px, (y1 - p[1]) / m * px)
         from shapely.geometry import box
         for j in tree.query(box(x0, y0, x1, y1)):
@@ -341,12 +382,12 @@ def check(a):
         if c['kinds'] == ['random']:                    # a visual-only case (no geometry rule knows it): re-judged every version
             pick.append({'kind': 'case ' + c['id'], 'x': c['x'], 'y': c['y'], 'size': 0})
     tree = STRtree(lines)
-    sheet(lines, tree, pick, os.path.join(out, 'review-sheet.jpg'), n=len(pick), use_photo='--no-photo' not in a)
+    sheet(lines, tree, pick, os.path.join(out, 'review-sheet.jpg' if '--no-photo' not in a else 'review-sheet-nophoto.jpg'), n=len(pick), use_photo='--no-photo' not in a)
     best = {}
     if opt.get('prev') and os.path.exists(opt['prev']): best = json.load(open(opt['prev'])).get('best_per_km', {})
     rv = {'check': 'openfetch-derive tools/derive/kerbreview.py', 'source': src, 'km': round(km, 1), 'count': count,
           'per_km': rate, 'caps': cap, 'case_hits': hits, 'fails': fails,
-          'result': 'fail' if fails else 'pending visual', 'sheet': 'review-sheet.jpg',
+          'result': 'fail' if fails else 'pending visual', 'sheet': 'review-sheet.jpg' if '--no-photo' not in a else None,
           'sheet_spots': pick, 'spots': spots,
           'best_per_km': best if fails else {k: min(rate[k], best.get(k, rate[k])) for k in KINDS}}
     json.dump(rv, open(os.path.join(out, 'review.json'), 'w'), indent=1)
@@ -378,6 +419,29 @@ def visual(a):
     return 0 if rv['result'] == 'pass' else 1
 
 
+def selftest_img(a):
+    from PIL import Image
+    import numpy as np
+    assert blank(Image.new('RGB', (50, 50), (60, 60, 60))) and blank(Image.new('RGB', (50, 50), (250, 250, 250)))   # flat fill = no image
+    noise = Image.fromarray(np.random.default_rng(1).integers(0, 255, (50, 50, 3), dtype=np.uint8))
+    assert not blank(noise)
+    global photo
+    keep = photo
+    photo = lambda *q: Image.new('RGB', (q[4], q[4]), (60, 60, 60))   # an imagery failure that used to give a grey tile
+    try:
+        from shapely.geometry import LineString
+        from shapely.strtree import STRtree
+        ln = [LineString([(0, 0), (50, 0)])]
+        try:
+            sheet(ln, STRtree(ln), [{'x': 25, 'y': 0, 'kind': 'random', 'size': 0}], '/tmp/never-saved.jpg')
+            raise AssertionError('a sheet of flat tiles was saved')
+        except SystemExit:
+            pass
+    finally:
+        photo = keep
+    print('selftest-img pass')
+
+
 def selftest(a):
     lines = load(a[0]); spots, _, _ = review(lines); miss = []
     for cs in json.load(open(CASES)):
@@ -401,6 +465,7 @@ def addcase(a):
 
 
 if __name__ == '__main__':
-    cmd = {'check': check, 'visual': visual, 'selftest': selftest, 'addcase': addcase}
+    cmd = {'check': check, 'visual': visual, 'selftest': selftest, 'selftest-img': selftest_img, 'addcase': addcase}
+    if sys.argv[1:2] == ["selftest-img"]: sys.exit(selftest_img([]))
     if len(sys.argv) < 3 or sys.argv[1] not in cmd: sys.exit(__doc__)
     sys.exit(cmd[sys.argv[1]](sys.argv[2:]))
