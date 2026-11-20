@@ -18,6 +18,7 @@ Here the block is built from the land itself:
         [--measure kerbs.geojson.gz (earlier kerbs used only to measure footpath widths; default the drawn file)] [--foot foot.json] [--ground grids_dir (kerbpcw.py ground grids)] [--nomeasure nm.json]
         [--cad cad_dir (kerbcad.py: a ring with a run outside the official road reserve is left blank)]
         [--calib calib.json (sides with a LiDAR kerb trace: trace width, ground step, every profile's kerb; tunes kerbpcw.py)]
+        [--lane-cut (a ring across lane mouths is kept for kerbmouth_run.py to cut at each mouth, KN21; without it the ring is refused whole)]
         [--road igrid_dir (kerbroad.py intensity grids: footpath width to the asphalt edge, and every ring side must sit on it)]
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
@@ -41,6 +42,7 @@ import kerbroad as krd
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
 LANE_FH = 7
+LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0237)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
 STREET_LONG = 0.5    # share of a narrow strip's length a street centreline must run along for it to be a narrow street
@@ -405,7 +407,7 @@ def judge_block(comp, ctx):
         if w:
             DETAIL[comp.representative_point().wkt] = {"run_m": m}
             return w, None
-    if kerblane.bad(q, [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH and g.intersects(ring)]):
+    if not LANE_CUT and kerblane.bad(q, [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH and g.intersects(ring)]):
         return "ring across lane mouths", None
     if ctx.get("road") is not None and (w := krd.judge_ring(ctx["road"], list(q.coords))):
         return w, None   # every side on the road edge the LiDAR intensity shows (KN11: verge, roadway and canopy sides)
@@ -463,6 +465,8 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
+    global LANE_CUT
+    LANE_CUT = "--lane-cut" in a
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
     keep, why, cnt, done, sidel, ids = [], [], {}, set(), [], set()
     foot, prep, cell_foot = {}, [], {}

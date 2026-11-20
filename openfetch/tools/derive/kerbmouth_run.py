@@ -117,6 +117,10 @@ def main(a):
         xy = [to(*c[:2]) for c in f["geometry"]["coordinates"]]
         cut = km.cut_ring(xy, lanes)
         funnel["rings"] += 1
+        if cut.get("whole"):
+            funnel["whole rings (no lane crossing)"] += 1
+            out.append({"type": "Feature", "properties": {"ring": f["properties"].get("id"), "side": "whole", "ring_m": round(LineString(xy).length, 1), "why": [], "road": "kept as drawn"},
+                        "geometry": f["geometry"]}); continue
         if not cut["sides"]:
             funnel["ring: " + (cut["why"][0] if cut["why"] else "no sides")] += 1; continue
         for s in judge_sides(xy, cut, ctx, road):
