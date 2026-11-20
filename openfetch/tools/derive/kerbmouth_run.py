@@ -1,4 +1,4 @@
-"""Cut refused kerb rings at their lane mouths and judge each street side (KN21, 20 Nov 2026, kerb lead 4, case P-0237).
+"""Cut refused kerb rings at their lane mouths and judge each street side (KN21, 20 Nov 2026, kerb lead 4, case P-0240).
 A ring that crossed a mapped rear lane was dropped whole (P-0233); Jacky 20 Nov 15:30Z: cut, do not drop. Each ring goes through
 kerbmouth.cut_ring (cut at every lane mouth, a quarter-circle kerb return into the lane at each cut end); each side then passes
   face    kerbface: the strip out to the nearest street is road reserve for all but FACE_RUN m

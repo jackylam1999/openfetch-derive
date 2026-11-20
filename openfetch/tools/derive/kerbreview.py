@@ -189,6 +189,7 @@ def nears(lines, tree, spots):
         for end, d in ((Point(ln.coords[0]), 0.0), (Point(ln.coords[-1]), ln.length)):
             near = [(lines[j].distance(end), j) for j in tree.query(end, predicate='dwithin', distance=NEAR_D) if j != i]
             if not near: continue
+            if LANES and any(g.distance(end) <= LANE_END for g in LANES): continue   # the return into a lane mouth faces the one across the lane
             dist, j = min(near)
             if dist < END_TOUCH:                           # touches: a merge if it slides in alongside the other line
                 back = ln.interpolate(min(MERGE_LEN, ln.length - 0.1) if d == 0 else max(0.1, ln.length - MERGE_LEN))
@@ -198,12 +199,17 @@ def nears(lines, tree, spots):
                 spots.append({'kind': 'near', 'x': end.x, 'y': end.y, 'size': round(dist, 2)})
 
 
+LANES = []            # lane centrelines (functionhierarchy 7) seen by load_roads
+LANE_END = 3.5        # m: a kerb end this close to a lane is a kerb return into the lane (kerbmouth.py, KN21), not an open corner
+
+
 def load_roads(d):
     """Street centrelines at ground level (EPSG 7856 cell files, kerbaudit.py layout); paths and tracks (functionhierarchy 8-11),
     bridges and tunnels (roadontype 2, 3) left out."""
     import glob
     from shapely.geometry import shape
     out, seen = [], set()
+    LANES.clear()
     for fn in sorted(glob.glob(os.path.join(d, '*.json'))):
         for f in json.load(open(fn)).get('features', []):
             pr = f.get('properties') or {}; key = pr.get('OBJECTID', pr.get('objectid', f.get('id')))
@@ -211,7 +217,9 @@ def load_roads(d):
             if str(pr.get('roadontype', 1)) in ('2', '3'): continue   # bridges and tunnels do not open a kerb (WestConnex runs under Erskineville)
             if key is not None: seen.add(key)
             g = shape(f['geometry'])
-            out += [x for x in (g.geoms if g.geom_type.startswith('Multi') else [g]) if x.geom_type == 'LineString']
+            ls = [x for x in (g.geoms if g.geom_type.startswith('Multi') else [g]) if x.geom_type == 'LineString']
+            out += ls
+            if str(pr.get('functionhierarchy')) == '7' and pr.get('operationalstatus', 1) == 1: LANES.extend(ls)
     return out
 
 

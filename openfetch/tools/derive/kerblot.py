@@ -42,7 +42,7 @@ import kerbroad as krd
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
 LANE_FH = 7
-LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0237)
+LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0240)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
 STREET_LONG = 0.5    # share of a narrow strip's length a street centreline must run along for it to be a narrow street
