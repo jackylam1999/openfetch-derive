@@ -9,3 +9,8 @@ Signals tried, none flags the cases:
 3 inside a lot: Kogarah and Eastgardens never inside a lot.
 4 crossing a road centreline (fh<=7): 147 lines, neither case among them.
 5 distance to nearest lot: Kogarah 6.5 m, same as ordinary lines.
+
+6 Crossing a road centreline (147 lines, 314 crossings): blind pack of 30 close-ups (x01..x30, seeds 25/26), lead 5 verdicts: 26 OK, 2 ODD (x28 line 2077 at 231 m, x30 line 2161 at 694 m: line runs 0.1-1.2 m from the centreline, i.e. down the middle of the road), 2 UNSURE (x11, x19 canopy). Crossings are mostly islands, medians and corners: not a cut signal.
+7 Within 2 m of a centreline for 10 m or more: 1,020 stretches on 731 of 3,282 lines: not selective.
+8 LiDAR ground intensity (kn11/kn13 grids; Eastgardens 335_6243 and Kogarah 326_6238 have grids, Waterloo 334_6246 has none): with the per-cell road threshold (75th percentile on centrelines + 2) both sides of the line read as road along the whole Eastgardens line, odd stretch and OK stretch alike, and on Kogarah the same; no separation.
+Result: no signal separates the odd corner/slip-lane cuts from OK lines. Recorded limit, no cut made on -h. The 3 cases stay as known old odd lines.
