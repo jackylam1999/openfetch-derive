@@ -15,9 +15,11 @@ cut end is finished with a kerb return into that street (quadratic fillet, radiu
   3. a side shorter than MIN_SIDE is left out.
   4. MID-SIDE CUT (card KN24, 20 Nov; case P-0239): a long side left out whole for one local bad stretch (a hugging run, a stretch in the
      carriageway or away from the road) is cut at that stretch instead: the bad metres (padded PAD_M each end, runs closer than JOIN_M
-     joined) are removed and each good piece of MIN_SUB m or more is kept. Each mid cut end is finished with a kerb return of MID_R m
-     turned toward the nearest street (the kerb leaves the verge the way a driveway or crossover end does); where no street is within
-     MID_STREET_M the piece is left out (no free end). A side with more than MAX_CUT_SHARE of it bad stays out whole. Sides that already
+     joined) are removed and each good piece of MIN_SUB m or more is kept. A mid cut end is allowed only where a real kerb can finish
+     there (kerb lead, 20 Nov: pack1 failed 11 of 30 on hooks mid-street): at a side street or lane (a street other than the line's own passes
+     within its half width + MOUTH_NEAR m at 25 degrees or more: the end gets a kerb return into it, as at a mouth) or onto another kerb line
+     within JOIN_KERB_M (the end is left touching it). A piece with an end that can do neither is left out, so a side whose bad stretch is
+     not near a street or another kerb stays out whole. A side with more than MAX_CUT_SHARE of it bad stays out whole. Sides that already
      passed (kept) are never touched by this step.
 Kept geometry that was never cut is the published line, byte for byte (no smoothing, no moves).
 
@@ -37,7 +39,7 @@ AWAY_M, ROAD_SHARE = 6.0, 0.9
 BAD_SHARE, MIN_SIDE = 0.15, 15.0
 RADIUS, SAME_ST_DEG, MERGE_M = 4.0, 25.0, 6.0
 MIN_SUB, PAD_M, JOIN_M, RUN_M = 20.0, 2.0, 10.0, 6.0   # mid-side cut: smallest kept piece, margin round a bad stretch, join gap, shortest far/away stretch
-MAX_CUT_SHARE, MID_R, MID_STREET_M = 0.4, 3.0, 30.0
+MAX_CUT_SHARE, MID_R, MOUTH_NEAR, JOIN_KERB_M = 0.4, 3.0, 3.0, 1.5
 TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
 
 
@@ -218,17 +220,34 @@ def bad_spans(L, s0, s1, lots, lt, streets, st_tree):
     return spans
 
 
-def mid_cut(L, s_edge, streets, st_tree):
-    """Pseudo mouth (s, s, point, u, MID_R) for a cut in mid-side: u points from the kerb to the nearest street centreline, or None
-    when no street is within MID_STREET_M (the piece then has no honest return and is left out)."""
+def mid_cut(L, s_edge, streets, st_tree, others=None, own=None):
+    """How the kerb finishes at a cut in mid-side, or None when it cannot finish properly (the kerb lead 20 Nov: a real kerb never returns in the
+    middle of a street; it ends at a lane, a driveway or a side-street mouth, or on another kerb): either
+      mouth: a street other than the line's own passes within its half width + MOUTH_NEAR m of the end and meets the line at 25 degrees or more:
+             a pseudo mouth (s, s, point, u, hw) whose return turns into that street, as at a crossing; or
+      join:  another kerb line (others, a shapely STRtree of the lines, own = this line's own index) lies within JOIN_KERB_M of the end:
+             ("join",) and the end is left as it is, touching that kerb."""
     p = L.interpolate(s_edge)
-    j = int(st_tree.nearest(p))
-    g = streets[j][0]
-    if g.distance(p) > MID_STREET_M or g.distance(p) < 0.5:
-        return None
-    q = np.array(g.interpolate(g.project(p)).coords[0])
-    v = q - np.array(p.coords[0])
-    return (s_edge, s_edge, p, v / np.hypot(*v), MID_R)
+    t = tangent(L, s_edge)
+    cross, own_st = [], None
+    for j in st_tree.query(p.buffer(HALF_W[1] + 12.0)):
+        g, fh = streets[int(j)]
+        d = g.distance(p)
+        c = tangent(g, g.project(p))
+        if np.degrees(np.arccos(min(1.0, abs(float(np.dot(t, c)))))) < SAME_ST_DEG:
+            if own_st is None or d < own_st.distance(p):
+                own_st = g
+        elif d <= HALF_W[fh] + MOUTH_NEAR:
+            cross.append((d, g, fh, c))
+    if cross and own_st is not None:
+        d, g, fh, c = min(cross, key=lambda r: r[0])
+        away = np.array(p.coords[0]) - np.array(own_st.interpolate(own_st.project(p)).coords[0])
+        return (s_edge, s_edge, p, c if float(np.dot(c, away)) >= 0 else -c, min(HALF_W[fh], 2 * MID_R))
+    if others is not None:
+        for j in others[0].query(p.buffer(JOIN_KERB_M)):
+            if int(j) != own and others[1][int(j)].distance(p) <= JOIN_KERB_M:
+                return ("join",)
+    return None
 
 
 def make_piece(L, s0, s1, cb, ca):
@@ -236,10 +255,10 @@ def make_piece(L, s0, s1, cb, ca):
     room = (s1 - s0) / 3.0
     r0 = r1 = 0.0
     head, tail = [], []
-    if cb is not None and cb[3] is not None:
+    if cb is not None and len(cb) > 3 and cb[3] is not None:
         r0, c = arc(L, s0, +1, cb[3], cb[4], room)
         head = c[::-1]
-    if ca is not None and ca[3] is not None:
+    if ca is not None and len(ca) > 3 and ca[3] is not None:
         r1, c = arc(L, s1, -1, ca[3], ca[4], room)
         tail = c
     lo, hi = (s0 + r0, s1 - r1)
@@ -251,7 +270,7 @@ def make_piece(L, s0, s1, cb, ca):
     return mid, int(bool(head)) + int(bool(tail))
 
 
-def judge(line_xy, streets, st_tree, lots, lt):
+def judge(line_xy, streets, st_tree, lots, lt, others=None, own=None):
     """-> (pieces [list of xy], sides [dict]). Each kept side is one piece; a cut end carries its kerb return. A side left out whole for a
     local stretch is cut at that stretch (step 4 of the module note): its good sub-pieces are kept with "cut_mid" and listed in the side dict
     under "pieces"; sides[i]["why"] stays the whole-side reason so the funnel still counts it."""
@@ -275,8 +294,8 @@ def judge(line_xy, streets, st_tree, lots, lt):
                     a, b = edges[k], edges[k + 1]
                     if b - a < MIN_SUB:
                         continue
-                    c0 = cb if a == s0 else mid_cut(L, a, streets, st_tree)
-                    c1 = ca if b == s1 else mid_cut(L, b, streets, st_tree)
+                    c0 = cb if a == s0 else mid_cut(L, a, streets, st_tree, others, own)
+                    c1 = ca if b == s1 else mid_cut(L, b, streets, st_tree, others, own)
                     if (a != s0 and c0 is None) or (b != s1 and c1 is None):
                         continue
                     if flags(L, a, b, lots, lt, streets, st_tree)[2]:
@@ -323,25 +342,32 @@ def selftest():
     away = [(-50 + 0.4 * k, 25.0) for k in range(0, 751)]               # 25 m from the street, 14 m behind the lot fronts: not along a road
     _, sides = judge(away, st, tree, [box(-50, 40, 250, 60)], STRtree([box(-50, 40, 250, 60)]))
     assert [s["why"] for s in sides] == ["away from the road", "away from the road"], sides
-    # MID-SIDE CUT (KN24): a 300 m kerb with one 60 m stretch where a lot comes right up to it was left out whole by the hug rule; now only
-    # the stretch goes, the two good pieces stay, and each mid cut end turns south (toward the street) with a 3 m return
+    # MID-SIDE CUT (KN24): a 300 m kerb with one 60 m stretch where a lot comes right up to it was left out whole by the hug rule; the
+    # stretch goes and the two good pieces stay ONLY where each cut end can finish: here two side streets start just short of the kerb at
+    # the cut ends (a return into each); with no street or kerb there the whole side stays out (no hook mid-street)
     lots2 = [box(-50, 11, 40, 40), box(40, 6.7, 100, 40), box(100, 11, 250, 40)]
-    st2 = [main]
-    tree2 = STRtree([g for g, _ in st2])
-    piece, sides = judge(kerb[:int(300 / 0.4)], st2, tree2, lots2, STRtree(lots2))
+    lt2 = STRtree(lots2)
+    k300 = kerb[:int(300 / 0.4)]
+    mouthst = [main, (LineString([(38, 8), (38, 80)]), 6), (LineString([(102, 8), (102, 80)]), 6)]
+    piece, sides = judge(k300, mouthst, STRtree([g for g, _ in mouthst]), lots2, lt2)
     assert [s["why"] for s in sides] == ["hugs lots"] and len(sides[0]["pieces"]) == 2, sides
     a, b = sides[0]["pieces"]
     assert piece == [] and a["returns"] == 1 and b["returns"] == 1, (piece, sides)
     assert 85.0 < a["s1"] < 90.0 and 150.0 < b["s0"] < 155.0, (a["s1"], b["s0"])
     qa, qb = a["q"], b["q"]
-    assert qa[-1][1] < 6.5 - 2.0 and qb[0][1] < 6.5 - 2.0, (qa[-3:], qb[:3])        # the returns run south, toward the street
+    assert qa[-1][1] > 6.5 + 2.0 and qb[0][1] > 6.5 + 2.0, (qa[-3:], qb[:3])       # each return turns into its side street, away from the main road
     assert all(abs(y - 6.5) < 1e-6 for _, y in qa[:-8]) and all(abs(y - 6.5) < 1e-6 for _, y in qb[9:]), "kerb moved"
     assert max(x for x, _ in qa) < 41.0 and min(x for x, _ in qb) > 99.0, "the hugging stretch is still in"
-    # a side that is mostly bad stays out whole, and so does a stretch with no street near enough for a return
-    _, sides = judge(kerb[:int(300 / 0.4)], st2, tree2, [box(-50, 11, 40, 40), box(40, 6.7, 240, 40)], STRtree([box(-50, 11, 40, 40), box(40, 6.7, 240, 40)]))
-    assert not sides[0].get("pieces"), sides
-    far_st = [(LineString([(-50, 200), (250, 200)]), 4)]
-    _, sides = judge(kerb[:int(300 / 0.4)], far_st, STRtree([g for g, _ in far_st]), lots2, STRtree(lots2))
+    st2 = [main]
+    tree2 = STRtree([g for g, _ in st2])
+    _, sides = judge(k300, st2, tree2, lots2, lt2)
+    assert not sides[0].get("pieces"), "a cut end with no street or kerb near got a hook mid-street"
+    other = LineString([(-50 + 0.4 * k, 6.5 - (k > 0) * 0.0) for k in range(0, 1)] + [(38.0, 7.0), (38.0, 40.0)])
+    oth = (STRtree([other, LineString(k300)]), [other, LineString(k300)])
+    _, sides = judge(k300, st2, tree2, lots2, lt2, oth, 1)
+    assert len(sides[0]["pieces"]) == 1 and sides[0]["pieces"][0]["returns"] == 0, sides    # a cut end touching another kerb is left as it is
+    # a side mostly bad stays out whole
+    _, sides = judge(k300, mouthst, STRtree([g for g, _ in mouthst]), [box(-50, 11, 40, 40), box(40, 6.7, 240, 40)], STRtree([box(-50, 11, 40, 40), box(40, 6.7, 240, 40)]))
     assert not sides[0].get("pieces"), sides
     # a shallow crossing (the street curving under the kerb) is not a mouth; an untouched line comes back unchanged
     bend = LineString([(0, 0), (200, 0)])
@@ -365,9 +391,12 @@ def main(a):
     lots, streets = load_lots(a[1]), load_streets(a[2])
     lt, st_tree = STRtree(lots), STRtree([s for s, _ in streets])
     out, rep, funnel = [], [], {}
+    allxy = [[to(*c[:2]) for c in f["geometry"]["coordinates"]] for f in F]
+    alls = [LineString(q) for q in allxy]
+    others = (STRtree(alls), alls)
     for k, f in enumerate(F):
-        xy = [to(*c[:2]) for c in f["geometry"]["coordinates"]]
-        pieces, sides = judge(xy, streets, st_tree, lots, lt)
+        xy = allxy[k]
+        pieces, sides = judge(xy, streets, st_tree, lots, lt, others, k)
         p = f["properties"]
         area = (p.get("areas") or "").split(",")[0] or "?"
         z = funnel.setdefault(area, {"lines": 0, "km": 0.0, "sides": 0, "sides_kept": 0, "km_kept": 0.0, "why": {}, "returns": 0})
@@ -387,6 +416,7 @@ def main(a):
             out.append(feat(q, back, dict(p, piece=i, of=len(pieces), tier=tier, flagged=n["flagged"], returns=n.get("returns", 0))))
         for n in sides:
             subs = n.pop("pieces", [])
+            n["n_pieces"] = len(subs)
             for j, sp in enumerate(subs):
                 z["mid_pieces"] = z.get("mid_pieces", 0) + 1
                 z["mid_km"] = z.get("mid_km", 0.0) + LineString(sp["q"]).length / 1000

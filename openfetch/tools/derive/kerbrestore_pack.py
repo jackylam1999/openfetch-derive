@@ -3,7 +3,7 @@ out, shuffled, key hidden. Each crop is 60 m square on the NSW aerial (zoom 20, 
 crop made only of missing tiles is refused), the line as drawn in magenta, a cyan ring at the centre, the banner is the draw number only.
 
     python3 kerbrestore_pack.py restored.geojson dropped.geojson report.json "Suburb,Suburb" seed n_kept n_cut out_dir [mid]
-With "mid" (card KN24) the kept crops are over mid-side cut pieces only (half of them centred 6 m inside a cut end, so the return is in the
+With "mid" (card KN24) the kept crops are over mid-side cut pieces only (each centred on a mid cut end, 3 m inside the piece, so the return is in the
 crop) and the cut crops are over the removed stretches (cut_spans_m of the report), all drawn alike.
 writes out_dir/cNN.jpg, out_dir/sheetN.jpg (8 crops a sheet) and out_dir/key.json (what each crop is; the reviewer never sees it).
 """
@@ -138,7 +138,7 @@ def main_mid(a):
         P, p = by[l["i"]]
         L = LineString(P)
         for s in l["sides"]:
-            for a0, a1 in s.get("cut_spans_m", []):
+            for a0, a1 in (s.get("cut_spans_m", []) if s.get("n_pieces") else []):
                 if a1 - a0 >= 8:
                     seg = np.array([L.interpolate(t).coords[0] for t in np.append(np.arange(a0, a1, 2.0), a1)])
                     spans.append((seg, dict(p, side="removed stretch")))
@@ -150,7 +150,8 @@ def main_mid(a):
             break
         P, p = kept[int(i)]
         L = LineString(P)
-        t = (6.0 if rng.random() < 0.5 else L.length - 6.0) if rng.random() < 0.5 and L.length > 20 else rng.uniform(0, L.length)
+        ends = [e for e, mid in ((3.0, p["s0"] > p["side_s0"] + 0.5), (L.length - 3.0, p["s1"] < p["side_s1"] - 0.5)) if mid]
+        t = ends[int(rng.integers(0, len(ends)))] if ends else rng.uniform(0, L.length)
         m = np.array(L.interpolate(t).coords[0])
         if any(np.hypot(*(m - q)) < 60 for q in seen):
             continue
@@ -160,7 +161,7 @@ def main_mid(a):
         if sum(sp[0] == "cut" for sp in spots) >= nc:
             break
         seg, p = spans[int(i)]
-        m = seg[int(rng.integers(0, len(seg)))]
+        m = seg[0] if rng.random() < 0.5 else seg[-1]
         if any(np.hypot(*(m - q)) < 60 for q in seen):
             continue
         seen.append(m)
