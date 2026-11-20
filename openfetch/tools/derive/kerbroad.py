@@ -126,11 +126,15 @@ def side_width(road, P, N, reach, dmin=1.0, dmax=7.0):
     return d if dmin <= d <= dmax else None
 
 
-def judge_ring(road, ring_xy, minlen=15.0):
+def judge_ring(road, ring_xy, minlen=15.0, area_sign=None, agree=None, inroad=None):
     """Reason a closed ring (MGA56 coords, counter- or clockwise) fails the road-surface gate, or None. Every side of 15 m or more
-    must see the road edge on SEEN of its samples, lie within AGREE of it, and keep road surface out of the band just inside it."""
+    must see the road edge on SEEN of its samples, lie within AGREE of it, and keep road surface out of the band just inside it.
+    area_sign (+1 counter-clockwise, -1 clockwise) judges an open piece of a ring by the whole ring's winding (KN21); agree and inroad
+    override AGREE and INROAD (the 20 Nov 2D bar: up to about 3 m off is fine)."""
     P = np.asarray(ring_xy, float)
-    A = 0.5 * np.sum(P[:-1, 0] * P[1:, 1] - P[1:, 0] * P[:-1, 1])
+    A = 0.5 * np.sum(P[:-1, 0] * P[1:, 1] - P[1:, 0] * P[:-1, 1]) if area_sign is None else float(area_sign)
+    agree = AGREE if agree is None else agree
+    inroad_max = INROAD if inroad is None else inroad
     t = np.arange(-6.0, 10.01, 0.25)
     for a, b in zip(P[:-1], P[1:]):
         L = float(np.hypot(*(b - a)))
@@ -145,11 +149,11 @@ def judge_ring(road, ring_xy, minlen=15.0):
             return "no road surface data"
         e = np.asarray([(min(r, key=abs) if (r := runs(row, t)) else np.nan) for row in M])
         inside = np.nan_to_num(M[:, (t >= -2.5) & (t <= -0.5)], nan=0.0).mean() > 0.5
-        if np.mean(inside) >= INROAD:
+        if np.mean(inside) >= inroad_max:
             return "side in the roadway"
         if np.isfinite(e).mean() < SEEN:
             return "road edge not seen"
-        if abs(float(np.nanmedian(e)) - OFFSET) > AGREE:
+        if abs(float(np.nanmedian(e)) - OFFSET) > agree:
             return "side in the roadway" if np.nanmedian(e) < OFFSET else "side behind the verge"
     return None
 
