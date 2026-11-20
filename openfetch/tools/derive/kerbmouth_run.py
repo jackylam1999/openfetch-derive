@@ -6,7 +6,7 @@ kerbmouth.cut_ring (cut at every lane mouth, a quarter-circle kerb return into t
   notch   kerbface: no hook into a street mouth beside it
   road    kerbroad, only where a LiDAR intensity grid exists: road edge seen, within 3 m (the 20 Nov 2D bar) of the kerb
 and afterwards kerbguard.py (roof, lane, land use, private lot, council doubling) on the kept sides, as for any version.
-    python3 kerbmouth_run.py rings.geojson in_dir out.geojson [--grids dir] [--funnel funnel.json]
+    python3 kerbmouth_run.py rings.geojson in_dir out.geojson [--grids dir] [--wide-loose] [--funnel funnel.json]
 rings.geojson: lon/lat closed rings, properties.id; in_dir: roads/ lots/ cad/ (the cells kerbguard.py also reads).
 out.geojson: every side as a LineString (lon/lat) with properties ring, side, ring_m, why ([] = kept), road ("no grid" where none).
 """
@@ -18,6 +18,7 @@ from pyproj import Transformer
 import kerbaudit as ka, kerbcad as kc, kerbface as kf, kerblot as kl, kerbmouth as km, kerbnet as kn, kerbregular as kr, kerbroad as krd
 
 AGREE_2D = 3.0      # m: the 20 Nov bar (up to about 3 m off is fine); parked-car rows and a line just behind the verge are not refused
+WIDE_LOOSE = 8.0    # m beyond the carriageway edge: with --wide-loose a side is 'wide' only past this AND with no road reserve between it and the street (lead, 20 Nov)
 INROAD_OFF = 1.01   # the in-the-roadway share test is off for the same reason; a side 3 m or more inside the road still fails AGREE_2D
 
 
@@ -65,16 +66,17 @@ def face_flags(ring_xy, ctx):
                 continue
             best = (d, q, lc, seg)
         if best is None:
-            out.append((line.project(p), True, False)); continue
+            out.append((line.project(p), True, False, False)); continue
         d, q, lc, seg = best
         n = max(2, int(d))
         P = np.array([seg.interpolate(i / n, normalized=True).coords[0] for i in range(1, n)]) if d > 2 else np.zeros((0, 2))
         bad = bool(len(P) and (ctx["cad"].label(P) != "road").sum() > max(2, 0.2 * len(P)))
-        out.append((line.project(p), bad, d > max(1, lc or 2) * kf.LANE_W / 2 + kf.PARK_W + kf.WIDE_EXTRA))
+        half = max(1, lc or 2) * kf.LANE_W / 2
+        out.append((line.project(p), bad, d > half + kf.PARK_W + kf.WIDE_EXTRA, d > half + WIDE_LOOSE and bad))
     return poly, out
 
 
-def judge_sides(ring_xy, cut, ctx, road):
+def judge_sides(ring_xy, cut, ctx, road, loose=False):
     """cut = kerbmouth.cut_ring result; returns [dict(side, ring_m, xy, why, road)] with why [] for a kept side."""
     ring = LineString(ring_xy)
     poly, flags = face_flags(ring_xy, ctx)
@@ -85,7 +87,7 @@ def judge_sides(ring_xy, cut, ctx, road):
     for si, sd in enumerate(cut["sides"]):
         lo, hi = sd["lo"] % ring.length, sd["hi"] % ring.length
         inside = (lambda s: lo <= s <= hi) if lo <= hi else (lambda s: s >= lo or s <= hi)
-        fl = [(f, w) for s, f, w in flags if inside(s)]
+        fl = [(f, w[1] if loose else w[0]) for s, f, *w in flags if inside(s)]
         why = []
         if kf.run_len([f for f, w in fl]) >= kf.FACE_RUN: why.append("face")
         if kf.run_len([w for f, w in fl]) >= kf.WIDE_RUN: why.append("wide")
@@ -123,7 +125,7 @@ def main(a):
                         "geometry": f["geometry"]}); continue
         if not cut["sides"]:
             funnel["ring: " + (cut["why"][0] if cut["why"] else "no sides")] += 1; continue
-        for s in judge_sides(xy, cut, ctx, road):
+        for s in judge_sides(xy, cut, ctx, road, "--wide-loose" in a):
             funnel["sides"] += 1; funnel["m_all"] += s["ring_m"]
             k = "kept" if not s["why"] else "refused: " + " + ".join(w.split(":")[0] for w in s["why"])
             funnel[k] += 1; funnel["m " + k] += s["ring_m"]
