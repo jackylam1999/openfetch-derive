@@ -45,3 +45,28 @@ Conclusion: on the current probability map no rule separates real bays/steps fro
   angle bays, angle zone x5): REFUSED. North Melbourne angle rays > 2 m out 9 % -> 4 %, but Carlton angle 16 % -> 17 %, parallel / other rays
   > 2 m out 4-5 % -> 7-9 %, rings 58 -> 22 and 29 -> 19, within 1 m 83 -> 80 % and 87 -> 82 %. The fine-tune pushed every read ~0.2 m outward
   and broke the side agreement; weighting one class on 6 boxes over-fits. Model not kept.
+## Round 3 (21 Nov 2026): blind pack for the lead's G2
+- Fitzroy North roof guard: Vicmap building WFS 504 even on 250 m boxes; Overture copy (bld_overture.py, 73k footprints) used; rerun 67 rings,
+  31.1 km, 0 over a roof (same as without).
+- Pack .notes/kerb-vic-angle/pack17/ (41 crops, key pack17-KEY.json apart): 15 Albert Park, 15 Fitzroy North, H4 corner, 4 gap-blanked rings,
+  6 known-odd controls (pre-H4 R3 chord, 3 rings moved 5 m out, 2 moved 5 m in). Waiting on the lead's verdicts.
+## Round 4 (21 Nov 2026)
+- Lead G2 pack17: 33 OK / 1 odd / 1 unsure on real crops; controls 5 of 6 caught (S12, 5 m into the road, missed).
+- S06 (Port Melbourne L3195810-131): acute block tip, the reserve runs 10-15 m past the last lots; the ring rounds the lot outline 5 m out.
+  S22 (L3185810-41): ring round a narrow planted reserve strip (10-12 m hairpin). Thin-limb rule (ring part < 14 m wide) refused: it also
+  flags 6 acute tips, the 3 inside City of Melbourne within 2.2-3.1 m of the council kerb. Both dropped whole as known exceptions.
+- Candidate vs 19-b: 21 new blocks (72 of the run duplicate 19-b blocks); kerbguard pass (Overture roofs 0, lane 0, council 0); kerbaudit 2 kinks,
+  drop_audit leaves 1 out -> 20 rings 8.0 km. Lead whole-file sheet: 18 OK / 2 odd:
+  - tile 15 L3215815-11 (Carlton North, Princes St side): one aerial width per side (4.25-4.5 m) applied along a side whose kerb is not
+    parallel to the lot fronts: starts at the house frontage, drifts 6-8 m into the carriageway; top side mid angle bays 2-3 m.
+    Input that drew it: kerblot's single offset per side (aerial gutter median), not a bad aerial read.
+  - tile 19 L3225815-130 (Fitzroy, Alexandra Parade side): park kerb 3-4 m off, main road with a wide reserve. Marginal.
+  Both dropped whole. 18 rings go into vic-kerbs 2026-11-21.
+- Lesson: a side's kerb is assumed parallel to its lot fronts; where a main road widens or narrows along a block the constant offset drifts.
+## Round 5-6 (21 Nov 2026): version vic-kerbs 2026-11-21
+- New kerbguard (counts council lines) read 23,789 City of Melbourne kerb outlines once polygons count; 2 Carlton rings doubled them (354 / 360 m): dropped whole (P-0246).
+- Review sheet r5 (16 random spots over the whole file): 3 WRONG, all on 19-b rings (South Melbourne shadowed roadway 5-10 m, Hawthorn bend V 3 m into the road,
+  Middle Park roundabout under canopy 8 m). Dropped whole; cases V1-V3 in kerbreview-cases-7855.json. r6 fresh sheet: 16 OK, V1-V3 no line.
+- Version: 617 lines, 368.2 km, kerbs-check pass (940 pieces, 87 cells); openfetch main 2fc94953.
+- OPEN (lead 5): 3 of 16 random spots on 19-b rings were wrong. Before the next Vic version, sweep the whole of 19-b (the measured road-edge walk, H5 canopy tools,
+  on Vic intensity if held) or a bigger blind draw.

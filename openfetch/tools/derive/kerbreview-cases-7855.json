@@ -1,0 +1,38 @@
+[
+ {
+  "id": "V1",
+  "x": 321213.5,
+  "y": 5810393.2,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: Line runs down the middle of the shadowed roadway between buildings, roughly 5-10 m from either building-side kerb, not on a kerb edge (low confidence because of deep shadow).",
+  "version": "kerbs-vic-mga55.geojson",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V2",
+  "x": 326668.0,
+  "y": 5812285.4,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: Line cuts the inside of the bend as a sharp V that dips into the roadway about 3 m past the north kerb and cuts across the garden bed on the west leg; corner cut rather than following the curve.",
+  "version": "kerbs-vic-mga55.geojson",
+  "by": "visual reviewer"
+ },
+ {
+  "id": "V3",
+  "x": 321002.0,
+  "y": 5808712.9,
+  "r": 15,
+  "kinds": [
+   "random"
+  ],
+  "words": "visual reviewer: Line crosses dense tree canopy and lots with no visible kerb, makes a sharp turn on the roundabout edge, then runs SW roughly 8 m off the visible road/car park edge over trees and a building.",
+  "version": "kerbs-vic-mga55.geojson",
+  "by": "visual reviewer"
+ }
+]
