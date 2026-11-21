@@ -22,6 +22,12 @@ Here the block is built from the land itself:
         [--road igrid_dir (kerbroad.py intensity grids: footpath width to the asphalt edge, and every ring side must sit on it)]
         [--wide (with --ground and --road: a side with no width up to D_MAX is measured 7-12 m out when the asphalt edge and a ground
          kerb step agree, kerbwide.py; wide grass verges, Kensington and Randwick, scenario 13)]
+        [--flush-lanes lanes.geojson (narrow streets nothing finds a kerb in are handled as lanes, kerbflush.py; their centrelines are
+            written here, lon/lat, for kerbmouth_run.py --lanes)]
+        [--pits kerb_inlets.json (council kerb-inlet pits, lon/lat points: footpath width where nothing else measures it)]
+        [--one-inlet (with --pits: one inlet is enough where the street's own LiDAR/drawn measures agree within 1 m)]
+        Test switches (environment, off by default; S16 LAB): H7_COUNT / H7_CUT (cut an unmeasured side when both cuts land on a
+        real end), H6_SPAN, H8_TOL. Not passed by blind review on 21 Nov 2026.
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -41,11 +47,14 @@ import kerblane
 import kerbside
 import kerbroad as krd
 import kerbwide as kw
+import kerbflush as kfl  # narrow streets nothing finds a kerb in are handled as lanes (scenario 16)
+import kerbpit as kpit   # council kerb-inlet pits: footpath width where nothing else measures it (scenario 16)
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
 LANE_FH = 7
 WIDE_VERGE = "--wide" in sys.argv   # kerbwide.py: wide verges, kerb 7-12 m out (21 Nov 2026)
+ONE_INLET = False   # --one-inlet (S16): a single council kerb inlet measures a side when the street's own measures agree within 1 m
 LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0240)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
@@ -255,6 +264,39 @@ SIDE = {}   # outline samples of the block last refused as facing no street, for
 SIDES = '--sides' in sys.argv   # --sides out.json: street-side lines (kerbside.py)
 
 
+H7_UN, H7 = [], {}
+
+
+def h7_count(P, N, D, masks, ctx):
+    """H7 count switch (option 3): blocks with some sides measured and some not; would cutting each unmeasured side leave a real
+    end (a lane centreline, an earlier kerb or a LiDAR kerb trace within 4 m of the cut) at both ends?"""
+    runs = []
+    if np.isnan(D).all():
+        H7["all unmeasured"] = H7.get("all unmeasured", 0) + 1; return None
+    H7["blocks"] = H7.get("blocks", 0) + 1
+    lanes = [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH]
+    ends = ctx["drawn"] + ctx["raw"] + lanes
+    T = STRtree(ends) if ends else None
+    n = len(P)
+    for m in masks:
+        idx = np.flatnonzero(m)
+        starts = [i for i in idx if not m[(i - 1) % n]]
+        for s in starts:
+            e = s
+            while m[(e + 1) % n] and (e + 1) % n != s:
+                e = (e + 1) % n
+            real = 0
+            for i in (s, e):
+                q = Point(P[i] + N[i] * 3.0)
+                if T is not None and any(ends[int(j)].distance(q) < 4.0 for j in T.query(q.buffer(4.0))):
+                    real += 1
+            k = ["no real end", "one real end", "both ends real"][real]
+            H7[k] = H7.get(k, 0) + 1
+            H7["m " + k] = round(H7.get("m " + k, 0) + ((e - s) % n + 1) * STEP, 1)
+            runs.append((s, e, real))
+    return runs
+
+
 def judge_block(comp, ctx):
     """Kerb ring for one block or (reason, None)."""
     P, N = front_samples(comp)
@@ -320,6 +362,7 @@ def judge_block(comp, ctx):
     oppd = W - dfar
     d_oppd = np.where(street & (dfar > C) & (dfar < W) & (oppd >= D_MIN) & (oppd <= D_MAX) & (W < RAY), oppd, np.nan)
     D = np.full(len(rays), np.nan); used = {}
+    H7_UN.clear()
     for cid in set(CID[street].tolist()):
         m = CID == cid
         n = m.sum()
@@ -349,8 +392,15 @@ def judge_block(comp, ctx):
             v, how = float(np.nanmedian(d_oppd[m])), "kerb other side"
         elif street_ok(tab.get("drawn")):
             v, how = street_ok(tab["drawn"]), "kerbs same street"
+        elif (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP)) is not None:
+            v, how = kv_, "council kerb inlets"
+        elif ONE_INLET and (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP, pit_min=1)) is not None \
+                and len(oth := (tab.get("lidar") or []) + (tab.get("drawn") or [])) >= 3 and abs(float(np.median(oth)) - kv_) <= kpit.PIT_SPREAD:
+            v, how = kv_, "one kerb inlet, street agrees"
         elif n * STEP < 12:
             continue
+        elif os.environ.get("H7_COUNT"):
+            H7_UN.append(m.copy()); continue
         else:
             NOMEASURE.append((nm, int(n), {k: len(v) for k, v in tab.items()}, int(np.isfinite(d_own[m]).sum()), int(np.isfinite(d_opp[m]).sum()), int(np.isfinite(d_oppd[m]).sum())))
             DETAIL[comp.representative_point().wkt] = {"street": nm, "fh": int(ctx["st_fh"][cid]), "side_m": round(float(n * STEP), 1),
@@ -362,6 +412,17 @@ def judge_block(comp, ctx):
                 "w_med": round(float(np.nanmedian(W[m])), 1), "measured": round(v + CW_MIN, 2) if how else None, "how": how}
             return "street too narrow for a footpath", None
         D[m] = v; used[str(nm) + ":" + str(int(cid))] = (round(v, 2), how)
+    cut = []
+    if os.environ.get("H7_COUNT") and H7_UN:
+        runs = h7_count(P, N, D, H7_UN, ctx); H7_UN.clear()
+        if not os.environ.get("H7_CUT") or not runs or any(r < 2 for _, _, r in runs):
+            return "no footpath measure", None
+        n_ = len(P)
+        for s, e, _ in runs:
+            ii = [(s + j) % n_ for j in range((e - s) % n_ + 1)]
+            pts = np.vstack([P[ii], P[ii] + N[ii] * (D_MAX + 1.0)])
+            cut.append(shapely.MultiPoint(pts).convex_hull.buffer(1.0))
+        H7["blocks cut"] = H7.get("blocks cut", 0) + 1
     fill = np.isnan(D)
     if fill.all():
         return "no footpath measure", None
@@ -423,6 +484,8 @@ def judge_block(comp, ctx):
     seen = near_raw < AGREE_NEAR
     if seen.sum() > 20 and (near_raw[seen] < AGREE_D).mean() < AGREE_MIN:
         return "does not agree with LiDAR", None
+    if cut:
+        used["_cut"] = [[[round(v, 2) for v in c] for c in g.exterior.coords] for g in cut]
     return None, (ring, used, float(seen.mean()), inside)
 
 
@@ -436,6 +499,28 @@ def block_id(x, y, comp, ids):
         bid += "b"
     ids.add(bid)
     return bid
+
+
+NARROW_STREETS, FLUSH, FLUSH_WHY = {}, [], {}
+
+
+def flush_lanes(nst, lanes, stg, pool, raw, ms, pits, ground, cell):
+    """--flush-lanes (scenario 16): narrow streets nothing finds a kerb in (kerbflush.py) join the blocks as lanes, and their
+    centrelines become lane centrelines, so the ring crosses their mouths and --lane-cut / kerbmouth cut it there with a return."""
+    streets = [g for g, fh, _ in stg if fh != LANE_FH]
+    lanes, stg = list(lanes), list(stg)
+    for p in nst:
+        names = sorted({n for g, fh, n in stg if fh != LANE_FH and n is not None and g.intersects(p) and g.intersection(p).length > 10})
+        ok = kfl.unmeasured(p, streets, names, pool, street_ok, raw, ms, pits, ground, kpw.prof_step, kpw.prof_width)
+        FLUSH_WHY[kfl.LAST["why"]] = FLUSH_WHY.get(kfl.LAST["why"], 0) + 1
+        if not ok:
+            continue
+        lanes.append(p)
+        for i, (g, fh, n) in enumerate(stg):
+            if fh != LANE_FH and g.intersects(p) and (g.intersection(p).length >= kfl.INSIDE * g.length or g.intersection(p).length >= kfl.INSIDE_M):
+                stg[i] = (g, LANE_FH, n)
+                FLUSH.append((g, n, cell))
+    return lanes, stg
 
 
 def main(a):
@@ -472,9 +557,11 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
-    global LANE_CUT
+    global LANE_CUT, ONE_INLET
     LANE_CUT = "--lane-cut" in a
+    ONE_INLET = "--one-inlet" in a
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
+    PITS = kpit.load(a[a.index("--pits") + 1], to) if "--pits" in a else None
     keep, why, cnt, done, sidel, ids = [], [], {}, set(), [], set()
     foot, prep, cell_foot = {}, [], {}
     if "--foot-only" in a:
@@ -515,12 +602,15 @@ def main(a):
 
     for x, y in cells:
         cell, frame, land0, narrow, stg, raw, dr, ms = data = cell_data(x, y)
-        lanes = []
+        lanes, nst = [], []
         for p in narrow:
             inside = sum(g.intersection(p).length for g, fh, _ in stg if fh != LANE_FH and g.intersects(p))
             if not (long_side(p) > 15 and inside > STREET_LONG * long_side(p)) and not any(
                     fh == NARROW_ST and g.intersection(p).length > 10 for g, fh, _ in stg if g.intersects(p)):
                 lanes.append(p)
+            else:
+                nst.append(p)
+        NARROW_STREETS[(x, y)] = nst
         if "--foot-in" not in a:
             cell_foot[(x, y)] = feet_of(x, y, data)
             for nm, v in cell_foot[(x, y)].items():
@@ -540,14 +630,17 @@ def main(a):
                     foot.setdefault(int(k) if k.isdigit() else k, {}).setdefault(kk, []).extend(vv)
     if "--foot" in a:
         json.dump({str(k): {kk: [len(vv), street_ok(vv)] for kk, vv in v.items()} for k, v in foot.items()}, open(a[a.index("--foot") + 1], "w"))
+    GROUND = kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None
     for x, y, cell, frame, land0, lanes, stg, raw, dr, ms in prep:
+        if "--flush-lanes" in a:
+            lanes, stg = flush_lanes(NARROW_STREETS[(x, y)], lanes, stg, foot if "--foot-in" in a else pool(x, y), raw, ms, PITS, GROUND, f"{x}_{y}")
         land = unary_union([land0] + lanes)
         comps = [Polygon(g.exterior) for g in getattr(land, "geoms", [land]) if g.geom_type == "Polygon"]
         LB = [c.exterior for c in comps] + (cad.barriers(frame) if cad is not None else [])
         B = buildings(a[4], [(x + i, y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)], to)
         ctx = {"road": ROAD, "land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot if "--foot-in" in a else pool(x, y),
                "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes, "cad": cad,
-               "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None}
+               "ground": GROUND, "pits": PITS}
         for c in comps:
             rp = c.representative_point()
             if not cell.contains(rp) or not c.within(frame.buffer(-30)) or c.area < MIN_A:
@@ -585,6 +678,13 @@ def main(a):
         json.dump(NOMEASURE, open(a[a.index("--nomeasure") + 1], "w"))
     if SIDES:
         print("SIDES", dict(kerbside.STATS))
+    if "--flush-lanes" in a:
+        json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"roadnameoid": n, "cell": c, "functionhierarchy": LANE_FH,
+                   "operationalstatus": 1, "lanecount": 1, "flush": True}, "geometry": {"type": "LineString", "coordinates": [list(back(*xy)) for xy in g.coords]}}
+                   for g, n, c in FLUSH]}, open(a[a.index("--flush-lanes") + 1], "w"))
+        cnt["flush lanes"] = len(FLUSH)
+        print("FLUSH", json.dumps(FLUSH_WHY), flush=True)
+    if H7: print("H7", json.dumps(H7))
     print("RESULT", json.dumps({"count": cnt, "km": round(sum(k[0].exterior.length for k in keep) / 1000, 2)}))
 
 
