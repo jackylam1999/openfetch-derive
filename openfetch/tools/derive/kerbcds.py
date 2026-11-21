@@ -8,8 +8,8 @@ inlet gate and won 2 blocks, because the other gates still refused them. Here th
      holding the stem's end. It must close round the end inside the zone (an open walkway or park beyond is refused).
   3. footpath width d = the road-most continuous chain of LiDAR kerb drops on the reserve's front (kerb_chain), seen along SEEN_MIN
      of it with no long gap or jump. No measure, no kerb (never guessed).
-  4. kerb = the reserve's edge pushed in by d; only the part nearer the stem than any other centreline is kept; the ends stop at the
-     reserve mouth (RETURNS False; True runs them round the corner return to an existing kerb or until the corner straightens).
+  4. kerb = the reserve's edge pushed in by d; only the part nearer the stem than any other centreline is kept; each end then runs on
+     round the corner return until it meets an existing kerb (JOIN m) or the corner straightens (RETURNS; off stops at the mouth).
   5. parts already kerbed (within JOIN m of an existing kerb) are cut out; pieces under MIN_LEN m are dropped; every piece keeps
      CL_CLEAR m from every centreline except the stem's last TIP m (a centreline drawn to the bulb's middle or edge).
 
@@ -34,6 +34,7 @@ W_MIN, W_MAX = 8.0, 30.0     # m: believable cul-de-sac reserve widths along the
 SAMPLE = 2.0         # m between samples round the reserve edge
 D_MIN, D_MAX = 1.0, 7.0      # m, believable footpath widths (kerblot.D_MIN, D_MAX)
 SMOOTH = 2           # profiles either side joined in a median before reading drops (Parramatta known answer, 21 Nov 2026)
+DISH = None          # off: a drop whose road side rises back by DISH of it within 1.5-2.5 m read as a dish invert (H7 at 0.8 cut known-answer hits 71->43 %)
 CAND_FLAT = 0.08     # m: each side of a candidate drop lies within this of a line (kerbpcw.P_FLAT 0.05 for the strongest drop)
 SKIP = 0.5           # chain cost of a sample with no reading used
 RESTART = 3.0        # chain cost of starting a new chain (four agreeing readings at least pay for it)
@@ -50,7 +51,7 @@ JUMP = 0.5           # m the width may change between two samples 2 m apart
 CW_MIN = 2.5         # m: half a carriageway at least between the two kerbs (kerblot.CW_MIN)
 JOIN = 1.5           # m: an end this near an existing kerb meets it; a kerb this near an existing one is already there
 RETURN_MAX = 15.0    # m an end may run on round the corner return
-RETURNS = False      # ends stop at the reserve mouth: run round the corner returns drew hooks into yards (blind pack 1, H5)
+RETURNS = True       # ends run round the corner return; False stops them at the reserve mouth (H5, refused in blind review 21 Nov: ends stopped 5-20 m short)
 STRAIGHT = 4.0       # degrees: the corner has straightened when the line turns less than this over 3 m
 LOOP_MAX = 15.0      # m: loops this short in the offset line are trimmed (notches, splays)
 MIN_LEN = 20.0       # m: shorter pieces are not drawn
@@ -169,6 +170,17 @@ def front(p, st, cl_t, cls, zone):
     return np.array(P), np.array(N), np.array(R), np.array(own), np.array(ok)
 
 
+def _dish(h, f, drop):
+    """True where the ground past a drop's foot f rises back by DISH of the drop within 1.5-2.5 m: a V-shaped dish drain (round 7)."""
+    if DISH is None:
+        return False
+    s = int(round(1.5 / kpw.STEP_D)); e = int(round(2.5 / kpw.STEP_D)); g = int(round(0.5 / kpw.STEP_D))
+    foot, back = h[f:f + g], h[f + s:f + e]
+    if np.isfinite(foot).sum() < 2 or np.isfinite(back).sum() < 2:
+        return False
+    return float(np.nanmedian(back) - np.nanmedian(foot)) >= DISH * drop
+
+
 def drops(h, t, lo, hi, flat=None):
     """Every kerb-like drop in one profile h(t) as (distance, drop), not only the strongest (kerbpcw.prof_step's line fit each
     side); drops within 0.5 m keep the strongest."""
@@ -186,7 +198,7 @@ def drops(h, t, lo, hi, flat=None):
         if np.ptp(a[ma] - np.polyval(pa, u[ma])) > fl or np.ptp(b[mb] - np.polyval(pb, u[mb])) > fl:
             continue
         drop = np.polyval(pa, kpw.P_W + kpw.DROP_RUN / 2) - np.polyval(pb, -kpw.DROP_RUN / 2)
-        if kpw.DROP_MIN <= drop <= kpw.DROP_MAX:
+        if kpw.DROP_MIN <= drop <= kpw.DROP_MAX and not _dish(h, e + r, drop):
             out.append((t[e] + kpw.DROP_RUN / 2, float(drop)))
     groups = []
     for p, d in out:   # neighbouring window positions see the same step: one reading each, at the middle of its strongest
@@ -535,17 +547,18 @@ def selftest():
     L = LineString(pieces[0])
     assert abs(det["d"] - 3.0) < 0.6, det
     assert L.distance(Point(0, 70)) > 7.0 and L.distance(Point(0, 70)) < 10.0     # round the bulb, about 12 - 3 m from its middle
-    assert det["ends"] == ["mouth", "mouth"], det
+    assert all(e == "return" for e in det["ends"]), det
     z = unloop(np.array([(0, 0), (10, 0), (12, 2), (11, 3), (11, -1), (20, 0)]))     # a small fold is trimmed at its crossing
     assert z is not None and LineString(z).is_simple and len(z) == 5, z
     assert all(abs(c[1]) > 6.0 for c in L.coords)                                  # never onto the through street's carriageway
     kerb = [LineString([(-100, 7), (-9, 7)]), LineString([(9, 7), (100, 7)])]        # existing kerbs along the through street
     ctx["kerb_t"] = STRtree(kerb)
-    global RETURNS
-    RETURNS = True
     pieces, why, det = one(S[0], ctx)
     assert why is None and det["ends"] == ["join", "join"], det
+    global RETURNS
     RETURNS = False
+    assert one(S[0], ctx)[2]["ends"] == ["mouth", "mouth"]
+    RETURNS = True
     ctx["ground"] = _Fake(res, 0.0)                                                # no step: not measured, nothing drawn
     assert one(S[0], ctx)[1].startswith("kerb not seen")
     walk = lots[3].difference(box(-2, 60, 2, 120))                                 # a 4 m walkway past the bulb: still closed
