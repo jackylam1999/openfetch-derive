@@ -6,7 +6,7 @@ kerbmouth.cut_ring (cut at every lane mouth, a quarter-circle kerb return into t
   notch   kerbface: no hook into a street mouth beside it
   road    kerbroad, only where a LiDAR intensity grid exists: road edge seen, within 3 m (the 20 Nov 2D bar) of the kerb
 and afterwards kerbguard.py (roof, lane, land use, private lot, council doubling) on the kept sides, as for any version.
-    python3 kerbmouth_run.py rings.geojson in_dir out.geojson [--grids dir] [--wide-loose] [--funnel funnel.json]
+    python3 kerbmouth_run.py rings.geojson in_dir out.geojson [--grids dir] [--wide-loose] [--funnel funnel.json] [--lanes flush-lanes.geojson (kerblot --flush-lanes)]
 rings.geojson: lon/lat closed rings, properties.id; in_dir: roads/ lots/ cad/ (the cells kerbguard.py also reads).
 out.geojson: every side as a LineString (lon/lat) with properties ring, side, ring_m, why ([] = kept), road ("no grid" where none).
 """
@@ -107,6 +107,10 @@ def main(a):
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
     d = a[1]
     lanes, streets, allroads, over = load_roads(d + "/roads")
+    if "--lanes" in a:   # narrow streets kerblot --flush-lanes handled as lanes (scenario 16): cut at their mouths too, not streets
+        extra = [LineString([to(*c[:2]) for c in f["geometry"]["coordinates"]]) for f in json.load(open(a[a.index("--lanes") + 1]))["features"]]
+        lanes += [(g, 1) for g in extra]
+        streets = [s for s in streets if not any(s[0].equals_exact(g, 0.01) for g in extra)]
     lots = [g for g in kr.load_faces(d + "/lots") if g.geom_type == "Polygon"]
     lots, road_lots = kl.drop_road_lots(lots, [g for g, _, _ in streets])
     ctx = kf.context(streets, kc.Cad(d + "/cad", road_lots), lots, [])

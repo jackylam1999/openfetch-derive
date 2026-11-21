@@ -20,6 +20,9 @@ Here the block is built from the land itself:
         [--calib calib.json (sides with a LiDAR kerb trace: trace width, ground step, every profile's kerb; tunes kerbpcw.py)]
         [--lane-cut (a ring across lane mouths is kept for kerbmouth_run.py to cut at each mouth, KN21; without it the ring is refused whole)]
         [--road igrid_dir (kerbroad.py intensity grids: footpath width to the asphalt edge, and every ring side must sit on it)]
+        [--flush-lanes lanes.geojson (narrow streets nothing finds a kerb in are handled as lanes, kerbflush.py; their centrelines are
+            written here, lon/lat, for kerbmouth_run.py --lanes)]
+        [--pits kerb_inlets.json (council kerb-inlet pits, lon/lat points: footpath width where nothing else measures it)]
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -38,6 +41,8 @@ import kerbcad as kc
 import kerblane
 import kerbside
 import kerbroad as krd
+import kerbflush as kfl  # narrow streets nothing finds a kerb in are handled as lanes (scenario 16)
+import kerbpit as kpit   # council kerb-inlet pits: footpath width where nothing else measures it (scenario 16)
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
@@ -342,6 +347,8 @@ def judge_block(comp, ctx):
             v, how = float(np.nanmedian(d_oppd[m])), "kerb other side"
         elif street_ok(tab.get("drawn")):
             v, how = street_ok(tab["drawn"]), "kerbs same street"
+        elif (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP)) is not None:
+            v, how = kv_, "council kerb inlets"
         elif n * STEP < 12:
             continue
         else:
@@ -431,6 +438,28 @@ def block_id(x, y, comp, ids):
     return bid
 
 
+NARROW_STREETS, FLUSH, FLUSH_WHY = {}, [], {}
+
+
+def flush_lanes(nst, lanes, stg, pool, raw, ms, pits, ground, cell):
+    """--flush-lanes (scenario 16): narrow streets nothing finds a kerb in (kerbflush.py) join the blocks as lanes, and their
+    centrelines become lane centrelines, so the ring crosses their mouths and --lane-cut / kerbmouth cut it there with a return."""
+    streets = [g for g, fh, _ in stg if fh != LANE_FH]
+    lanes, stg = list(lanes), list(stg)
+    for p in nst:
+        names = sorted({n for g, fh, n in stg if fh != LANE_FH and n is not None and g.intersects(p) and g.intersection(p).length > 10})
+        ok = kfl.unmeasured(p, streets, names, pool, street_ok, raw, ms, pits, ground, kpw.prof_step, kpw.prof_width)
+        FLUSH_WHY[kfl.LAST["why"]] = FLUSH_WHY.get(kfl.LAST["why"], 0) + 1
+        if not ok:
+            continue
+        lanes.append(p)
+        for i, (g, fh, n) in enumerate(stg):
+            if fh != LANE_FH and g.intersects(p) and (g.intersection(p).length >= kfl.INSIDE * g.length or g.intersection(p).length >= kfl.INSIDE_M):
+                stg[i] = (g, LANE_FH, n)
+                FLUSH.append((g, n, cell))
+    return lanes, stg
+
+
 def main(a):
     to, back = tf()
     cells = [tuple(map(int, l.split())) for l in open(a[5]) if l.strip()]
@@ -468,6 +497,7 @@ def main(a):
     global LANE_CUT
     LANE_CUT = "--lane-cut" in a
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
+    PITS = kpit.load(a[a.index("--pits") + 1], to) if "--pits" in a else None
     keep, why, cnt, done, sidel, ids = [], [], {}, set(), [], set()
     foot, prep, cell_foot = {}, [], {}
     if "--foot-only" in a:
@@ -508,12 +538,15 @@ def main(a):
 
     for x, y in cells:
         cell, frame, land0, narrow, stg, raw, dr, ms = data = cell_data(x, y)
-        lanes = []
+        lanes, nst = [], []
         for p in narrow:
             inside = sum(g.intersection(p).length for g, fh, _ in stg if fh != LANE_FH and g.intersects(p))
             if not (long_side(p) > 15 and inside > STREET_LONG * long_side(p)) and not any(
                     fh == NARROW_ST and g.intersection(p).length > 10 for g, fh, _ in stg if g.intersects(p)):
                 lanes.append(p)
+            else:
+                nst.append(p)
+        NARROW_STREETS[(x, y)] = nst
         if "--foot-in" not in a:
             cell_foot[(x, y)] = feet_of(x, y, data)
             for nm, v in cell_foot[(x, y)].items():
@@ -533,14 +566,17 @@ def main(a):
                     foot.setdefault(int(k) if k.isdigit() else k, {}).setdefault(kk, []).extend(vv)
     if "--foot" in a:
         json.dump({str(k): {kk: [len(vv), street_ok(vv)] for kk, vv in v.items()} for k, v in foot.items()}, open(a[a.index("--foot") + 1], "w"))
+    GROUND = kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None
     for x, y, cell, frame, land0, lanes, stg, raw, dr, ms in prep:
+        if "--flush-lanes" in a:
+            lanes, stg = flush_lanes(NARROW_STREETS[(x, y)], lanes, stg, foot if "--foot-in" in a else pool(x, y), raw, ms, PITS, GROUND, f"{x}_{y}")
         land = unary_union([land0] + lanes)
         comps = [Polygon(g.exterior) for g in getattr(land, "geoms", [land]) if g.geom_type == "Polygon"]
         LB = [c.exterior for c in comps] + (cad.barriers(frame) if cad is not None else [])
         B = buildings(a[4], [(x + i, y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)], to)
         ctx = {"road": ROAD, "land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot if "--foot-in" in a else pool(x, y),
                "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes, "cad": cad,
-               "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None}
+               "ground": GROUND, "pits": PITS}
         for c in comps:
             rp = c.representative_point()
             if not cell.contains(rp) or not c.within(frame.buffer(-30)) or c.area < MIN_A:
@@ -578,6 +614,12 @@ def main(a):
         json.dump(NOMEASURE, open(a[a.index("--nomeasure") + 1], "w"))
     if SIDES:
         print("SIDES", dict(kerbside.STATS))
+    if "--flush-lanes" in a:
+        json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"roadnameoid": n, "cell": c, "functionhierarchy": LANE_FH,
+                   "operationalstatus": 1, "lanecount": 1, "flush": True}, "geometry": {"type": "LineString", "coordinates": [list(back(*xy)) for xy in g.coords]}}
+                   for g, n, c in FLUSH]}, open(a[a.index("--flush-lanes") + 1], "w"))
+        cnt["flush lanes"] = len(FLUSH)
+        print("FLUSH", json.dumps(FLUSH_WHY), flush=True)
     print("RESULT", json.dumps({"count": cnt, "km": round(sum(k[0].exterior.length for k in keep) / 1000, 2)}))
 
 
