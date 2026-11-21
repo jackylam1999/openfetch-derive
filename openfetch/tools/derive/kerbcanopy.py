@@ -135,7 +135,6 @@ def panel(G, cx, cy, size=60.0, px=720):
     rgb = np.dstack([base, base, base])
     from scipy.ndimage import binary_erosion
     edge = V & ~binary_erosion(V, iterations=1)
-    rgb[V] = rgb[V] * np.array([0.85, 1.0, 0.85])
     rgb[edge] = [0.1, 0.8, 0.2]
     gi = ((yg[0] - Y) / RES).astype(int).clip(0, len(yg) - 1); gj = ((X - xg[0]) / RES).astype(int).clip(0, len(xg) - 1)
     return Image.fromarray((rgb[gi, gj] * 255).astype(np.uint8))
