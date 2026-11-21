@@ -26,6 +26,9 @@ FRONT, INSIDE = 1.0, 3.0     # m: the rule fires for a side from 1 m in front of
 STEP = 0.06                  # m: smallest gutter drop that counts as a kerb
 SEEN = 0.5                   # share of a side's 20 m windows that must show the step, or the side is cut
 TURN = 35.0                  # degrees over 4 stations: a corner between sides
+MOVE_MIN = 30.0              # m: a shorter side on a lot front is a lane end or mouth: cut, never moved (KN-terrace r3: O0128)
+PIECE_MIN = 30.0             # m: a piece left shorter than this after cuts is a corner remnant: dropped (r3: stray pieces over roofs)
+MOST = 0.5                   # share of a ring cut: the ring is dropped whole (rule 3: a line is dropped only when most of it is bad)
 LANE_FH, SKIP_FH = 7, (8, 9, 10, 11, 12)
 T = np.arange(-6.0, 12.01, 0.25)
 T2 = np.arange(-6.0, 30.01, 0.25)
@@ -36,6 +39,8 @@ class Ground:
         self.d, self.c = d, {}
 
     def _get(self, i, j):
+        if (i, j) not in self.c and len(self.c) >= 12:     # a 0.25 m cell is 128 MB as floats: keep the last 12 only
+            self.c.pop(next(iter(self.c)))
         if (i, j) not in self.c:
             fn = os.path.join(self.d, f"{i}_{j}.npz")
             g = None
@@ -211,7 +216,7 @@ def narrow(ring, ground, lots, streets):
                 pos.append(find_step(Z[ii], aa + 0.75, min((aa + bb) / 2 - 1.5, aa + 6.0, 10.5))[0])
             pos = np.array(pos)
             seen = float(np.mean(np.isfinite(pos)))
-            if seen >= SEEN:
+            if seen >= SEEN and len(idx) * 2 >= MOVE_MIN:
                 shift[idx] = float(np.nanmedian(pos))
                 acts.append({"action": "moved", "len_m": len(idx) * 2, "by_m": round(float(np.nanmedian(pos)), 2), "seen": round(seen, 2)})
             else:
@@ -228,7 +233,21 @@ def narrow(ring, ground, lots, streets):
             q = max(q.geoms, key=lambda g: g.area)
         q = q.buffer(-3).buffer(3).simplify(0.3)
         return [np.array(q.exterior.coords)], acts
+    # a cut side takes its corners with it: the kept side ends where it stops being straight (its own last station)
+    cut_side = set(int(v) for v in np.unique(sl[~keep]) if v >= 0)
     m = len(P)
+    for i in range(m):
+        if sl[i] == -1:
+            l, r = i, i
+            while sl[l % m] == -1:
+                l -= 1
+            while sl[r % m] == -1:
+                r += 1
+            if sl[l % m] in cut_side or sl[r % m] in cut_side:
+                keep[i] = False
+    if (~keep).mean() > MOST:
+        acts.append({"action": "dropped", "len_m": int(round(LineString(np.asarray(ring, float)).length))})
+        return [], acts
     start = int(np.argmin(keep))
     pieces, cur = [], []
     for i in [(start + k) % m for k in range(m)]:
@@ -239,7 +258,7 @@ def narrow(ring, ground, lots, streets):
             cur = []
     if cur:
         pieces.append(np.array(cur))
-    return [np.array(LineString(p).simplify(0.3).coords) for p in pieces if len(p) >= 5], acts
+    return [np.array(LineString(p).simplify(0.3).coords) for p in pieces if len(p) >= 5 and LineString(p).length >= PIECE_MIN], acts
 
 
 def load_lots(d, cells):
@@ -342,6 +361,11 @@ def selftest():
     wide = [Polygon([(4, -56), (96, -56), (96, -8.0), (4, -8.0)])]                    # normal street: kerb 3.5 m in front of lots
     pieces, acts = narrow(blk(-4.5), _FakeGround(-4.5), wide + far, streets)
     assert acts == [] and len(pieces) == 1, acts                                          # untouched
+    both = [Polygon([(4, -55.5), (96, -55.5), (96, -4.5), (4, -4.5)])]                    # lanes on both long sides, no kerb
+    lane_s = ([LineString([(-50, 0), (150, 0)]), LineString([(-50, -60 - 4.5), (150, -60 - 4.5)])] + streets[0][2:], [6, 6, 6, 6])
+    far2 = [far[0], Polygon([(-50, -110), (150, -110), (150, -69), (-50, -69)])] + far[2:]
+    pieces, acts = narrow(np.array([(0, -55.5), (100, -55.5), (100, -4.5), (0, -4.5), (0, -55.5)]), _FakeGround(None), both + far2, lane_s)
+    assert pieces == [] and acts[-1]["action"] == "dropped", acts                         # most of the ring cut: dropped whole
     print("kerbnarrow selftest pass")
 
 
