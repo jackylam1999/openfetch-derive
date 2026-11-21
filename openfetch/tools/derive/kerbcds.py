@@ -6,8 +6,8 @@ inlet gate and won 2 blocks, because the other gates still refused them. Here th
   1. stem = the named street (fh 2-6, on the ground) from its dead end back to the first junction, at most STEM_MAX m.
   2. reserve = the land between lots (cadastre) within ZONE m of the stem, strips under LANE_W wide (walkways) taken off, the piece
      holding the stem's end. It must close round the end inside the zone (an open walkway or park beyond is refused).
-  3. footpath width d = the LiDAR kerb step (kerbpcw.side_width) on the reserve's front, in runs of RUN samples; at least two runs
-     must be measured and agree within AGREE m. No measure, no kerb (never guessed).
+  3. footpath width d = the road-most continuous chain of LiDAR kerb drops on the reserve's front (kerb_chain), seen along SEEN_MIN
+     of it with no long gap or jump. No measure, no kerb (never guessed).
   4. kerb = the reserve's edge pushed in by d; only the part nearer the stem than any other centreline is kept, and each end then
      runs on round the corner return until it meets an existing kerb (JOIN m) or the corner straightens onto the through street.
   5. parts already kerbed (within JOIN m of an existing kerb) are cut out; pieces under MIN_LEN m are dropped; every piece keeps
@@ -42,9 +42,6 @@ DROP_W = 2.0         # chain reward per m of kerb drop
 OUT_W = 0.05         # chain reward per m out from the lot front (the kerb is the road-side step)
 ROW, ROAD_ROW = 1.0, 0.5   # m further out, share of readings: a road-side row of drops that replaces the chain
 HOP, HOP_SKIP = 0.6, 0.3     # m: most width change between neighbouring readings, plus this per skipped sample
-RUN = 15             # samples (30 m) per run measured on its own
-AGREE = 1.0          # m: neighbouring runs agree within this (a run off both is a stray)
-RUN_SHARE = 0.6      # share of runs that must be measured
 STRAY = 6.0          # m of other front facing the stem allowed apart from the cul-de-sac's own run
 MOUTH = 25.0         # m: each end of the cul-de-sac's front lies this near its junction
 SEEN_MIN = float(os.environ.get('CDS_SEEN', 0.4))   # share of the cul-de-sac's samples with a width
@@ -380,8 +377,8 @@ def kerb_pieces(K, near):
 
 def widths_along(ground, P, N, R, ok, idx, n):
     """Footpath width at each cul-de-sac sample: the road-most continuous chain of LiDAR kerb drops (kerb_chain) where it covers
-    SEEN_MIN of the cul-de-sac with no gap over GAP_MAX samples, else widths of RUN-sample runs measured on their own
-    (kerbpcw.side_width, run_widths). Returns (widths, how, detail) or (None, why, detail)."""
+    SEEN_MIN of the cul-de-sac with no gap over GAP_MAX samples and no jump over JUMP; otherwise no kerb (runs measured on their
+    own drew odd shapes in blind pack 1). Returns (widths, how, detail) or (None, why, detail)."""
     cands = candidates(ground, P, N, R, ok)
     dd = kerb_chain([cands[i] for i in idx]); seen_i = np.isfinite(dd); det = {"seen": round(float(seen_i.mean()), 2)}
     gap = max((len(list(g)) for v, g in itertools.groupby(seen_i) if not v), default=0)
@@ -390,34 +387,11 @@ def widths_along(ground, P, N, R, ok, idx, n):
         dd = np.array([np.median(dd[max(0, k - 1):k + 2]) for k in range(len(dd))])
         if np.max(np.abs(np.diff(dd))) <= JUMP:
             return dd, "chain", det
-    I = np.array(idx); cen, got = [], []
-    for k in range(0, len(I), RUN):
-        j = I[k:k + RUN]
-        v = kpw.side_width(ground, P[j], N[j], float(np.median(R[j]))) if len(j) >= 4 else None
-        cen.append(k + (len(j) - 1) / 2); got.append(v)
-    det["runs"] = [None if v is None else round(v, 2) for v in got]
-    return run_widths(cen, got, len(idx), det)
-
-
-def run_widths(cen, got, m, det):
-    """Widths at m samples from runs measured on their own (centres cen, widths got, None where not measured): a run that
-    disagrees by more than AGREE m with both neighbours while they agree is a driveway or a parked car and takes their mean; one
-    unmeasured run between two measured ones is bridged; widths change smoothly between run centres (the two sides of a
-    cul-de-sac often keep different verges)."""
-    v = [None if x is None else float(x) for x in got]
-    if sum(x is not None for x in v) < max(2, RUN_SHARE * len(v)):
+    if seen_i.mean() < SEEN_MIN:
         return None, "kerb not seen in the LiDAR along most of the cul-de-sac", det
-    if any(v[k] is None and (k == 0 or k == len(v) - 1 or v[k - 1] is None or v[k + 1] is None) for k in range(len(v))):
+    if gap > GAP_MAX:
         return None, "kerb not seen along part of the cul-de-sac", det
-    for k in range(1, len(v) - 1):
-        a, b, c = v[k - 1], v[k], v[k + 1]
-        if None not in (a, b, c) and abs(a - c) <= AGREE and min(abs(b - a), abs(b - c)) > AGREE:
-            v[k] = (a + c) / 2
-    ok = [k for k in range(len(v)) if v[k] is not None]
-    dd = np.interp(np.arange(m), np.array(cen, float)[ok], np.array([v[k] for k in ok], float))
-    if np.max(np.abs(np.diff(dd))) > JUMP:
-        return None, "footpath width jumps between runs", det
-    return dd, "run widths", det
+    return None, "footpath width jumps along the cul-de-sac", det
 
 
 def one(st, ctx):
