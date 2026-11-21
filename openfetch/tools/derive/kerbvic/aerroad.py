@@ -14,6 +14,7 @@ RUN_FAR = 10   # cells (2.5 m): review 8 (Reservoir, Heidelberg West, South Melb
 AER_IQR = float(os.environ.get("KERB_AER_IQR", "1.5"))
 STRIP_MAX = float(os.environ.get("KERB_AER_STRIP", "1.01"))   # OFF by default (19 Nov test: no gain on Carlton or North Melbourne); share of the strip lot-front to kerb that may look like road
 BAND_MIN = float(os.environ.get("KERB_AER_BAND", "0"))   # OFF by default (blanked 40% of rings, no accuracy gain); mean road probability over the 2.5 m past the kerb
+LOG = None   # diagnostic: a list to receive every side read (P, N, kerb offsets, ray profiles)
 GAP_MAX = float(os.environ.get("KERB_AER_GAP", "1.2"))        # largest jump between sorted kerb offsets of one side (angle-parking bays make two levels)
 
 
@@ -56,6 +57,8 @@ class Road:
                 if (strip > 0.35).mean() > STRIP_MAX or band.mean() < BAND_MIN:
                     continue
                 k.append(t[q])
+        if LOG is not None:
+            LOG.append({"P": P.tolist(), "N": N.tolist(), "k": [float(x) for x in k], "prof": np.nan_to_num(v, nan=-1).round(2).tolist(), "t0": float(t[0])})
         if len(k) < max(4, NEED * len(P)):
             return None
         ks = np.sort(k)

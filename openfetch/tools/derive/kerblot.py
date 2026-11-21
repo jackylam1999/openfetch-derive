@@ -54,6 +54,7 @@ FILL_E, FILL_W, ROUND_C, ROUND_R = 12.0, 3.0, 2.5, 3.0   # m: kerbs run straight
                                                         # turn on curves of 2.5-3 m or more (kerbaudit kinks, 18 Nov 2026)
 PART = 0.85      # an earlier ring enclosing under 85 % of the block's land is a part-block ring (replaced when the whole block passes)
 NOMEASURE = []
+JOINS = []   # diagnostic: every mitre corner join (a1, b0, X, used, t)
 SAME_STREET_SPREAD = 0   # Vic 1.5 m: one block face along one street measured twice with widths this far apart is left blank
                          # (Vic review 19 Nov 2026: two rings wandered 4-8 m into the street between two pieces of one street)
 CORNER_MIN = False   # corner_min(): tried for Vic 19 Nov 2026, made 17 of 48 rings step out past corners; kept off
@@ -304,7 +305,9 @@ def mitre_parts(P, N, D, CID, fan=25.0):
         if abs(den) > 1e-6 * max(np.hypot(*da) * np.hypot(*db), 1e-9):
             t = ((b0[0] - a0[0]) * db[1] - (b0[1] - a0[1]) * db[0]) / den
             X = a0 + da * t
-            if t > 0.5 and np.hypot(*(X - a1)) < 2 * max(D[a_[-1]], D[b_[0]]) + 4 and np.hypot(*(X - b0)) < 2 * max(D[a_[-1]], D[b_[0]]) + 4:
+            ok = t > 0.5 and np.hypot(*(X - a1)) < 2 * max(D[a_[-1]], D[b_[0]]) + 4 and np.hypot(*(X - b0)) < 2 * max(D[a_[-1]], D[b_[0]]) + 4
+            JOINS.append((a1.tolist(), b0.tolist(), X.tolist(), bool(ok), float(t)))
+            if ok:
                 ring.append(X)
         ring += [b0, P[b_[0]]]
         ring += [P[i] for i in order[order.index(a_[-1]):order.index(b_[0]) + 1][1:-1]] [::-1] if order.index(a_[-1]) < order.index(b_[0]) else []
