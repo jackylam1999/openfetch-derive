@@ -1,7 +1,10 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from nswsrc import require_multicrs
 import json, sys, time, urllib.request, urllib.parse, os
 from concurrent.futures import ThreadPoolExecutor
-LOTS="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme/FeatureServer/8/query"
-ROADS="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme/FeatureServer/5/query"
+LOTS=require_multicrs("https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query")
+ROADS=require_multicrs("https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme_multiCRS/FeatureServer/5/query")
 def fetch(url,q):
     for i in range(6):
         try:
@@ -22,7 +25,7 @@ def get(url,b,fields,page):
     return out
 def cell(c):
     x,y=c; n=f"{x*1000}_{y*1000}"
-    for kind,url,m,fields,page in (("lots",LOTS,300,"OBJECTID",100),("roads",ROADS,500,"OBJECTID,functionhierarchy,roadontype,operationalstatus,roadnameoid,roadnametype,roadnamebase",1000)):
+    for kind,url,m,fields,page in (("lots",LOTS,300,"OBJECTID",100),("roads",ROADS,500,"OBJECTID,functionhierarchy,roadontype,operationalstatus,roadnameoid,roadnametype,roadnamebase,lanecount",1000)):
         fn=f"in/{kind}/{n}.json"
         if os.path.exists(fn): continue
         f=get(url,(x*1000-m,y*1000-m,x*1000+1000+m,y*1000+1000+m),fields,page)

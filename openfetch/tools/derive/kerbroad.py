@@ -24,9 +24,12 @@ NOSIDE = 255
 
 def grid(paths, out):
     import laspy
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lascrs
     S = {}
     for p in paths:
         with laspy.open(p) as f:
+            lascrs.check_frame(f.header, p)   # a GDA94-headed survey nobody measured is refused (P-0244)
             for ch in f.chunk_iterator(3_000_000):
                 k = np.asarray(ch.classification) == 2
                 X, Y, I = np.asarray(ch.x)[k], np.asarray(ch.y)[k], np.asarray(ch.intensity)[k].astype(float)
@@ -296,6 +299,9 @@ class _Fake:
 
 
 def selftest():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lascrs
+    lascrs.selftest()
     ring = lambda d, top=None: [(-d, -d), (100 + d, -d), (100 + d, 60 + (d if top is None else top)), (-d, 60 + (d if top is None else top)), (-d, -d)]
     road = _Fake()
     assert judge_ring(road, ring(0.0)) is None                            # kerb 0.75 m inside the asphalt edge: on the kerb

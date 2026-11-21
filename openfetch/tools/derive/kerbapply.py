@@ -31,7 +31,7 @@ _q = kp.query
 kp.query = lambda u, *a, **k: [] if u is None else _q(u, *a, **k)
 
 
-SUBURBS = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2/query"
+SUBURBS = "https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2/query"   # suburb outlines for picking squares only (no GDA2020 geometry used), plain layer allowed (P-0244)
 MIN_HA = 5.0  # a grid square is drawn when the suburb covers more than this much of it
 
 

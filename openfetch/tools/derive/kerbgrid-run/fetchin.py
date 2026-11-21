@@ -1,7 +1,10 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from nswsrc import require_multicrs
 import json, sys, time, urllib.request, urllib.parse, os
 from concurrent.futures import ThreadPoolExecutor
-LOTS="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query"
-ROADS="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme/FeatureServer/5/query"
+LOTS=require_multicrs("https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme_multiCRS/FeatureServer/8/query")
+ROADS=require_multicrs("https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Transport_Theme_multiCRS/FeatureServer/5/query")
 def fetch(url,q):
     for i in range(6):
         try:

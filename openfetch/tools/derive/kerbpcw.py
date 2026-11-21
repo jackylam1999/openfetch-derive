@@ -31,11 +31,14 @@ FLAT = 0.07      # m: the 60 cm either side of the step must each be flat within
 
 def make_grid(paths, x, y, out):
     import laspy
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lascrs
     n = int(1000 / RES)
     s, c = np.zeros((n, n)), np.zeros((n, n))
     x0, y0 = x * 1000.0, y * 1000.0
     for p in paths:
         with laspy.open(p) as f:
+            lascrs.check_frame(f.header, p)   # a GDA94-headed survey nobody measured is refused (P-0244)
             for ch in f.chunk_iterator(2_000_000):
                 k = np.asarray(ch.classification) == 2
                 X, Y, Z = np.asarray(ch.x)[k], np.asarray(ch.y)[k], np.asarray(ch.z)[k]
@@ -187,6 +190,9 @@ def side_width(ground, P, N, reach, dmin=1.0, dmax=7.0):
 
 
 def selftest():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lascrs
+    lascrs.selftest()
     t = np.arange(0, 9, STEP_D)
     h = np.where(t < 3.2, 0.0, -0.15) - 0.01 * t           # 3.2 m footpath, 15 cm kerb, gentle crossfall
     assert abs(step_in(h, t, 1.0, 7.0) - 3.2) < 0.25, step_in(h, t, 1.0, 7.0)
