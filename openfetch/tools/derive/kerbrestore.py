@@ -35,6 +35,7 @@ lots_dir and roads_dir hold <x>_<y>.json km-square cells from kerbgrid-run/fetch
 """
 import glob, gzip, json, os, sys
 import numpy as np
+import kerbpcw
 import shapely
 from shapely.geometry import LineString, Point, shape
 from shapely.strtree import STRtree
@@ -48,7 +49,10 @@ MIN_SUB, PAD_M, JOIN_M, RUN_M = 20.0, 2.0, 10.0, 6.0   # mid-side cut: smallest 
 MAX_CUT_SHARE, MID_R, MOUTH_NEAR, JOIN_KERB_M = 0.4, 3.0, 3.0, 1.5
 CORNER_M, CORNER_DEG, STRAIGHT_DEG, CORNER_LOT_M, MOUTH_CLEAR, JUNCTION_M, POST_M, CORNER_R = 12.0, 45.0, 5.0, 1.0, 6.0, 15.0, 12.0, 4.0
 CORNER_MODE = os.environ.get("KERB_CORNER_MODE", "build")
-ARM_CORNER = os.environ.get("KERB_ARM_CORNER", "1") == "1"   # round 4: corners from the line's own two straights
+ARM_CORNER = os.environ.get("KERB_ARM_CORNER", "1") == "1"
+ARM_WIDTH = os.environ.get("KERB_ARM_WIDTH", "need")
+GROUND = kerbpcw.Ground(os.environ["KERB_GROUND"]) if os.environ.get("KERB_GROUND") else None
+ARM_W = []   # round 4: corners from the line's own two straights
 TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
 
 
@@ -278,6 +282,28 @@ def why_none(k):
     return None
 
 
+def arm_kerb(A, Am, ca, g, lots, lt):
+    """Round 5 (packD c29, c32): an arm removed for hugging the lots runs on the property line, so a corner built on it sat on the
+    property corner, a footpath width inside the kerb corner. Such an arm is moved out towards its street by the footpath width the
+    LiDAR ground measures from those lot fronts (kerbpcw.side_width, calibrated on 2,186 traced sides). -> the arm's point, moved
+    or not, or None when the arm hugs the lots and the width cannot be measured (ARM_WIDTH "need")."""
+    pts = [Point(*a) for a in A]
+    dl = [min((lots[int(j)].distance(q) for j in lt.query(q.buffer(5.0))), default=9.0) for q in pts]
+    if float(np.median(dl)) > HUG_M:
+        return Am
+    N = []
+    for q in pts:
+        c = np.array(g.interpolate(g.project(q)).coords[0]) - np.array(q.coords[0])
+        N.append(c / max(float(np.hypot(*c)), 1e-9))
+    N = np.array(N)
+    reach = float(np.median([g.distance(q) for q in pts]))
+    w = kerbpcw.side_width(GROUND, A, N, reach) if GROUND is not None else None
+    if w is None or w > reach - 1.0:
+        return None if ARM_WIDTH == "need" else Am
+    ARM_W.append(round(w, 1))
+    return Am + np.median(N, axis=0) / max(float(np.hypot(*np.median(N, axis=0))), 1e-9) * w
+
+
 def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
     """Scenario 11 round 2 (kerb lead, packA: ends stopped up to 8 m short of the corner, 5 odd free ends; corner curls 3 odd): finish a
     mid cut end as a real kerb corner. The kept straight runs on to the cross street's kerb and turns onto it with a CORNER_R m return.
@@ -389,6 +415,9 @@ def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
         den = t[0] * ca[1] - t[1] * ca[0]
         if abs(den) < 0.4:
             return why_none(9)                   # the arm runs nearly parallel: not a corner
+        Am = arm_kerb(A, Am, ca, g, lots, lt)
+        if Am is None:
+            return why_none(10)                  # the arm sits on the lot line and no LiDAR kerb step says how far out its kerb is
         e = float(((Am[0] - P[0]) * ca[1] - (Am[1] - P[1]) * ca[0]) / den)
         X = P + t * e
         u = ca if float(np.dot(ca, Am - X)) > 0 else -ca
@@ -676,7 +705,20 @@ def selftest():
     globals()["CORNER_MODE"] = "build"
     lots5 = [box(-50, 9.5, 100, 120), box(110, 11, 200, 120)]                # 3 m footpath on the main street; arm on the lot line 5.5 m out
     st5 = [(LineString([(-50, 0), (105.5, 0)]), 4), (LineString([(105.5, 0), (250, 0)]), 4), (LineString([(105.5, 0.0), (105.5, 120.0)]), 6)]
-    piece, sides = judge(turn, st5, STRtree([g for g, _ in st5]), lots5, STRtree(lots5))
+    t5 = STRtree([g for g, _ in st5])
+    # round 5 (packD c29, c32): the arm hugs its lots, so with no LiDAR ground the corner cannot be placed (ARM_WIDTH "need") ...
+    globals()["ARM_WIDTH"], globals()["GROUND"] = "need", None
+    _, sides = judge(turn, st5, t5, lots5, STRtree(lots5))
+    assert not any(n.get("pieces") for n in sides), ("corner on the property line", sides)
+    # ... and a 15 cm kerb step 3 m out from the arm's lot fronts moves the corner out onto the kerb (x = 103)
+    gr = kerbpcw.Ground("/nonexistent"); nn = int(1000 / kerbpcw.RES); xx = (np.arange(nn) + 0.5) * kerbpcw.RES
+    gr.mem[(0, 0)] = np.where(xx < 103.0, 0.15, 0.0).astype(np.float32)[None, :].repeat(nn, 0)
+    globals()["GROUND"] = gr
+    _, sides = judge(turn, st5, t5, lots5, STRtree(lots5))
+    pcs = [q for n in sides for q in n.get("pieces", [])]
+    assert len(pcs) == 1 and abs(pcs[0]["q"][-1][0] - 103.0) < 0.6, ("corner on the measured kerb", pcs and pcs[0]["q"][-3:])
+    globals()["ARM_WIDTH"], globals()["GROUND"] = "keep", None
+    piece, sides = judge(turn, st5, t5, lots5, STRtree(lots5))
     pcs = [q for n in sides for q in n.get("pieces", [])]
     assert len(pcs) == 1 and pcs[0]["returns"] == 1, sides
     q = pcs[0]["q"]
