@@ -187,7 +187,73 @@ def main_mid(a):
     print("crops", n, "kept", sum(v["kind"] == "kept" for v in key.values()), "cut", sum(v["kind"] == "cut" for v in key.values()))
 
 
+def main_corner(a):
+    """Scenario 11 pack (21 Nov): like main_mid, but each crop draws only what it is about, so a kept cut end is not hidden under the
+    stretch it cut: a kept crop draws the whole output (every restored piece, all tiers); a cut crop draws the output plus the removed stretch.
+    Suburbs: every suburb with mid pieces (a[3] == "all") or the listed ones."""
+    out_all = lines(json.load(open(a[0])))
+    kept = [(P, p) for P, p in out_all if p.get("cut_mid")]
+    dropped = lines(json.load(open(a[1])))
+    rep = json.load(open(a[2]))
+    area = None if a[3] == "all" else set(a[3].split(","))
+    seed, nk, nc, out = int(a[4]), int(a[5]), int(a[6]), a[7]
+    os.makedirs(out, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    by = {p["src_index"]: (P, p) for P, p in dropped}
+    inarea = lambda p: area is None or (p.get("areas") or "").split(",")[0] in area
+    spans = []
+    for l in rep["lines"]:
+        if l["i"] not in by or not inarea(by[l["i"]][1]):
+            continue
+        P, p = by[l["i"]]
+        L = LineString(P)
+        for s in l["sides"]:
+            for a0, a1 in (s.get("cut_spans_m", []) if s.get("n_pieces") else []):
+                if a1 - a0 >= 8:
+                    seg = np.array([L.interpolate(t).coords[0] for t in np.append(np.arange(a0, a1, 2.0), a1)])
+                    spans.append((seg, dict(p, side="removed stretch")))
+    kept = [(P, p) for P, p in kept if inarea(p)]
+    spots, seen = [], []
+    for i in rng.permutation(len(kept)):
+        if sum(sp[0] == "kept" for sp in spots) >= nk:
+            break
+        P, p = kept[int(i)]
+        L = LineString(P)
+        ends = [e for e, mid in ((3.0, p["s0"] > p["side_s0"] + 0.5), (L.length - 3.0, p["s1"] < p["side_s1"] - 0.5)) if mid]
+        t = ends[int(rng.integers(0, len(ends)))] if ends else rng.uniform(0, L.length)
+        m = np.array(L.interpolate(t).coords[0])
+        if any(np.hypot(*(m - q)) < 60 for q in seen):
+            continue
+        seen.append(m)
+        spots.append(("kept", m, p, None))
+    for i in rng.permutation(len(spans)):
+        if sum(sp[0] == "cut" for sp in spots) >= nc:
+            break
+        seg, p = spans[int(i)]
+        m = seg[0] if rng.random() < 0.5 else seg[-1]
+        if any(np.hypot(*(m - q)) < 60 for q in seen):
+            continue
+        seen.append(m)
+        spots.append(("cut", m, p, seg))
+    prefetch([sp[1] for sp in spots])
+    base = [Q for Q, _ in out_all]
+    key, n = {}, 0
+    for o in rng.permutation(len(spots)):
+        kind, m, p, seg = spots[int(o)]
+        im = draw(n + 1, kind, kind, m, base + ([seg] if seg is not None else []))
+        if im is None:
+            continue
+        n += 1
+        im.save(os.path.join(out, f"c{n:02d}.jpg"), quality=85)
+        key[f"crop {n:02d}"] = {"kind": kind, "area": (p.get("areas") or "").split(",")[0], "tier": p.get("tier"), "why": p.get("side") or p.get("why_whole"),
+                                "returns": p.get("returns"), "src_index": p.get("src_index"), "lonlat": [round(v, 6) for v in BK.transform(*m)]}
+    json.dump(key, open(os.path.join(out, "key.json"), "w"), indent=0)
+    print("crops", n, "kept", sum(v["kind"] == "kept" for v in key.values()), "cut", sum(v["kind"] == "cut" for v in key.values()))
+
+
 def main(a):
+    if a[-1] == "corner":
+        return main_corner(a[:-1])
     if a[-1] == "mid":
         return main_mid(a[:-1])
     kept, dropped = lines(json.load(open(a[0]))), lines(json.load(open(a[1])))
