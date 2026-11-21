@@ -1,7 +1,8 @@
 """Kerbs under tree canopy (scenario 10, 21 Nov 2026). Under trees the aerial cannot show the kerb and the LiDAR ground points that
 reach the road are fewer (74 % of canopy cells hold no ground point against 48 % in the open, tile 3126252) and darker (ground
 returns that are not the only return: median intensity 10 against 15), so the intensity road edge and the reviewer both lose it.
-This tool grids a LAZ tile into one canopy-aware grid per 1 km cell (0.5 m cells, the LAZ's own GDA94 MGA56 frame):
+This tool grids a LAZ tile into one canopy-aware grid per 1 km cell (0.5 m cells, the LAZ's own coordinates, which are the GDA2020
+MGA56 frame even where the header says GDA94: datum card, P-0244):
     h  ground height (float32, nan = no ground point)          io / iu  mean intensity of open-sky / under-canopy ground returns
     v  canopy: a vegetation point (class 3-5) 2 m or more above the ground in the cell
 and draws the LiDAR panel a reviewer needs beside the aerial (hillshade of the ground, asphalt dark, canopy outlined).
@@ -14,9 +15,9 @@ import numpy as np
 
 RES, N = 0.5, 2000
 NOG = 255
-NO_SHIFT = (0.0, 0.0)   # m: the LAZ (GDA94 MGA56) lines up with the NSW_Imagery crops and the kerb lines as kerblot reads them (lonlat to 7856,
-# no datum shift): gutter and asphalt edge within 0.5-1 m of the aerial at Eastwood (c5 c32); the GDA94-to-GDA2020 shift (0.48 E, 1.42 N)
-# made it worse, so the review panel and every rule read the grids unshifted, as kerbroad does
+NO_SHIFT = (0.0, 0.0)   # m: the grids are read unshifted. 28 GDA94-headed tiles measured in the GDA2020 frame against true centrelines
+# (datum card, P-0244). A 0.48 E / 1.42 N slip seen against Parramatta and Canterbury-Bankstown kerb truth was in those council files
+# (GDA94 numbers served as 7856 / 4326), never in the LiDAR: read council truth through its registry datum entry
 
 
 def grid(paths, out):
@@ -51,7 +52,7 @@ def grid(paths, out):
         hf = fill(h)
         v = (A["vz"] > 0) & (A["vz"] - hf >= 2.0)
         np.savez_compressed(fn, h=h.reshape(N, N), io=io.reshape(N, N), iu=iu.reshape(N, N),
-                            v=np.packbits(v.reshape(N, N)), frame="GDA94 MGA56")
+                            v=np.packbits(v.reshape(N, N)), frame="LAZ coordinates (GDA2020 MGA56 frame, P-0244)")
         print(a, b, flush=True)
 
 
