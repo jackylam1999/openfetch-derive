@@ -8,8 +8,8 @@ Here the block is built from the land itself:
      Private estate roads sit inside lots (strata or community lots), so they are inside the block and get no kerb either.
   3. the kerb = the block outline pushed out into the street by the footpath width, measured per street side, in this order:
      LiDAR kerb trace on this side, on the other side, the kerb step in the LiDAR ground points (kerbpcw.py), the same named
-     street's LiDAR widths, a drawn kerb across the street, the same street's drawn kerbs. A side with none is not guessed (block
-     left blank). The 7 cm aerial was tried and is not used: on 195 LiDAR-measured sides it missed by over 1 m on most.
+     street's LiDAR widths (one street: name plus connected centrelines, kerbsame.py), a drawn kerb across the street, the
+     same street's drawn kerbs. A side with none is not guessed (block left blank). The 7 cm aerial was tried and is not used: on 195 LiDAR-measured sides it missed by over 1 m on most.
   4. whole or blank: a block is kept only if every gate passes (all sides face a street, no drawn kerb already there, the ring
      keeps clear of street centrelines, never runs over a roof (3 m inside a 120 m2+ footprint for over 3 m), never inside a lane,
      agrees with the LiDAR traces where they exist).
@@ -26,6 +26,7 @@ Here the block is built from the land itself:
         [--one-inlet (with --pits: one inlet is enough where the street's own LiDAR/drawn measures agree within 1 m)]
         Test switches (environment, off by default; S16 LAB): H7_COUNT / H7_CUT (cut an unmeasured side when both cuts land on a
         real end), H6_SPAN, H8_TOL. Not passed by blind review on 21 Nov 2026.
+traced_raw.json is kerb traces (nsw-traced-raw.json), never a kerbs version OpenFetch made: refused by kerbinput.py (P-0253).
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -38,6 +39,8 @@ from pyproj import Transformer
 import kerbaudit as ka
 import kerbnet as kn
 import kerbregular as kr
+import kerbsame as ksame  # a "same street" width comes from the same street, not another one with its name (P-0253)
+import kerbinput as kin  # the traces input is kerb traces, never a version OpenFetch made (P-0253)
 import kerbpcw as kpw
 import kerbreview as kv
 import kerbcad as kc
@@ -544,9 +547,12 @@ def main(a):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
     nm_of = {id(g): n for (g, _), n in zip(roads, rname)}
     ground = [(g, fh, nm_of.get(id(g))) for g, fh in kn.on_ground(roads, over) if fh not in ka.SKIP_FH]
+    ground = [(g, fh, k) for (g, fh, _), k in zip(ground, ksame.street_keys([g for g, _, _ in ground], [n for _, _, n in ground]))]   # one street, not one name (P-0253)
     lots_all, road_lots = drop_road_lots(lots_all, [g for g, fh, _ in ground if fh != LANE_FH])
     cad = kc.Cad(a[a.index("--cad") + 1], road_lots) if "--cad" in a else None
     LT = STRtree(lots_all)
+    if (w := kin.why_not_traces(a[2])):
+        sys.exit(w)   # a made kerbs version is not LiDAR traces: its widths would be lent as "lidar" (P-0253)
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR

@@ -15,6 +15,7 @@ from pyproj import Transformer
 import kerbaudit as ka
 import kerbnet as kn
 import kerbregular as kr
+import kerbinput as kin  # the traces input is kerb traces, never a version OpenFetch made (P-0253)
 
 HALF_W = {1: 9.0, 2: 8.0, 3: 7.0, 4: 6.5, 5: 5.5, 6: 4.5, 7: 3.0, 8: 4.0}
 LANE_FH = 7
@@ -265,6 +266,8 @@ def main(a):
                 over += [q for q in getattr(shape(f["geometry"]), "geoms", [shape(f["geometry"])]) if q.geom_type == "LineString"]
     ongr = kn.on_ground(roads, over)
     ground = [(g, fh) for g, fh in ongr if fh not in ka.SKIP_FH]
+    if (w := kin.why_not_traces(a[2])):
+        sys.exit(w)   # a made kerbs version is not LiDAR traces: its widths would be lent as "lidar" (P-0253)
     R = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     R = [g for g in R if g.intersects(area.buffer(300))]
     D = [g for g in read_drawn(a[3], to) if g.intersects(area.buffer(300))]
