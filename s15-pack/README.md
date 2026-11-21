@@ -1,0 +1,1 @@
+Scenario 15 round 3 blind pack: 40 close-ups (60 m, zoom 20). Every kerb line in magenta, cyan ring = the corner to judge. Images only; the key is kept apart in .notes/kerb-top10/s15/ and is sent after verdicts.
