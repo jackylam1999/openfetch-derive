@@ -48,6 +48,7 @@ MIN_SUB, PAD_M, JOIN_M, RUN_M = 20.0, 2.0, 10.0, 6.0   # mid-side cut: smallest 
 MAX_CUT_SHARE, MID_R, MOUTH_NEAR, JOIN_KERB_M = 0.4, 3.0, 3.0, 1.5
 CORNER_M, CORNER_DEG, STRAIGHT_DEG, CORNER_LOT_M, MOUTH_CLEAR, JUNCTION_M, POST_M, CORNER_R = 12.0, 45.0, 5.0, 1.0, 6.0, 15.0, 12.0, 4.0
 CORNER_MODE = os.environ.get("KERB_CORNER_MODE", "build")
+ARM_CORNER = os.environ.get("KERB_ARM_CORNER", "1") == "1"   # round 4: corners from the line's own two straights
 TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
 
 
@@ -327,7 +328,7 @@ def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
     nrm = P - own_q
     u = c if float(np.dot(c, nrm)) > 0 else -c
     sin_th = abs(float(t[0] * c[1] - t[1] * c[0]))
-    arm, kept = [], []
+    arm, kept, arm_xy = [], [], []
     for k in np.arange(3.0, 60.0, 1.0):
         q = s_edge + dr * k
         if not 0.0 < q < n:
@@ -335,6 +336,8 @@ def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
         Q = L.interpolate(q)
         if np.degrees(np.arccos(min(1.0, abs(float(np.dot(tangent(L, q, 1.0), c)))))) < SAME_ST_DEG and g.distance(Q) < HALF_W[fh] + AWAY_M:
             arm.append(g.distance(Q) - min(lots[int(j)].distance(Q) for j in lt.query(Q.buffer(30.0))) if len(lt.query(Q.buffer(30.0))) else None)
+            if k <= 25.0:
+                arm_xy.append(Q.coords[0])
     arm = [v for v in arm if v is not None]
     from_arm = len(arm) >= 5
     if not from_arm:                              # the removed stretch runs on past a side street: the corner lot's line on this side
@@ -365,19 +368,44 @@ def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
     if not 1.5 <= off <= HALF_W[fh] + 1.5:
         return why_none(3)
     e = D - off / max(sin_th, 0.5)
+    hd = []
+    for k in np.arange(2.0, 25.01, 1.0):          # the line's own side past its turn (any street angle: curved side streets, packC c38)
+        q = s_edge + dr * k
+        if 0.0 < q < n:
+            hd.append((np.degrees(np.arccos(np.clip(float(np.dot(tangent(L, q, 1.0) * dr, t)), -1, 1))), L.interpolate(q).coords[0]))
+    top = max((a for a, _ in hd), default=0.0)
+    own_xy = [xy for a, xy in hd if a >= CORNER_DEG and a >= top - 10.0] if top >= CORNER_DEG else []
+    if len(own_xy) >= 5 and ARM_CORNER:
+        arm_xy, from_arm = own_xy, True
+    if from_arm and len(arm_xy) >= 5 and ARM_CORNER:
+        # round 4 (packC c38, c07, c33 and the "small hooks"): a corner placed from the centreline overshot the line's own corner by the
+        # 1.5 m roads/LiDAR datum gap plus the lot-line-to-kerb share, into the junction. The removed arm is the line's own cross-street
+        # side, so the corner is set where the kept straight meets the arm's own straight (both from the line, no centreline), and the
+        # return runs CORNER_R m onto the arm: the line's own corner, rebuilt round, stopping on its own cross-street side.
+        A = np.array(arm_xy)
+        Am = A.mean(axis=0)
+        w, V = np.linalg.eigh(np.cov((A - Am).T))
+        ca = V[:, int(np.argmax(w))]
+        den = t[0] * ca[1] - t[1] * ca[0]
+        if abs(den) < 0.4:
+            return why_none(9)                   # the arm runs nearly parallel: not a corner
+        e = float(((Am[0] - P[0]) * ca[1] - (Am[1] - P[1]) * ca[0]) / den)
+        X = P + t * e
+        u = ca if float(np.dot(ca, Am - X)) > 0 else -ca
+    else:
+        X = P + t * e
     if not -30.0 <= e - CORNER_R <= 25.0:
         return why_none(4)
-    X = P + t * e
     T1, T2 = X - t * CORNER_R, X + u * CORNER_R
     curve = [tuple(map(float, (1 - k) ** 2 * T1 + 2 * (1 - k) * k * X + k ** 2 * T2)) for k in np.linspace(0.0, 1.0, 9)]
     if e - CORNER_R >= 0:
         s_cut, pts = s_end, [tuple(map(float, P))] + curve
     else:
         s_cut, pts = s_end + dr * (e - CORNER_R), curve
-    if from_arm and L.distance(Point(T2)) > ll - off + 1.5:
+    if from_arm and not ARM_CORNER and L.distance(Point(T2)) > ll - off + 1.5:
         return why_none(7)                       # the return does not land beside the removed arm: a wrong cross street (roundabout ring, slip lane)
     new = LineString(pts)
-    if any(lots[int(j)].buffer(-0.2).intersects(new) for j in lt.query(new)):
+    if sum(lots[int(j)].buffer(-0.5).intersection(new).length for j in lt.query(new)) > 1.0:   # more than a metre inside a lot (an own corner may graze the lot corner)
         return why_none(5)
     return s_cut, pts
 
@@ -652,8 +680,10 @@ def selftest():
     pcs = [q for n in sides for q in n.get("pieces", [])]
     assert len(pcs) == 1 and pcs[0]["returns"] == 1, sides
     q = pcs[0]["q"]
-    o = 5.5 * 6.5 / 9.5                                                         # arm's lot line 5.5 m out x the kept kerb's share 6.5 / (6.5 + 3)
-    assert abs(q[-1][0] - (105.5 - o)) < 0.3 and abs(q[-1][1] - 10.5) < 0.3, q[-4:]    # run on to the corner, 4 m return onto that kerb
+    # round 4: the corner is where the kept straight (y = 6.5) meets the line's own cross-street side (x = 100), rebuilt with a 4 m return
+    # that stops on that side: no centreline is used, so a roads/LiDAR datum gap cannot push it into the junction
+    assert abs(q[-1][0] - 100.0) < 0.3 and abs(q[-1][1] - 10.5) < 0.3, q[-4:]
+    assert max(x for x, _ in q) < 100.3, "the corner overshoots the line's own cross-street side"
     bend = [st3[0], st3[2]]                                               # one street bending north (no junction): no stop mid-street
     _, sides = judge(turn, bend, STRtree([g for g, _ in bend]), lots3, STRtree(lots3))
     assert not any(n.get("pieces") for n in sides), ("free end at a bend", sides)
