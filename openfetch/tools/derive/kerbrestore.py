@@ -317,7 +317,11 @@ def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
                     best = (D, g, fh, tangent(g, g.project(pt)))
     if best is None or own_q is None:
         return why_none(1)
+    nrm_hat = (P - own_q) / max(float(np.hypot(*(P - own_q))), 1e-9)
     D, g, fh, c = best
+    reach = max(float(np.dot(np.array(q) - own_q, nrm_hat)) for q in g.coords)
+    if reach < float(np.hypot(*(P - own_q))):
+        return why_none(8)                       # the side street opens on the far side of the road (packB c07, c10, c12, c27, c29, c40): no corner on this kerb
     if not junction_near(Point(P + t * D), streets, st_tree):
         return why_none(6)                       # one street bending, not a junction: a return here would end mid-street
     nrm = P - own_q
