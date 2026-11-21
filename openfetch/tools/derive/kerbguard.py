@@ -7,12 +7,14 @@ tools/mirror/kerbs-check.py can refuse the version:
         it) for over LANE_RUN m. A kerb crossing a lane mouth or turning a few metres into it is not a run along it.
 Every 1 km square a line touches must have lots, roads and footprints, or the guard fails (no input = not checked).
 
-    python3 kerbguard.py kerbs.geojson[.gz] lots_dir roads_dir buildings_dir out.json --official a.json[,b.json] [--drop kept.geojson.gz] [--epsg 7855]
+    python3 kerbguard.py kerbs.geojson[.gz] lots_dir roads_dir buildings_dir out.json --official a.json[,b.json] [--zones zone_dir] [--drop kept.geojson.gz] [--epsg 7855]
     python3 kerbguard.py --selftest
 buildings_dir holds kerbgrid-run/bldall.py files <x>_<y>.json (km square numbers, lon/lat footprints).
 official: a line runs within OFF_D m of an official council kerb line for OFF_RUN m or more (it doubles the council kerb; 19 Nov
         2026, 102 lines doubled the City of Parramatta kerbs). --official names every council kerb file (lon/lat GeoJSON) for the
         version's area; "--official none" records that no council has kerbs there. kerbs-check.py refuses a guard without this check.
+        Council kerbs drawn as polygons (City of Melbourne kerb strips) count by their outlines. --epsg 7855 for Victoria (MGA 55 cells).
+--zones <dir> (or "none" for a place with no NSW zoning, e.g. Victoria; recorded in guards.json) adds the land-use and private-land guards of kerbland.py (zoning cells <x>_<y>.json; kerbs-check refuses a guard without them).
 --drop writes the version without the failing lines (whole lines only: a line is kept whole or left out, never cut).
 """
 import glob, gzip, json, os, sys
@@ -25,6 +27,7 @@ BLD_IN, BLD_RUN, BLD_A = 3.0, 3.0, 120.0
 LANE_W, LANE_RUN, CLOSE, LANE_FH = 7.5, 6.0, 0.4, 7
 SKIP_FH = {8, 9, 10, 11}
 OFF_D, OFF_RUN = 2.5, 25.0
+COUNTS = {}   # council kerb lines read from each --official file (guards.json official_lines; kerbs-check refuses a 0)
 
 
 def is_street(pr):
@@ -94,6 +97,14 @@ def selftest():
     json.dump({"features": [{"geometry": {"type": "LineString", "coordinates": [[-3, 18.5], [103, 18.5]]}}]}, open(fn, "w"))
     off, names = doubled([good, mouth, over], fn, lambda x, y: (x, y))   # good runs 1.5 m beside the council kerb: doubled
     assert list(off) == [0] and names == ["council.json"], off
+    json.dump({"features": [{"geometry": {"type": "Polygon", "coordinates": [[[-3, 18.3], [103, 18.3], [103, 18.6], [-3, 18.6], [-3, 18.3]]]}}]}, open(fn, "w"))
+    off, _ = doubled([good, mouth, over], fn, lambda x, y: (x, y))     # a council kerb strip drawn as a polygon counts by its outline
+    assert list(off) == [0], off
+    json.dump({"features": []}, open(fn, "w"))
+    try:
+        doubled([good], fn, lambda x, y: (x, y)); raise AssertionError("empty council file passed")
+    except SystemExit:
+        pass
     assert doubled([good], None, None) == ({}, None) and doubled([good], "none", None) == ({}, [])
     print("kerbguard selftest pass")
     return 0
@@ -104,13 +115,20 @@ def doubled(G, files, to):
     if files is None:
         return {}, None
     names = [] if files == "none" else files.split(",")
-    O = []
+    O = []; empty = []
     for fn in names:
+        n0 = len(O)
         for f in json.load(open(fn))["features"]:
             g = f.get("geometry") or {}
-            for c in ([g.get("coordinates")] if g.get("type") == "LineString" else g.get("coordinates") or [] if g.get("type") == "MultiLineString" else []):
+            t, cs = g.get("type"), g.get("coordinates") or []
+            for c in ([cs] if t == "LineString" else cs if t in ("MultiLineString", "Polygon") else [r for q in cs for r in q] if t == "MultiPolygon" else []):
                 if c and len(c) > 1:
                     O.append(LineString([to(*p[:2]) for p in c]))
+        COUNTS[os.path.basename(fn)] = len(O) - n0
+        if len(O) == n0:
+            empty.append(os.path.basename(fn))
+    if empty:
+        raise SystemExit("official council kerb file has no lines (a failed fetch is not 'no kerbs'; use --official none only for a place with no council kerbs): " + ", ".join(empty))
     if not O:
         return {}, [os.path.basename(n) for n in names]
     OT = STRtree(O); out = {}
@@ -123,9 +141,30 @@ def doubled(G, files, to):
     return out, [os.path.basename(n) for n in names]
 
 
+def landuse(G, zdir, lots, cells):
+    """Land-use and private-land guards (kerbland.py, case P-0197): zdir holds <x>_<y>.json zoning cells next to the lots and roads cells.
+    A cell with no zoning file fails the version (no input is not 'nothing there')."""
+    import kerbland
+    seen, polys, absent = set(), [], []
+    for (x, y) in sorted(cells):
+        fn = os.path.join(zdir, f"{x * 1000}_{y * 1000}.json")
+        if not os.path.exists(fn):
+            absent.append(fn); continue
+        for f in json.load(open(fn))["features"]:
+            oid = (f.get("properties") or {}).get("OBJECTID")
+            if oid in seen or not f.get("geometry") or not kerbland.zone_blocks(f["properties"]):
+                continue
+            seen.add(oid)
+            g = shape(f["geometry"])
+            polys += [q for q in getattr(g, "geoms", [g]) if q.geom_type == "Polygon"]
+    if absent:
+        raise SystemExit("no zoning file for: " + ", ".join(absent[:5]))
+    return kerbland.land_bad(G, polys), kerbland.lot_bad(G, lots)
+
+
 def main(a):
     from pyproj import Transformer
-    ep = int(a[a.index("--epsg") + 1]) if "--epsg" in a else 7856   # 7855 for Victoria (MGA 55 cell files, kerbvic/prep_vic.py)
+    ep = int(a[a.index("--epsg") + 1]) if "--epsg" in a else 7856
     to = Transformer.from_crs(4326, ep, always_xy=True).transform
     op = gzip.open if a[0].endswith(".gz") else open
     F = json.load(op(a[0], "rt"))["features"]
@@ -137,6 +176,7 @@ def main(a):
             for y in range(int(y0 // 1000), int(y1 // 1000) + 1):
                 cells.setdefault((x, y), []).append(i)
     missing, roof, lane = [], {}, {}
+    alllots = {}
     for (x, y), idx in sorted(cells.items()):
         n = f"{x * 1000}_{y * 1000}"
         paths = [os.path.join(a[1], n + ".json"), os.path.join(a[2], n + ".json"), os.path.join(a[3], f"{x}_{y}.json")]
@@ -147,6 +187,8 @@ def main(a):
         lots = [q for g in lots for q in getattr(g, "geoms", [g]) if q.geom_type == "Polygon"]
         st = [shape(f["geometry"]) for f in json.load(open(paths[1]))["features"] if f.get("geometry") and is_street(f.get("properties") or {})]
         st = [q for g in st for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString"]
+        for q in lots:
+            alllots[q.wkb] = q
         bl = []
         for f in json.load(open(paths[2]))["features"]:
             p = Polygon([to(*c[:2]) for c in f["geometry"]["coordinates"][0]]).buffer(0)
@@ -158,19 +200,24 @@ def main(a):
             roof[idx[k]] = max(run, roof.get(idx[k], 0))
         for k, run in l:
             lane[idx[k]] = max(run, lane.get(idx[k], 0))
+    land, lotin, zdir = {}, {}, a[a.index("--zones") + 1] if "--zones" in a else None
+    if zdir and zdir != "none":
+        land, lotin = landuse(G, zdir, list(alllots.values()), cells)
     off, offn = doubled(G, a[a.index("--official") + 1] if "--official" in a else None, to)
     back = Transformer.from_crs(ep, 4326, always_xy=True).transform
     pt = lambda i: [round(v, 6) for v in back(*G[i].interpolate(0.5, normalized=True).coords[0])]
     res = {"check": "openfetch-derive kerbguard.py", "file": os.path.basename(a[0]), "lines": len(G), "cells": len(cells),
            "missing_cells": missing, "roof": len(roof), "lane": len(lane),
            "roof_at": [[pt(i), v] for i, v in sorted(roof.items())][:200], "lane_at": [[pt(i), v] for i, v in sorted(lane.items())][:200],
-           "official_files": offn, "official": len(off) if offn is not None else None,
+           "zones": zdir, "land": len(land) if zdir else None, "lot": len(lotin) if zdir else None,
+           "land_at": [[pt(i), v] for i, v in sorted(land.items())][:200], "lot_at": [[pt(i), v] for i, v in sorted(lotin.items())][:200],
+           "official_files": offn, "official_lines": COUNTS, "official": len(off) if offn is not None else None,
            "official_at": [[pt(i), v] for i, v in sorted(off.items())][:200],
-           "result": "pass" if not (missing or roof or lane or off or offn is None) else "fail"}
+           "result": "pass" if not (missing or roof or lane or off or offn is None or land or lotin or not zdir) else "fail"}
     json.dump(res, open(a[4], "w"), indent=1)
-    print(res["result"], json.dumps({k: res[k] for k in ("lines", "cells", "roof", "lane", "official")}), "missing", len(missing))
+    print(res["result"], json.dumps({k: res[k] for k in ("lines", "cells", "roof", "lane", "official", "land", "lot")}), "missing", len(missing))
     if "--drop" in a:
-        bad = set(roof) | set(lane) | set(off)
+        bad = set(roof) | set(lane) | set(off) | set(land) | set(lotin)
         json.dump({"type": "FeatureCollection", "features": [f for i, f in enumerate(F) if i not in bad]}, gzip.open(a[a.index("--drop") + 1], "wt"))
         print("dropped", len(bad), "km", round(sum(G[i].length for i in bad) / 1000, 2))
     return 0 if res["result"] == "pass" else 1
