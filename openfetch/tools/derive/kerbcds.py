@@ -13,9 +13,10 @@ inlet gate and won 2 blocks, because the other gates still refused them. Here th
   5. parts already kerbed (within JOIN m of an existing kerb) are cut out; pieces under MIN_LEN m are dropped; every piece keeps
      CL_CLEAR m from every centreline except the stem's last TIP m (a centreline drawn to the bulb's middle or edge).
 
-    python3 kerbcds.py roads_dir lots_dir grids_dir kerbs.geojson[.gz][,more] out.geojson [--why why.json] [--cells cells.txt]
+    python3 kerbcds.py roads_dir lots_dir grids_dir kerbs.geojson[.gz][,council.json@4283,...] out.geojson [--why why.json] [--cells cells.txt]
     python3 kerbcds.py --selftest
-roads_dir / lots_dir: <x>_<y>.json in MGA56 (EPSG 7856) as fetchin2.py writes them; kerbs in lon/lat; out in lon/lat.
+roads_dir / lots_dir: <x>_<y>.json in MGA56 (EPSG 7856) from the multiCRS layers (P-0244: the plain layers answer GDA94 numbers);
+kerbs: every published and council kerb in lon/lat (council files from GDA94 portals with @4283); out in lon/lat.
 """
 import collections, glob, gzip, itertools, json, math, os, sys
 import numpy as np
@@ -32,14 +33,20 @@ CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers (kerblot.CLO
 W_MIN, W_MAX = 8.0, 30.0     # m: believable cul-de-sac reserve widths along the stem
 SAMPLE = 2.0         # m between samples round the reserve edge
 D_MIN, D_MAX = 1.0, 7.0      # m, believable footpath widths (kerblot.D_MIN, D_MAX)
+SMOOTH = 2           # profiles either side joined in a median before reading drops (Parramatta known answer, 21 Nov 2026)
+CAND_FLAT = 0.08     # m: each side of a candidate drop lies within this of a line (kerbpcw.P_FLAT 0.05 for the strongest drop)
+SKIP = 0.5           # chain cost of a sample with no reading used
+RESTART = 3.0        # chain cost of starting a new chain (four agreeing readings at least pay for it)
+JUMP_W = 1.0         # chain cost per m of width change between readings
+DROP_W = 2.0         # chain reward per m of kerb drop
+OUT_W = 0.05         # chain reward per m out from the lot front (the kerb is the road-side step)
+ROW, ROAD_ROW = 1.0, 0.5   # m further out, share of readings: a road-side row of drops that replaces the chain
+HOP, HOP_SKIP = 0.6, 0.3     # m: most width change between neighbouring readings, plus this per skipped sample
 RUN = 15             # samples (30 m) per run measured on its own
 AGREE = 1.0          # m: neighbouring runs agree within this (a run off both is a stray)
 RUN_SHARE = 0.6      # share of runs that must be measured
 STRAY = 6.0          # m of other front facing the stem allowed apart from the cul-de-sac's own run
 MOUTH = 25.0         # m: each end of the cul-de-sac's front lies this near its junction
-WIN = 6              # samples either side read together for one width (26 m)
-TRIM = 0.6           # m: a profile's kerb further than this from the fitted line is a driveway, tree pit or car
-FIT_MIN = 4          # readings that agree, at least, for a width
 SEEN_MIN = float(os.environ.get('CDS_SEEN', 0.4))   # share of the cul-de-sac's samples with a width
 GAP_MAX = int(os.environ.get('CDS_GAP', 10))       # samples (20 m) without a width bridged along the same kerb; a longer gap is not guessed
 JUMP = 0.5           # m the width may change between two samples 2 m apart
@@ -47,6 +54,7 @@ CW_MIN = 2.5         # m: half a carriageway at least between the two kerbs (ker
 JOIN = 1.5           # m: an end this near an existing kerb meets it; a kerb this near an existing one is already there
 RETURN_MAX = 15.0    # m an end may run on round the corner return
 STRAIGHT = 4.0       # degrees: the corner has straightened when the line turns less than this over 3 m
+LOOP_MAX = 15.0      # m: loops this short in the offset line are trimmed (notches, splays)
 MIN_LEN = 20.0       # m: shorter pieces are not drawn
 CL_CLEAR = 2.0       # m kept from every centreline
 TIP = 8.0            # m: the stem's last metres may come nearer (drawn to the bulb's middle or its edge)
@@ -163,38 +171,112 @@ def front(p, st, cl_t, cls, zone):
     return np.array(P), np.array(N), np.array(R), np.array(own), np.array(ok)
 
 
-def positions(ground, P, N, R, ok):
-    """Kerb distance from the lot front found in each LiDAR ground profile on its own (kerbpcw.prof_step), nan where none."""
-    pos = np.full(len(P), np.nan)
+def drops(h, t, lo, hi, flat=None):
+    """Every kerb-like drop in one profile h(t) as (distance, drop), not only the strongest (kerbpcw.prof_step's line fit each
+    side); drops within 0.5 m keep the strongest."""
+    w = int(round(kpw.P_W / kpw.STEP_D)); r = int(round(kpw.DROP_RUN / kpw.STEP_D)); u = np.arange(w) * kpw.STEP_D
+    out = []
+    for e in range(max(w, int(lo / kpw.STEP_D)), min(len(t) - w - r, int(hi / kpw.STEP_D) + 1)):
+        a, b = h[e - w:e], h[e + r:e + r + w]
+        ma, mb = np.isfinite(a), np.isfinite(b)
+        if ma.sum() < w / 2 or mb.sum() < w / 2:
+            continue
+        pa, pb = np.polyfit(u[ma], a[ma], 1), np.polyfit(u[mb], b[mb], 1)
+        if max(abs(pa[0]), abs(pb[0])) > kpw.P_SLOPE:
+            continue
+        fl = CAND_FLAT if flat is None else flat
+        if np.ptp(a[ma] - np.polyval(pa, u[ma])) > fl or np.ptp(b[mb] - np.polyval(pb, u[mb])) > fl:
+            continue
+        drop = np.polyval(pa, kpw.P_W + kpw.DROP_RUN / 2) - np.polyval(pb, -kpw.DROP_RUN / 2)
+        if kpw.DROP_MIN <= drop <= kpw.DROP_MAX:
+            out.append((t[e] + kpw.DROP_RUN / 2, float(drop)))
+    groups = []
+    for p, d in out:   # neighbouring window positions see the same step: one reading each, at the middle of its strongest
+        if groups and p - groups[-1][-1][0] <= kpw.STEP_D * 1.5:
+            groups[-1].append((p, d))
+        else:
+            groups.append([(p, d)])
+    keep = []
+    for g in groups:
+        best = max(d for _, d in g)
+        keep.append((float(np.median([p for p, d in g if d >= best - 0.02])), best))
+    res = []
+    for p, d in sorted(keep, key=lambda x: -x[1]):
+        if all(abs(p - q) > 0.5 for q, _ in res):
+            res.append((p, d))
+    return sorted(res)
+
+
+def chain(cands, gap=None):
+    """The kerb through a run of samples as continuous chains (21 Nov 2026, scenario 9): a profile often shows two steps (the kerb,
+    and a fence footing or driveway lip on the lot side), and the strongest is not always the kerb, so a window of strongest
+    readings never agrees. Shortest path over every sample's candidate drops: a sample left out costs SKIP, a width change costs
+    JUMP_W per m (never more than HOP m between neighbours plus HOP_SKIP m per skipped sample), a stronger drop and the road-side
+    step cost less, and a new chain (a corner, or the kerb found again after a long gap) costs RESTART, so a stray reading or two
+    is never a chain. Returns widths (nan where left out)."""
+    gap = GAP_MAX if gap is None else gap
+    n = len(cands); F = [dict() for _ in range(n)]; G = np.zeros(n + 1); Gp = [None] * (n + 1)
+    for i in range(n):
+        for c, (p, d) in enumerate(cands[i]):
+            own = -DROP_W * d - OUT_W * p
+            top = (G[i] + RESTART + own, ("G", i))
+            for k in range(1, gap + 2):
+                j = i - k
+                if j < 0:
+                    break
+                for cj, (cost, _) in F[j].items():
+                    dp = abs(p - cands[j][cj][0])
+                    if dp <= HOP + HOP_SKIP * (k - 1) and (v := cost + SKIP * (k - 1) + JUMP_W * dp + own) < top[0]:
+                        top = (v, ("F", j, cj))
+            F[i][c] = top
+        G[i + 1], Gp[i + 1] = G[i] + SKIP, None
+        for c, (cost, _) in F[i].items():
+            if cost < G[i + 1]:
+                G[i + 1], Gp[i + 1] = cost, (i, c)
+    out = np.full(n, np.nan); i = n
+    while i > 0:
+        if Gp[i] is None:
+            i -= 1; continue
+        cur = Gp[i]
+        while True:
+            out[cur[0]] = cands[cur[0]][cur[1]][0]; back = F[cur[0]][cur[1]][1]
+            if back[0] == "G":
+                i = back[1]; break
+            cur = (back[1], back[2])
+    return out
+
+
+def kerb_chain(cands, road_row=None):
+    """The road-most consistent chain (hard rule, kerb lead 21 Nov 2026): a kerb drops down towards the road and is the row
+    furthest out; a fence footing, garden edge or driveway lip lies on the lot side. After the cheapest chain, the chain through
+    only the drops at least ROW m further out replaces it when it holds ROAD_ROW of its readings; repeated until none does."""
+    cur = chain(cands)
+    for _ in range(3):
+        if not np.isfinite(cur).any():
+            break
+        ok = np.isfinite(cur); ref = np.interp(np.arange(len(cur)), np.flatnonzero(ok), cur[ok])
+        out = [[c for c in cs if c[0] >= ref[i] + ROW] for i, cs in enumerate(cands)]
+        nxt = chain(out)
+        if np.isfinite(nxt).sum() < (ROAD_ROW if road_row is None else road_row) * ok.sum():
+            break
+        cur = nxt
+    return cur
+
+
+def candidates(ground, P, N, R, ok, flat=None, smooth=None):
+    """Every sample's candidate kerb drops (distance on the LiDAR traces' footing, drop), none where not ok."""
+    out = [[] for _ in range(len(P))]
     if not ok.any() or not ground.covers(P[ok]):
-        return pos
+        return out
     t = np.arange(0.0, D_MAX + 1.5, kpw.STEP_D)
     with np.errstate(all="ignore"):
-        H = kpw.profiles(ground, P[ok], N[ok], t)
-        pos[ok] = kpw.prof_positions(np.nanmedian(H, axis=0), t, D_MIN - kpw.P_SHIFT, D_MAX - kpw.P_SHIFT) + kpw.P_SHIFT
-    pos[ok & (pos > R - CW_MIN)] = np.nan
-    return pos
-
-
-def follow(pos, idx, n):
-    """Footpath width at each cul-de-sac sample (nan where not seen): a straight line fitted to the profiles' kerbs within WIN
-    samples either side, readings more than TRIM m off the line dropped and the line fitted again. A bulb's kerb is seldom
-    concentric with its lot fronts, so the width changes smoothly round it; a driveway, tree pit or parked car is one stray
-    reading and falls out. Needs FIT_MIN readings that agree, and half of the readings found in the window."""
-    out = np.full(len(idx), np.nan)
-    for k, i in enumerate(idx):
-        j = np.arange(-WIN, WIN + 1); v = pos[[(i + x) % n for x in j]]; m = np.isfinite(v)
-        if m.sum() < FIT_MIN:
-            continue
-        x, y = j[m].astype(float), v[m]
-        keep = np.ones(len(x), bool)
-        for _ in range(3):
-            if keep.sum() < FIT_MIN:
-                break
-            c = np.polyfit(x[keep], y[keep], 1)
-            keep = np.abs(y - np.polyval(c, x)) <= TRIM
-        if keep.sum() >= FIT_MIN and keep.sum() >= 0.5 * len(x):
-            c = np.polyfit(x[keep], y[keep], 1); out[k] = float(np.polyval(c, 0.0))
+        H = np.nanmedian(kpw.profiles(ground, P[ok], N[ok], t), axis=0)
+        sm = SMOOTH if smooth is None else smooth
+        if sm:   # the median of a few neighbouring profiles: noise and one parked car fall out, a jog in the lot front stays local
+            H = np.stack([np.nanmedian(H[max(0, k - sm):k + sm + 1], axis=0) for k in range(len(H))])
+    for k, i in enumerate(np.flatnonzero(ok)):
+        hi = min(D_MAX, R[i] - CW_MIN) - kpw.P_SHIFT
+        out[i] = [(p + kpw.P_SHIFT, d) for p, d in drops(H[k], t, D_MIN - kpw.P_SHIFT, hi, flat)] if hi > D_MIN else []
     return out
 
 
@@ -248,6 +330,29 @@ def extend(idx, n, K, seen, near_kerb):
     return idx, ends
 
 
+def unloop(V, most=LOOP_MAX):
+    """An offset line folds into a small loop where the lot front turns inwards (a notch, a splay at the mouth); a real kerb runs
+    straight across it, as an offset curve is trimmed: each loop of `most` m or less is cut at its crossing. None when a larger
+    loop is left (the line really crosses itself)."""
+    V = [tuple(v) for v in V]
+    for _ in range(50):
+        segs = [LineString([V[k], V[k + 1]]) for k in range(len(V) - 1)]
+        t = STRtree(segs); hit = None
+        for a, g in enumerate(segs):
+            for b in sorted(int(x) for x in t.query(g)):
+                if b > a + 1 and g.intersects(segs[b]):
+                    hit = (a, b, g.intersection(segs[b])); break
+            if hit:
+                break
+        if hit is None:
+            return np.array(V)
+        a, b, x = hit
+        if LineString(V[a + 1:b + 1]).length > most or x.geom_type != "Point":
+            return None
+        V = V[:a + 1] + [x.coords[0]] + V[b + 1:]
+    return None
+
+
 def clear_of(V, st, others_t, others):
     """First vertex index nearer than CL_CLEAR to a centreline (the stem's last TIP m excepted), or None."""
     s = st["stem"]; tip_t = s.project(st["tip"])
@@ -273,16 +378,18 @@ def kerb_pieces(K, near):
     return [q for q in out if len(q) > 1 and LineString(q).length >= MIN_LEN]
 
 
-def widths_along(ground, pos, P, N, R, idx, n):
-    """Footpath width at each cul-de-sac sample: followed profile by profile (follow) where the kerb shows on most of it, else one
-    width for the whole cul-de-sac where runs of RUN samples are each measured (kerbpcw.side_width) and agree within AGREE m.
-    Returns (widths, how, detail) or (None, why, detail)."""
-    dd = follow(pos, idx, n); seen_i = np.isfinite(dd); det = {"seen": round(float(seen_i.mean()), 2)}
+def widths_along(ground, P, N, R, ok, idx, n):
+    """Footpath width at each cul-de-sac sample: the road-most continuous chain of LiDAR kerb drops (kerb_chain) where it covers
+    SEEN_MIN of the cul-de-sac with no gap over GAP_MAX samples, else widths of RUN-sample runs measured on their own
+    (kerbpcw.side_width, run_widths). Returns (widths, how, detail) or (None, why, detail)."""
+    cands = candidates(ground, P, N, R, ok)
+    dd = kerb_chain([cands[i] for i in idx]); seen_i = np.isfinite(dd); det = {"seen": round(float(seen_i.mean()), 2)}
     gap = max((len(list(g)) for v, g in itertools.groupby(seen_i) if not v), default=0)
     if seen_i.mean() >= SEEN_MIN and gap <= GAP_MAX:
         dd = np.interp(np.arange(len(idx)), np.flatnonzero(seen_i), dd[seen_i])
+        dd = np.array([np.median(dd[max(0, k - 1):k + 2]) for k in range(len(dd))])
         if np.max(np.abs(np.diff(dd))) <= JUMP:
-            return dd, "followed", det
+            return dd, "chain", det
     I = np.array(idx); cen, got = [], []
     for k in range(0, len(I), RUN):
         j = I[k:k + RUN]
@@ -337,8 +444,7 @@ def one(st, ctx):
     J = st["junction"]
     if max(J.distance(Point(P[idx[0]])), J.distance(Point(P[idx[-1]]))) > MOUTH:
         return [], "cul-de-sac front does not reach back to the mouth on both sides", {}
-    pos = positions(ctx["ground"], P, N, R, ok)
-    dd, how, det = widths_along(ctx["ground"], pos, P, N, R, idx, n)
+    dd, how, det = widths_along(ctx["ground"], P, N, R, ok, idx, n)
     det["w"] = round(float(np.median(w)), 1)
     if dd is None:
         return [], how, det
@@ -351,8 +457,8 @@ def one(st, ctx):
     det["d"] = round(float(np.median(dd)), 2)
     near = lambda v: ctx["kerb_t"] is not None and len(ctx["kerb_t"].query(Point(v), predicate="dwithin", distance=JOIN)) > 0
     idx, ends = extend(idx, n, K, seen, near)
-    V = K[idx]
-    if not LineString(V).is_simple:
+    V = unloop(K[idx])
+    if V is None:
         return [], "kerb crosses itself", det
     bad = clear_of(V, st, ot, others)
     if bad is not None:
@@ -365,9 +471,12 @@ def one(st, ctx):
 
 
 def lines_mga(paths):
+    """Kerb lines in MGA56 from lon/lat files; "file@4283" reads a GDA94 portal's file (the datum step is applied, P-0216)."""
     from pyproj import Transformer
-    T = Transformer.from_crs(4326, 7856, always_xy=True); out = []
-    for pth in paths:
+    out = []
+    for item in paths:
+        pth, _, epsg = item.partition("@")
+        T = Transformer.from_crs(int(epsg or 4326), 7856, always_xy=True)
         fc = json.load(gzip.open(pth) if pth.endswith(".gz") else open(pth))
         for f in fc["features"]:
             if not f.get("geometry"):
@@ -450,6 +559,8 @@ def selftest():
     assert abs(det["d"] - 3.0) < 0.6, det
     assert L.distance(Point(0, 70)) > 7.0 and L.distance(Point(0, 70)) < 10.0     # round the bulb, about 12 - 3 m from its middle
     assert all(e == "return" for e in det["ends"]), det
+    z = unloop(np.array([(0, 0), (10, 0), (12, 2), (11, 3), (11, -1), (20, 0)]))     # a small fold is trimmed at its crossing
+    assert z is not None and LineString(z).is_simple and len(z) == 5, z
     assert all(abs(c[1]) > 6.0 for c in L.coords)                                  # never onto the through street's carriageway
     kerb = [LineString([(-100, 7), (-9, 7)]), LineString([(9, 7), (100, 7)])]        # existing kerbs along the through street
     ctx["kerb_t"] = STRtree(kerb)
@@ -463,6 +574,14 @@ def selftest():
     park = lots[3].difference(box(-30, 60, 30, 120))                               # a 60 m open reserve past the end: refused
     ctx3 = {**ctx2, "lots": lots[:3] + [park], "lots_t": STRtree(lots[:3] + [park])}
     assert one(S[0], ctx3)[1] == "reserve runs on past the street end", one(S[0], ctx3)[1]
+    rng = np.random.default_rng(5)                                                 # two rows: a 20 cm lip at 1.2 m, the 12 cm kerb at 3.0 m
+    cands = [[(1.2 + rng.normal(0, 0.05), 0.20), (3.0 + rng.normal(0, 0.05), 0.12)] if k % 3 else [(3.0, 0.12)] for k in range(30)]
+    cands[7] = [(5.5, 0.3)]                                                        # a stray reading in the road
+    got = kerb_chain(cands)
+    assert np.nanmedian(got) > 2.8 and np.isfinite(got).mean() > 0.9 and not abs(got[7] - 5.5) < 1, got
+    t = np.arange(0.0, 8.5, kpw.STEP_D)
+    h = np.where(t < 1.2, 0.2, 0.0) + np.where(t < 3.0, 0.0, -0.12)               # the drops() reader sees both steps
+    assert [round(p, 1) for p, _ in drops(h, t, 0.75, 6.75)] == [1.2, 3.0], drops(h, t, 0.75, 6.75)
     print("kerbcds selftest pass")
     return 0
 
