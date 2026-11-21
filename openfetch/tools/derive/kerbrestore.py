@@ -50,7 +50,7 @@ MAX_CUT_SHARE, MID_R, MOUTH_NEAR, JOIN_KERB_M = 0.4, 3.0, 3.0, 1.5
 CORNER_M, CORNER_DEG, STRAIGHT_DEG, CORNER_LOT_M, MOUTH_CLEAR, JUNCTION_M, POST_M, CORNER_R = 12.0, 45.0, 5.0, 1.0, 6.0, 15.0, 12.0, 4.0
 CORNER_MODE = os.environ.get("KERB_CORNER_MODE", "build")
 ARM_CORNER = os.environ.get("KERB_ARM_CORNER", "1") == "1"
-ARM_WIDTH = os.environ.get("KERB_ARM_WIDTH", "need")
+ARM_WIDTH = os.environ.get("KERB_ARM_WIDTH", "keep")
 GROUND = kerbpcw.Ground(os.environ["KERB_GROUND"]) if os.environ.get("KERB_GROUND") else None
 ARM_W = []   # round 4: corners from the line's own two straights
 TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
