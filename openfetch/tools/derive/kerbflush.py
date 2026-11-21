@@ -98,6 +98,8 @@ def merge(base, flush):
 
 
 def selftest():
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I (test.sh) does not put the script's folder on the path
     import kerbpcw as kpw
     from shapely.geometry import box, Point
     from shapely.strtree import STRtree
