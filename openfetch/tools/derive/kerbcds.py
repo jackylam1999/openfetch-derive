@@ -25,6 +25,7 @@ import shapely
 from shapely.geometry import LineString, MultiLineString, Point, Polygon, box, shape
 from shapely.ops import linemerge, unary_union
 from shapely.strtree import STRtree
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I (test.sh) does not put the script's folder on the path
 import kerbpcw as kpw
 
 STEM_MAX = 400.0     # m: a dead end further than this from its junction is a long street, not a cul-de-sac
