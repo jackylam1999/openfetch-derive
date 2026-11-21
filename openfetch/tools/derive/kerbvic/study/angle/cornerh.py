@@ -23,6 +23,7 @@ for a1, b0, X, used, t in J:
     if used or key in seen or np.hypot(a1[0] - b0[0], a1[1] - b0[1]) < 4: continue
     seen.add(key)
     ch = LineString([a1, b0]); ec = e(ch)
-    if ec >= 15: continue
+    if ec >= 15 and len(sys.argv) < 4: continue
     dx = np.hypot(X[0] - a1[0], X[1] - a1[1]); ex = e(LineString([a1, X, b0])) if dx < 40 else np.nan
-    print("corner at %s chord %.1f m: chord err %.1f | X %.1f m away, a1-X-b0 err %s" % (key, ch.length, ec, dx, "%.1f" % ex if np.isfinite(ex) else "-"))
+    va = np.array(a1) - np.array(X); vb = np.array(b0) - np.array(X); ang = np.degrees(np.arccos(np.clip(va @ vb / max(np.hypot(*va) * np.hypot(*vb), 1e-9), -1, 1)))
+    print("corner at %s chord %.1f m: chord err %.1f | X %.1f m away, angle at X %.0f deg, a1-X-b0 err %s" % (key, ch.length, ec, dx, ang, "%.1f" % ex if np.isfinite(ex) else "-"))

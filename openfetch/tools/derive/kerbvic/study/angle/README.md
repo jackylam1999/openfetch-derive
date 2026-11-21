@@ -30,3 +30,18 @@ Conclusion: on the current probability map no rule separates real bays/steps fro
    council carriageway/kerb polygons; judge by raytruth angle "> 2 m out" (16 % / 9 %) and the Carlton/NM 83 / 87 % hold.
 2. Make the missing Port Phillip / Fitzroy North prob squares on CPU so the review-9 spots (V12 Albert Park, R3 Fitzroy North) can be re-run and
    judged; the GAP blank stays until a fix beats it on them.
+## Round 2 (21 Nov 2026)
+- Step 1, missing aerial squares (same model unet-r34-2026-11-19.pt, CPU, ~1 min per square): 21 squares made (318_5808-5810, 319-321_5810,
+  321_5816-5817, 322-325_5814-5817). Albert Park rerun: 13 rings / 5.2 km -> 52 rings / 20.4 km; "no aerial" sides 262 -> 7.
+  Fitzroy North (new prep; Vicmap building WFS timed out twice, so no roof guard in this diagnostic run): 67 rings / 31.1 km.
+  With the gap rule off Albert Park keeps 55 (3 more); the 4 rings it blanks look like plain blocks on a sheet, not bays.
+  Squares: .notes/kerb-vic-angle/prob-cpu-2026-11-21.tgz.
+- H4 paved corner (kerblot SPLAY_FAR 20 m, 60-120 deg): diagnosis on Fitzroy North chord corners: the 20 m diagonal (R3 type, 322309,5815487)
+  is a square corner (89 deg) whose mitre point was refused only for being over 2D+4 m away, because the corner lot is cut back. All council-area
+  chord corners are acute (26-33 deg), where the mitre point spikes (H2). Rule: accept the mitre point up to 20 m when the corner is 60-120 deg.
+  Effect: 1 ring changed in 4 boxes (Fitzroy North corner, +104 m2); Carlton / North Melbourne 83 % / 87 % unchanged. Selftest test_splay.py.
+  Derive c3d7dec. Small: a real but rare shape.
+- Step 2, fine-tune ft1 (CPU, 45 min, 1,410 steps of 8 x 256 px, lr 5e-5, BN frozen, 6 council boxes outside Carlton/NM, half the crops on
+  angle bays, angle zone x5): REFUSED. North Melbourne angle rays > 2 m out 9 % -> 4 %, but Carlton angle 16 % -> 17 %, parallel / other rays
+  > 2 m out 4-5 % -> 7-9 %, rings 58 -> 22 and 29 -> 19, within 1 m 83 -> 80 % and 87 -> 82 %. The fine-tune pushed every read ~0.2 m outward
+  and broke the side agreement; weighting one class on 6 boxes over-fits. Model not kept.
