@@ -47,6 +47,9 @@ STRAY = 6.0          # m of other front facing the stem allowed apart from the c
 MOUTH = 25.0         # m: each end of the cul-de-sac's front lies this near its junction
 SEEN_MIN = float(os.environ.get('CDS_SEEN', 0.4))   # share of the cul-de-sac's samples with a width
 GAP_MAX = int(os.environ.get('CDS_GAP', 10))       # samples (20 m) without a width bridged along the same kerb; a longer gap is not guessed
+SEEN_ONLY = os.environ.get('CDS_SEEN_ONLY', '1') == '1'   # draw only where a kerb drop was read (H9); off: bridge and guess the returns
+SEEN_BRIDGE = int(os.environ.get('CDS_BRIDGE', 10))  # samples without a reading drawn between two reads (H9b: = GAP_MAX, so only unread ends go; 2 cut 60 %, H9)
+SEEN_TOL = 0.6       # m: a corner-return sample counts as read when a candidate drop lies this near its width
 JUMP = 0.5           # m the width may change between two samples 2 m apart
 CW_MIN = 2.5         # m: half a carriageway at least between the two kerbs (kerblot.CW_MIN)
 JOIN = 1.5           # m: an end this near an existing kerb meets it; a kerb this near an existing one is already there
@@ -396,6 +399,7 @@ def widths_along(ground, P, N, R, ok, idx, n):
     own drew odd shapes in blind pack 1). Returns (widths, how, detail) or (None, why, detail)."""
     cands = candidates(ground, P, N, R, ok)
     dd = kerb_chain([cands[i] for i in idx]); seen_i = np.isfinite(dd); det = {"seen": round(float(seen_i.mean()), 2)}
+    det["_seen"], det["_cands"] = seen_i, cands
     gap = max((len(list(g)) for v, g in itertools.groupby(seen_i) if not v), default=0)
     if seen_i.mean() >= SEEN_MIN and gap <= GAP_MAX:
         dd = np.interp(np.arange(len(idx)), np.flatnonzero(seen_i), dd[seen_i])
@@ -445,18 +449,43 @@ def one(st, ctx):
     K = P + N * np.nan_to_num(d)[:, None]
     det["d"] = round(float(np.median(dd)), 2)
     near = lambda v: ctx["kerb_t"] is not None and len(ctx["kerb_t"].query(Point(v), predicate="dwithin", distance=JOIN)) > 0
+    read = dict(zip(idx, det.pop("_seen"))); cands = det.pop("_cands")
     idx, ends = extend(idx, n, K, seen, near)
-    V = unloop(K[idx])
-    if V is None:
-        return [], "kerb crosses itself", det
-    bad = clear_of(V, st, ot, others)
-    if bad is not None:
-        return [], "kerb runs within 2 m of a centreline", {**det, "at": [round(x, 1) for x in V[bad]]}
-    pieces = kerb_pieces(V, near)
+    pieces = []
+    for run in read_runs(idx, read, cands, d) if SEEN_ONLY else [idx]:
+        V = unloop(K[run])
+        if V is None:
+            return [], "kerb crosses itself", det
+        bad = clear_of(V, st, ot, others)
+        if bad is not None:
+            return [], "kerb runs within 2 m of a centreline", {**det, "at": [round(x, 1) for x in V[bad]]}
+        pieces += kerb_pieces(V, near)
     if not pieces:
-        return [], "kerb already there", det
+        return [], "kerb already there" if not SEEN_ONLY else "kerb not seen along enough of the cul-de-sac", det
     det["ends"] = ends
     return pieces, None, det
+
+
+def read_runs(idx, read, cands, d):
+    """Runs of idx where the LiDAR read a kerb (the chain on the cul-de-sac, a drop within SEEN_TOL of the width on a corner
+    return), gaps of SEEN_BRIDGE samples or fewer between reads joined (round 9: guessed stretches drew tips past the road end,
+    hooks and spikes)."""
+    ok = [bool(read[i]) if i in read else any(abs(p - d[i]) <= SEEN_TOL for p, _ in cands[i]) for i in idx]
+    on = np.flatnonzero(ok)
+    for a, b in zip(on[:-1], on[1:]):
+        if b - a - 1 <= SEEN_BRIDGE:
+            ok[a:b] = [True] * (b - a)
+    return [[idx[k] for k in range(a, b + 1)] for a, b in keep_runs_lin(ok)]
+
+
+def keep_runs_lin(flags):
+    out, a = [], None
+    for k, f in enumerate(list(flags) + [False]):
+        if f and a is None:
+            a = k
+        elif not f and a is not None:
+            out.append((a, k - 1)); a = None
+    return out
 
 
 def lines_mga(paths):
@@ -575,6 +604,8 @@ def selftest():
     t = np.arange(0.0, 8.5, kpw.STEP_D)
     h = np.where(t < 1.2, 0.2, 0.0) + np.where(t < 3.0, 0.0, -0.12)               # the drops() reader sees both steps
     assert [round(p, 1) for p, _ in drops(h, t, 0.75, 6.75)] == [1.2, 3.0], drops(h, t, 0.75, 6.75)
+    rd = {i: f for i, f in enumerate([0, 0, 1, 1, 0, 0, 0, 1, 1, 0])}                # unread ends trimmed, an inner gap bridged
+    assert read_runs(list(range(10)) + [10, 11], rd, [[]] * 10 + [[(3.0, 0.1)], [(9.0, 0.1)]], [3.0] * 12) == [list(range(2, 11))]
     print("kerbcds selftest pass")
     return 0
 
