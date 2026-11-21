@@ -55,8 +55,8 @@ LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkwa
 LANE_FH = 7
 WIDE_VERGE = "--wide" in sys.argv   # kerbwide.py: wide verges, kerb 7-12 m out (21 Nov 2026)
 ONE_INLET = False   # --one-inlet (S16): a single council kerb inlet measures a side when the street's own measures agree within 1 m
-D_WIDE_REACH = 12.0   # m: the widest side kerblot draws (kerbwide W_MAX); corner_cap looks this far along the outline
-CORNER_CAP = False  # --corner-cap (scenario 13 v13): no sample's width passes a neighbour's width plus their spacing (corner_cap)
+CORNER_MITRE = False  # --corner-mitre (scenario 13 v13): convex corners from kerb offset lines, not lot-front circles (corner_mitre)
+MITRE_TURN, MITRE_LIM = 30.0, 1.5   # deg: a lot-front turn this sharp or more is a corner; the mitre is clipped at this x the wider width
 LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0240)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
@@ -429,11 +429,7 @@ def judge_block(comp, ctx):
     if fill.all():
         return "no footpath measure", None
     D[fill] = np.interp(np.flatnonzero(fill), np.flatnonzero(~fill), D[~fill], period=len(D))
-    if CORNER_CAP:
-        D = corner_cap(P, D)
-    segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
-            for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
-    poly = smooth(unary_union(segs + [comp]))
+    poly = smooth(band(comp, P, D))
     if poly.geom_type != "Polygon" and sorted(g.area for g in poly.geoms)[-2] > 1.0:
         return "ring splits when smoothed", None
     if poly.geom_type != "Polygon":
@@ -493,17 +489,66 @@ def judge_block(comp, ctx):
     return None, (ring, used, float(seen.mean()), inside)
 
 
-def corner_cap(P, D, reach=None):
-    """Widths with D[i] <= D[j] + |P[i] - P[j]| for every sample j within reach along the outline (21 Nov 2026, scenario 13 v13: a 9.4 m
-    wide-verge side ran to the lot corner and its 9.4 m circle put the corner 6 m into the cross street, whose kerb is 3.5 m out).
-    A wider side now tapers into a narrower one at a corner instead of bulging past it."""
+def band(comp, P, D):
+    """The block plus its footpath band: a circle of each sample's width round its lot-front sample, each pair joined (tapered, not
+    the larger width: a corner where two widths meet steps out and back, a wobble); with --corner-mitre convex corners come from
+    corner_mitre instead."""
+    mitre, gone = corner_mitre(comp, P, D) if CORNER_MITRE else ([], np.zeros(len(P), bool))
     n = len(P)
-    k = int(np.ceil((reach or 2 * D_WIDE_REACH) / max(STEP, 0.1)))
-    out = D.copy()
-    for s in range(1, min(k, n // 2) + 1):
-        for j in (np.arange(n) + s) % n, (np.arange(n) - s) % n:
-            out = np.minimum(out, D[j] + np.hypot(*(P - P[j]).T))
-    return out
+    segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % n]).buffer(D[(i + 1) % n], quad_segs=8)))
+            for i in range(n) if not (gone[i] or gone[(i + 1) % n])]
+    return unary_union(segs + mitre + [comp])
+
+
+def corner_mitre(comp, P, D):
+    """Kerb corners from kerb offset lines, not lot-front circles (21 Nov 2026, scenario 13: a 9.4 m wide-verge side met a 3.5 m cross
+    street and its 9.4 m circle put the corner 6 m into the junction, rpk3 v13; capping the circles cut 6 of 7 other corners in).
+    At every convex lot-front corner turning MITRE_TURN or more, each side is drawn as a strip of its own width along its lot front,
+    the two kerb lines are run on to where they meet (the true kerb corner: lot corner + w_a n_a + w_b n_b), clipped at MITRE_LIM x the
+    wider width so acute corners round off; smooth() then gives the kerb return. Concave corners and width steps along one street keep
+    the circles. Returns (polygons to add, samples whose circles are dropped)."""
+    ext = comp.exterior; V = np.asarray(ext.coords)[:-1]; m = len(V)
+    if m < 3:
+        return [], np.zeros(len(P), bool)
+    L = ext.length; n = len(P); ts = np.arange(n) * L / n
+    E = np.roll(V, -1, axis=0) - V; El = np.hypot(*E.T); ok = El > 1e-6
+    Ed = E / np.maximum(El, 1e-9)[:, None]
+    sv = np.r_[0.0, np.cumsum(El)[:-1]]
+    Nn = np.c_[Ed[:, 1], -Ed[:, 0]]
+    mid = V + E / 2
+    flip = shapely.contains(comp, shapely.points(mid + Nn * 0.3))
+    Nn[flip] *= -1
+    drop = np.zeros(n, bool); polys = []
+    cr = lambda u, v: float(u[0] * v[1] - u[1] * v[0])
+    def width(s, lo, hi):
+        rel = (ts - s + L / 2) % L - L / 2
+        sel = (rel >= lo) & (rel <= hi)
+        return float(np.median(D[sel])) if sel.any() else float(D[int(np.argmin(np.abs(rel - (lo + hi) / 2)))])
+    for k in range(m):
+        a, b = (k - 1) % m, k
+        if not (ok[a] and ok[b]):
+            continue
+        turn = np.degrees(np.arccos(np.clip(Ed[a] @ Ed[b], -1, 1)))
+        convex = cr(Ed[a], Ed[b]) * (1 if cr(Ed[a], Nn[a]) < 0 else -1) > 0
+        if turn < MITRE_TURN or not convex:
+            continue
+        s = sv[k]
+        za = min(El[a], 2 * STEP + 1e-6); zb = min(El[b], 2 * STEP + 1e-6)
+        wa = width(s, -min(El[a], 12.0), -0.5 * za)
+        wb = width(s, 0.5 * zb, min(El[b], 12.0))
+        z = max(wa, wb) + STEP
+        za, zb = min(El[a], z), min(El[b], z)
+        rel = (ts - s + L / 2) % L - L / 2
+        drop |= ((rel > -za) & (rel <= 0)) | ((rel >= 0) & (rel < zb))
+        Vk = V[k]; A0 = Vk - Ed[a] * za; B0 = Vk + Ed[b] * zb
+        polys.append(Polygon([A0, Vk, Vk + Nn[a] * wa, A0 + Nn[a] * wa]))
+        polys.append(Polygon([Vk, B0, B0 + Nn[b] * wb, Vk + Nn[b] * wb]))
+        pa, pb = Vk + Nn[a] * wa, Vk + Nn[b] * wb
+        den = cr(Ed[a], Ed[b])
+        X = pa + Ed[a] * (cr(pb - pa, Ed[b]) / den) if abs(den) > 1e-9 else (pa + pb) / 2
+        mit = Polygon([Vk, pa, X, pb]).buffer(0)
+        polys.append(mit.intersection(Point(Vk).buffer(MITRE_LIM * max(wa, wb), quad_segs=16)))
+    return polys, drop
 
 
 def block_id(x, y, comp, ids):
@@ -574,9 +619,9 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
-    global LANE_CUT, ONE_INLET, CORNER_CAP
+    global LANE_CUT, ONE_INLET, CORNER_MITRE
     LANE_CUT = "--lane-cut" in a
-    CORNER_CAP = "--corner-cap" in a
+    CORNER_MITRE = "--corner-mitre" in a
     ONE_INLET = "--one-inlet" in a
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
     PITS = kpit.load(a[a.index("--pits") + 1], to) if "--pits" in a else None
