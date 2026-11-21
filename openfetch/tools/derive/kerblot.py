@@ -417,6 +417,18 @@ def judge_block(comp, ctx):
     return None, (ring, used, float(seen.mean()), inside)
 
 
+def block_id(x, y, comp, ids):
+    """Id of a block from where it is, never from how many blocks came before it: the same block gets the same id whatever
+    cells a run holds or the order they come in (KN14, P-0231: counter ids made two identical runs differ byte for byte
+    and made verdicts and reviews keyed by id land on the wrong block)."""
+    rp = comp.representative_point()
+    bid = f"L{x}_{y}-{int(rp.x - x * 1000):03d}{int(rp.y - y * 1000):03d}"
+    while bid in ids:
+        bid += "b"
+    ids.add(bid)
+    return bid
+
+
 def main(a):
     to, back = tf()
     cells = [tuple(map(int, l.split())) for l in open(a[5]) if l.strip()]
@@ -452,27 +464,57 @@ def main(a):
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
-    keep, why, cnt, done, sidel = [], [], {}, set(), []
-    foot, prep = {}, []
+    keep, why, cnt, done, sidel, ids = [], [], {}, set(), [], set()
+    foot, prep, cell_foot = {}, [], {}
     if "--foot-only" in a:
         pass
-    for x, y in cells:
+
+    def cell_data(x, y):
         cell = box(x * 1000, y * 1000, x * 1000 + 1000, y * 1000 + 1000)
         frame = cell.buffer(FRAME, join_style="mitre")
         lots = [lots_all[int(k)] for k in LT.query(frame)]
         land0, narrow = reserves(lots, frame)
         stg = [(g, fh, n) for g, fh, n in ground if g.intersects(frame)]
+        raw = [g for g in RW if g.intersects(frame)]; dr = [g for g in DR if g.intersects(frame)]; ms = [g for g in MS if g.intersects(frame)]
+        return cell, frame, land0, narrow, stg, raw, dr, ms
+
+    def feet_of(x, y, data):
+        """Footpath widths measured on the streets inside one 1 km cell, per street name. A block uses the pool of its own cell
+        and the 8 around it, measured here whether or not they are in the run's cell list, so a ring never depends on
+        which other cells a run holds (KN14, P-0231)."""
+        cell, frame, land0, narrow, stg, raw, dr, ms = data
+        out = {}
+        inner = [(g.intersection(cell), n) for g, fh, n in stg if fh != LANE_FH and g.intersects(cell)]
+        inner = [(q, n) for g, n in inner for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString"]
+        street_feet([q for q, _ in inner], [n for _, n in inner], land0, raw, STRtree(raw), ms, STRtree(ms), out)
+        return out
+
+    def pool(x, y):
+        """The cell's pool: its own measurements and its 8 neighbours', in a fixed order."""
+        res = {}
+        for i in (-1, 0, 1):
+            for j in (-1, 0, 1):
+                k = (x + i, y + j)
+                if k not in cell_foot:
+                    cell_foot[k] = feet_of(*k, cell_data(*k))
+                for nm, v in cell_foot[k].items():
+                    for kk, vv in v.items():
+                        res.setdefault(nm, {}).setdefault(kk, []).extend(vv)
+        return res
+
+    for x, y in cells:
+        cell, frame, land0, narrow, stg, raw, dr, ms = data = cell_data(x, y)
         lanes = []
         for p in narrow:
             inside = sum(g.intersection(p).length for g, fh, _ in stg if fh != LANE_FH and g.intersects(p))
             if not (long_side(p) > 15 and inside > STREET_LONG * long_side(p)) and not any(
                     fh == NARROW_ST and g.intersection(p).length > 10 for g, fh, _ in stg if g.intersects(p)):
                 lanes.append(p)
-        raw = [g for g in RW if g.intersects(frame)]; dr = [g for g in DR if g.intersects(frame)]; ms = [g for g in MS if g.intersects(frame)]
-        inner = [(g.intersection(cell), n) for g, fh, n in stg if fh != LANE_FH and g.intersects(cell)]
-        inner = [(q, n) for g, n in inner for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString"]
         if "--foot-in" not in a:
-            street_feet([q for q, _ in inner], [n for _, n in inner], land0, raw, STRtree(raw), ms, STRtree(ms), foot)
+            cell_foot[(x, y)] = feet_of(x, y, data)
+            for nm, v in cell_foot[(x, y)].items():
+                for kk, vv in v.items():
+                    foot.setdefault(nm, {}).setdefault(kk, []).extend(vv)
         prep.append((x, y, cell, frame, land0, lanes, stg, raw, dr, ms))
         print("feet", x, y, len(foot), flush=True)
     if "--foot-raw" in a:
@@ -492,7 +534,7 @@ def main(a):
         comps = [Polygon(g.exterior) for g in getattr(land, "geoms", [land]) if g.geom_type == "Polygon"]
         LB = [c.exterior for c in comps] + (cad.barriers(frame) if cad is not None else [])
         B = buildings(a[4], [(x + i, y + j) for i in (-1, 0, 1) for j in (-1, 0, 1)], to)
-        ctx = {"road": ROAD, "land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot,
+        ctx = {"road": ROAD, "land_b": LB, "land_t": STRtree(LB), "st": [g for g, _, _ in stg], "st_name": [n for _, _, n in stg], "st_fh": [fh for _, fh, _ in stg], "foot": foot if "--foot-in" in a else pool(x, y),
                "raw": raw, "raw_t": STRtree(raw), "drawn": dr, "drawn_t": STRtree(dr), "meas": ms, "meas_t": STRtree(ms), "bld": B, "bld_t": STRtree(B), "lanes": lanes, "cad": cad,
                "ground": kpw.Ground(a[a.index("--ground") + 1]) if "--ground" in a else None}
         for c in comps:
@@ -508,13 +550,14 @@ def main(a):
                 for ln, info in kerbside.lines(c, SIDE, ctx, sys.modules[__name__]):
                     sidel.append((ln, info, f"{x}_{y}"))
             cnt[w or "kept"] = cnt.get(w or "kept", 0) + 1
-            bid = f"L{x}{y}-{len(keep) + len(why)}"
+            bid = block_id(x, y, c, ids)
             if w:
                 why.append((w, Polygon(c.exterior), bid, f"{x}_{y}", DETAIL.pop(c.representative_point().wkt, None)))
             else:
                 ring, used, seen, inside = res
                 keep.append((ring, used, seen, bid, f"{x}_{y}", [[[round(v, 7) for v in back(*p)] for p in g.coords] for g in inside]))
         print(x, y, json.dumps(cnt), flush=True)
+    keep.sort(key=lambda k: k[3]); why.sort(key=lambda k: k[2])
     ll = lambda g: [[round(v, 7) for v in back(*p)] for p in g.exterior.coords]
     json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"id": b, "cell": n, "d": {str(k): v for k, v in u.items()},
                "lidar_seen": round(s, 2), "source": "lot front", "replaces": rp}, "geometry": {"type": "LineString", "coordinates": ll(r)}} for r, u, s, b, n, rp in keep]}, open(a[6], "w"))
