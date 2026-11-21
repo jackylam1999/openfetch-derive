@@ -7,8 +7,10 @@ beside. Two checks, each cutting only the flagged stretch (cut, don't drop; piec
                 nothing is cut (the photo cannot see the road there).
   rise   (H12a', CDS_OFF=rise; failed round 13) walking out from the stem, the first LiDAR kerb rise (RISE, islands skipped, holes neither road
                 nor edge, as kerbstate S12 H9); a stretch of OFF_RUN m or more lying over OFF_MAX m from it is cut. No rise, no cut.
-  ends   (H12b, CDS_ENDS=1; failed gate 3 round 13) a flagged stretch is cut only where it reaches an open end of the line, never mid-line or across a closure (KN24:
+  ends   (H12b, default CDS_ENDS=1; base since round 14) a flagged stretch is cut only where it reaches an open end of the line, never mid-line or across a closure (KN24:
                 a cut with no real end reads as a hook; pack 4 r04/r10).
+  whole  (H13, round 14) a cul-de-sac whose judged samples (WHOLE_COVER of it or more) lie over OFF_MAX m off the intensity edge
+                for WHOLE_OFF of them or more is refused whole: it is at the wrong width (OK/odd labels 0-0.33, moved 5 m 0.61-0.94).
   offset  (H4, default CDS_OFF=intensity) LiDAR ground intensity (KN11 igrids, 0.5 m, 255 = no ground): walk from the stem out through each sample; road =
                 intensity within ROAD_MAD MADs of the stem's own intensity; the edge is the first 1 m that is not road. A stretch of
                 OFF_RUN m or more lying more than OFF_MAX m from that edge is cut. Only where igrids exist.
@@ -29,7 +31,8 @@ PAVE_MATCH, PAVE_CAN, PAVE_RUN = 0.3, 0.3, 12.0
 ROAD_MAD, OFF_MAX, OFF_RUN = 2.5, 3.0, 6.0
 OFF_MODE = os.environ.get("CDS_OFF", "intensity")      # rise: LiDAR kerb rise walk (H12a'); intensity: the round-11 walk (holes = road)
 RISE = tuple(float(v) for v in os.environ.get("CDS_RISE", "0.10,0.35").split(","))      # m: the kerb rise walking out (kerbstate S12 H9: 6-9 cm joints inside the carriageway stopped the walk)
-ENDS_ONLY = os.environ.get("CDS_ENDS", "0") == "1"  # H12b: trim inward from a line's open ends only, never mid-line or a closure
+WHOLE_OFF, WHOLE_COVER = 0.5, 0.4   # H13: a cul-de-sac with this share of its judged samples off the edge is refused (gap 0.33-0.61)
+ENDS_ONLY = os.environ.get("CDS_ENDS", "1") == "1"  # H12b: trim inward from a line's open ends only, never mid-line or a closure
 
 
 class Photo:
@@ -111,7 +114,13 @@ def paving_flags(L, stem, tip, photo):
 
 
 def offset_flags(L, stem, tip, inten, cal=None):
-    """True at samples of L lying more than OFF_MAX m from the intensity road edge walked out from the stem (H4, as canopy h4lib:
+    """True at samples over OFF_MAX m off the intensity edge (offset_status), None without intensity."""
+    st = offset_status(L, stem, tip, inten, cal)
+    return None if st is None else np.array([bool(x) for x in st])
+
+
+def offset_status(L, stem, tip, inten, cal=None):
+    """Per sample True / False / None (not judged): does L lie more than OFF_MAX m from the intensity road edge walked out from the stem (H4, as canopy h4lib:
     road = within ROAD_MAD MADs of the 1 km cell's own centreline intensity, cal; holes count as road; the edge is the first 1 m
     whose 1 m mean is under half road, from 1.5 m out); None without intensity."""
     cal = cal or (lambda xy: _cal_of(inten(np.array(stem_stretch(stem, tip, 2.0, 60.0)))))
@@ -121,14 +130,27 @@ def offset_flags(L, stem, tip, inten, cal=None):
     for t, q, n in samples(L):
         n, dq, c = toward(stem, q, n); ms = cal(c[None, :])
         if dq < 1.5 or ms is None:
-            out.append(False); continue
+            out.append(None); continue
         m, s = ms; u = (q - c) / dq; tt = np.arange(0, dq + 6, 0.25); i = inten(c + np.outer(tt, u))
         rc = np.where(np.isfinite(i) & (i < 255), (np.abs(i - m) <= ROAD_MAD * s).astype(float), np.nan)
         with np.errstate(all="ignore"):
             sm = np.nan_to_num(np.array([np.nanmean(rc[max(0, k - 2):k + 3]) for k in range(len(rc))]), nan=1.0)
         e = next((tt[k] for k in range(6, len(sm) - 4) if np.all(sm[k:k + 4] < 0.5)), None)
-        out.append(bool(e is not None and abs(dq - e) > OFF_MAX))
-    return np.array(out)
+        out.append(None if e is None else bool(abs(dq - e) > OFF_MAX))
+    return out
+
+
+def whole_off(pieces, stem, tip, inten, cal=None):
+    """H13 (round 14): share of judged samples over OFF_MAX m off the intensity edge over all of a cul-de-sac's pieces, when judged
+    samples cover WHOLE_COVER of it; else None. Labels: OK and odd lines 0.00-0.33, lines moved 5 m 0.61-0.94."""
+    st = []
+    for q in pieces:
+        x = offset_status(LineString(q), stem, tip, inten, cal)
+        if x is None:
+            return None
+        st += x
+    j = [x for x in st if x is not None]
+    return float(np.mean(j)) if st and len(j) >= WHOLE_COVER * len(st) else None
 
 
 def _cal_of(v):
@@ -207,6 +229,10 @@ def cut(L, flags, run, min_len):
 def apply(pieces, stem, tip, photo, inten, min_len, cal=None, ground=None):
     """Both cuts in turn on every piece (as coordinate lists, kerbcds.one's output); returns pieces and cut metres per check."""
     got, cm = [], {"paving": 0.0, "offset": 0.0}
+    if inten and OFF_MODE != "rise":
+        w = whole_off(pieces, stem, tip, inten, cal)
+        if w is not None and w >= WHOLE_OFF:
+            return [], {**cm, "whole_off": round(w, 2)}
     for q in pieces:
         Ls = [LineString(q)]
         for name, fn, run in (("paving", lambda L: paving_flags(L, stem, tip, photo) if photo else None, PAVE_RUN),
@@ -257,6 +283,9 @@ def selftest():
     assert o is not None and o.all(), o                                     # 7 m out, edge at 3 m: 4 m behind, flagged
     near = LineString([(-3.5, -60), (-3.5, 10)])
     assert not offset_flags(near, stem, tip, inten).any()
+    assert whole_off([list(L.coords)], stem, tip, inten) == 1.0 and whole_off([list(near.coords)], stem, tip, inten) == 0.0
+    got, cm = apply([list(L.coords)], stem, tip, None, inten, 20.0)
+    assert got == [] and cm["whole_off"] == 1.0                             # a whole line at the wrong width is refused (H13)
     got, cm = apply([list(L.coords)], stem, tip, None, None, 20.0)
     assert got == [list(L.coords)] and cm == {"paving": 0.0, "offset": 0.0}
     class Gr:                                                               # 12 cm kerb rise 3 m either side of the stem

@@ -538,7 +538,7 @@ def main(a):
         pieces, w, det = one(st, ctx)
         if pieces and (photo or inten or "--rise" in a):
             pieces, det["cut_m"] = kcut.apply(pieces, st["stem"], st["tip"], photo, inten, MIN_LEN, cal, ctx["ground"])
-            w = w if pieces else "cut: not beside paving or off the road edge"
+            w = w if pieces else ("whole line off the LiDAR road edge" if "whole_off" in det["cut_m"] else "cut: not beside paving or off the road edge")
         why[w or "drawn"] += 1
         whys.append({"tip": [round(x, 1), round(y, 1)], "name": st["name"], "why": w or "drawn", **det})
         for k, q in enumerate(pieces):
