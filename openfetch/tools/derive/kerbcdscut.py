@@ -9,6 +9,8 @@ beside. Two checks, each cutting only the flagged stretch (cut, don't drop; piec
                 nor edge, as kerbstate S12 H9); a stretch of OFF_RUN m or more lying over OFF_MAX m from it is cut. No rise, no cut.
   ends   (H12b, default CDS_ENDS=1; base since round 14) a flagged stretch is cut only where it reaches an open end of the line, never mid-line or across a closure (KN24:
                 a cut with no real end reads as a hook; pack 4 r04/r10).
+  reclose (H14, round 15) a closure the paving check flags (not reaching an end of the line) is re-drawn as a straight closure at
+                the paving end, if no longer than the carriageway there + CHORD_SLACK m and turning JOIN_TURN degrees or less.
   whole  (H13, round 14) a cul-de-sac whose judged samples (WHOLE_COVER of it or more) lie over OFF_MAX m off the intensity edge
                 for WHOLE_OFF of them or more is refused whole: it is at the wrong width (OK/odd labels 0-0.33, moved 5 m 0.61-0.94).
   offset  (H4, default CDS_OFF=intensity) LiDAR ground intensity (KN11 igrids, 0.5 m, 255 = no ground): walk from the stem out through each sample; road =
@@ -226,15 +228,58 @@ def cut(L, flags, run, min_len):
     return out
 
 
+RECLOSE = os.environ.get("CDS_RECLOSE", "0") == "1"   # H14 (off: fired on OK c17, c31 in round 15): a closure not beside paving is re-drawn straight at the paving end
+CHORD_SLACK, JOIN_TURN = 2.0, 100.0   # m over the measured carriageway width; degrees the line may turn onto the new closure
+
+
+def _turn(a, b, c):
+    u, v = np.asarray(b) - np.asarray(a), np.asarray(c) - np.asarray(b)
+    nu, nv = np.linalg.norm(u), np.linalg.norm(v)
+    return 0.0 if nu < 1e-9 or nv < 1e-9 else float(np.degrees(np.arccos(np.clip(u @ v / (nu * nv), -1, 1))))
+
+
+def reclose(L, flags, stem, run=None):
+    """H14 (round 15): each flagged stretch of run m or more that does not reach an end of L (the closure of the U running past the
+    paving) is replaced by a straight closure between the samples either side, when that chord is no longer than the carriageway
+    measured there (both sides' distance to the stem) plus CHORD_SLACK and the line turns onto it by JOIN_TURN degrees or less.
+    Returns (line, metres replaced, fires)."""
+    run = PAVE_RUN if run is None else run
+    if flags is None or not flags.any():
+        return L, 0.0, 0
+    S = samples(L); k = 0; spans = []
+    for v, g in itertools.groupby(flags):
+        g = len(list(g))
+        if v and g * STEP >= run and k > 0 and k + g < len(flags):
+            spans.append((k - 1, k + g))
+        k += g
+    if not spans:
+        return L, 0.0, 0
+    d = [x[0] for x in S]; pts = []; at = 0.0; rep = 0.0; fires = 0
+    for a, b in spans:
+        A, B = np.array(S[a][1]), np.array(S[b][1]); w = stem.distance(Point(A)) + stem.distance(Point(B))
+        pa, pb = np.array(L.interpolate(max(0, d[a] - 2)).coords[0]), np.array(L.interpolate(min(L.length, d[b] + 2)).coords[0])
+        if np.linalg.norm(B - A) > w + CHORD_SLACK or _turn(pa, A, B) > JOIN_TURN or _turn(A, B, pb) > JOIN_TURN:
+            continue
+        pts += [L.interpolate(x).coords[0] for x in np.arange(at, d[a], 0.5)] + [tuple(A), tuple(B)]
+        rep += d[b] - d[a]; at = d[b]; fires += 1
+    if not fires:
+        return L, 0.0, 0
+    pts += [L.interpolate(x).coords[0] for x in np.arange(at, L.length, 0.5)] + [L.coords[-1]]
+    return LineString(pts), rep, fires
+
+
 def apply(pieces, stem, tip, photo, inten, min_len, cal=None, ground=None):
     """Both cuts in turn on every piece (as coordinate lists, kerbcds.one's output); returns pieces and cut metres per check."""
-    got, cm = [], {"paving": 0.0, "offset": 0.0}
+    got, cm = [], {"paving": 0.0, "offset": 0.0, "reclosed": 0.0}
     if inten and OFF_MODE != "rise":
         w = whole_off(pieces, stem, tip, inten, cal)
         if w is not None and w >= WHOLE_OFF:
             return [], {**cm, "whole_off": round(w, 2)}
     for q in pieces:
         Ls = [LineString(q)]
+        if RECLOSE and photo:
+            L2, rep, f = reclose(Ls[0], paving_flags(Ls[0], stem, tip, photo), stem)
+            Ls = [L2]; cm["reclosed"] += rep
         for name, fn, run in (("paving", lambda L: paving_flags(L, stem, tip, photo) if photo else None, PAVE_RUN),
                               ("offset", lambda L: (rise_flags(L, stem, tip, ground) if ground is not None else None) if OFF_MODE == "rise"
                                else (offset_flags(L, stem, tip, inten, cal) if inten else None), OFF_RUN)):
@@ -287,7 +332,7 @@ def selftest():
     got, cm = apply([list(L.coords)], stem, tip, None, inten, 20.0)
     assert got == [] and cm["whole_off"] == 1.0                             # a whole line at the wrong width is refused (H13)
     got, cm = apply([list(L.coords)], stem, tip, None, None, 20.0)
-    assert got == [list(L.coords)] and cm == {"paving": 0.0, "offset": 0.0}
+    assert got == [list(L.coords)] and cm == {"paving": 0.0, "offset": 0.0, "reclosed": 0.0}
     class Gr:                                                               # 12 cm kerb rise 3 m either side of the stem
         def height(self, X, Y):
             return np.where(np.abs(np.asarray(X)) >= 3.0, 0.12, 0.0) + 0 * np.asarray(Y)
@@ -300,6 +345,12 @@ def selftest():
     assert cut(L, mid, 6.0, 20.0) == [L] if ENDS_ONLY else True
     end = np.zeros(35, bool); end[25:] = True
     assert abs(cut(L, end, 6.0, 20.0)[0].length - 50) < 2.5
+    U = LineString([(-7, -60), (-7, 10), (7, 10), (7, -60)])                # a U whose closure at y = 10 runs 25 m past the paving
+    fl = np.array([np.array(q)[1] > -15 for _, q, _ in samples(U)])
+    R, rep, f = reclose(U, fl, LineString([(0, -60), (0, 0)]))
+    assert f == 1 and rep > 40 and R.bounds[3] < -12 and R.is_simple, (f, rep, R.bounds)
+    fd = np.array([np.array(q)[1] > (-15 if np.array(q)[0] < 0 else -50) for _, q, _ in samples(U)])   # a diagonal chord, 36 m
+    assert reclose(U, fd, LineString([(0, -60), (0, 0)]))[2] == 0                            # over 14 + 2 m: left as is
     print("kerbcdscut selftest pass")
     return 0
 
