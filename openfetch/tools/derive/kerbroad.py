@@ -265,21 +265,36 @@ def line_report(road, line_xy, centres, win=WIN, far=40.0):
     return out
 
 
-def judge_line(road, line_xy, centres, bad_m=BAD_M, **kw):
-    """Reason an open line fails the road-surface gate, or None: windows that fail add up to bad_m m or more (the worst reason wins:
-    roadway, then behind the verge, then not seen). A line with no road surface data at all is not judged (None)."""
+MIN_JUDGED = 0.5   # share of a line's length that must have road-surface data and a street within 40 m, or it is "not judged" (P-0244)
+
+
+def judge_line_state(road, line_xy, centres, bad_m=BAD_M, **kw):
+    """(state, reason): "refuse" with the worst reason (roadway, then behind the verge, then not seen), "pass", or "not judged" when
+    under MIN_JUDGED of the line has road-surface data and a street within 40 m (no centrelines fetched, no grid, canopy). Callers must
+    never read "not judged" as a pass: a line with no street data or no grid is neither good nor bad (P-0244: 8 lines with no
+    centrelines looked like passes in a re-judge)."""
+    from shapely.geometry import LineString
     rep = line_report(road, line_xy, centres, **kw)
-    if not rep or all(r["why"] == "no road surface data" for r in rep):
-        return None
+    L = LineString(np.asarray(line_xy, float)).length
+    done = [r for r in rep if r["why"] != "no road surface data"]
+    if sum(r["len_m"] for r in done) < MIN_JUDGED * L:
+        return "not judged", "judged %.0f of %.0f m" % (sum(r["len_m"] for r in done), L)
     tot = {}
-    for r in rep:
-        if r["why"] and r["why"] != "no road surface data":
+    for r in done:
+        if r["why"]:
             tot[r["why"]] = tot.get(r["why"], 0.0) + r["len_m"]
     if sum(tot.values()) < bad_m:
-        return None
+        return "pass", None
     for w in ("side in the roadway", "side behind the verge", "road edge not seen"):
         if tot.get(w):
-            return w
+            return "refuse", w
+
+
+def judge_line(road, line_xy, centres, bad_m=BAD_M, **kw):
+    """Reason an open line fails the road-surface gate, else None. None means PASSED OR NOT JUDGED: use judge_line_state when the
+    difference matters (it always does for a keep or drop decision)."""
+    st, why = judge_line_state(road, line_xy, centres, bad_m, **kw)
+    return why if st == "refuse" else None
 
 
 class _Fake:
@@ -323,6 +338,8 @@ def selftest():
     assert judge_line(_Fake(), ln(3.5), cen) == "side behind the verge"     # 3.5 m back from the asphalt edge
     assert judge_line(_Fake(), [(10.0, -2.5), (40.0, -2.5)], cen) is None   # 30 m of odd is under bad_m (corners, gaps)
     assert judge_line(_Fake(), ln(-2.5), [LineString([(-60, 200), (160, 200)])]) is None   # no street within 40 m: nothing to judge
+    assert judge_line_state(_Fake(), ln(-2.5), [LineString([(-60, 200), (160, 200)])])[0] == "not judged"   # ... and it is not a pass
+    assert judge_line_state(_Fake(), ln(1.0), cen)[0] == "pass" and judge_line_state(_Fake(), ln(-2.5), cen) == ("refuse", "side in the roadway")
     rep = line_report(_Fake(), ln(-2.5), cen)
     assert len(rep) == 4 and all(w["why"] == "side in the roadway" for w in rep), rep
     import json, base64, io
