@@ -8,8 +8,8 @@ inlet gate and won 2 blocks, because the other gates still refused them. Here th
      holding the stem's end. It must close round the end inside the zone (an open walkway or park beyond is refused).
   3. footpath width d = the road-most continuous chain of LiDAR kerb drops on the reserve's front (kerb_chain), seen along SEEN_MIN
      of it with no long gap or jump. No measure, no kerb (never guessed).
-  4. kerb = the reserve's edge pushed in by d; only the part nearer the stem than any other centreline is kept, and each end then
-     runs on round the corner return until it meets an existing kerb (JOIN m) or the corner straightens onto the through street.
+  4. kerb = the reserve's edge pushed in by d; only the part nearer the stem than any other centreline is kept; the ends stop at the
+     reserve mouth (RETURNS False; True runs them round the corner return to an existing kerb or until the corner straightens).
   5. parts already kerbed (within JOIN m of an existing kerb) are cut out; pieces under MIN_LEN m are dropped; every piece keeps
      CL_CLEAR m from every centreline except the stem's last TIP m (a centreline drawn to the bulb's middle or edge).
 
@@ -50,6 +50,7 @@ JUMP = 0.5           # m the width may change between two samples 2 m apart
 CW_MIN = 2.5         # m: half a carriageway at least between the two kerbs (kerblot.CW_MIN)
 JOIN = 1.5           # m: an end this near an existing kerb meets it; a kerb this near an existing one is already there
 RETURN_MAX = 15.0    # m an end may run on round the corner return
+RETURNS = False      # ends stop at the reserve mouth: run round the corner returns drew hooks into yards (blind pack 1, H5)
 STRAIGHT = 4.0       # degrees: the corner has straightened when the line turns less than this over 3 m
 LOOP_MAX = 15.0      # m: loops this short in the offset line are trimmed (notches, splays)
 MIN_LEN = 20.0       # m: shorter pieces are not drawn
@@ -310,6 +311,8 @@ def extend(idx, n, K, seen, near_kerb):
     """The cul-de-sac's samples idx carried on round each corner return (ring order, n samples): until the kerb meets an existing
     one (join) or straightens onto the through street (return), at most RETURN_MAX m, never past an unseen sample."""
     ends = []
+    if not RETURNS:
+        return idx, ["mouth", "mouth"]
     for side in (0, 1):
         kind, cur = "return", idx[0] if side == 0 else idx[-1]
         for s in range(1, int(RETURN_MAX / SAMPLE) + 1):
@@ -532,14 +535,17 @@ def selftest():
     L = LineString(pieces[0])
     assert abs(det["d"] - 3.0) < 0.6, det
     assert L.distance(Point(0, 70)) > 7.0 and L.distance(Point(0, 70)) < 10.0     # round the bulb, about 12 - 3 m from its middle
-    assert all(e == "return" for e in det["ends"]), det
+    assert det["ends"] == ["mouth", "mouth"], det
     z = unloop(np.array([(0, 0), (10, 0), (12, 2), (11, 3), (11, -1), (20, 0)]))     # a small fold is trimmed at its crossing
     assert z is not None and LineString(z).is_simple and len(z) == 5, z
     assert all(abs(c[1]) > 6.0 for c in L.coords)                                  # never onto the through street's carriageway
     kerb = [LineString([(-100, 7), (-9, 7)]), LineString([(9, 7), (100, 7)])]        # existing kerbs along the through street
     ctx["kerb_t"] = STRtree(kerb)
+    global RETURNS
+    RETURNS = True
     pieces, why, det = one(S[0], ctx)
     assert why is None and det["ends"] == ["join", "join"], det
+    RETURNS = False
     ctx["ground"] = _Fake(res, 0.0)                                                # no step: not measured, nothing drawn
     assert one(S[0], ctx)[1].startswith("kerb not seen")
     walk = lots[3].difference(box(-2, 60, 2, 120))                                 # a 4 m walkway past the bulb: still closed
