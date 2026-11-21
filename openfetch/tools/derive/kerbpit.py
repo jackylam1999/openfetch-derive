@@ -24,7 +24,7 @@ def load(path, to):
     return pp, STRtree(pp)
 
 
-def width(comp, P, N, W, pits, d_min=1.0, d_max=7.0, step=2.0):
+def width(comp, P, N, W, pits, d_min=1.0, d_max=7.0, step=2.0, pit_min=None):
     """Footpath width of one block side from the pits in front of it, or None. comp: the block; P, N, W: the side's front samples,
     outward normals and distance to the land across. A pit counts when it lies in the side's own sweep (never past its ends, never
     on the cross street) and outside the block, d_min to d_max m from the lot front."""
@@ -40,7 +40,7 @@ def width(comp, P, N, W, pits, d_min=1.0, d_max=7.0, step=2.0):
             dd = comp.exterior.distance(q)
             if d_min <= dd <= d_max and dd < w_med - 0.5:
                 d.append(dd)
-    if len(d) < PIT_MIN:
+    if len(d) < (PIT_MIN if pit_min is None else pit_min):
         return None
     md = float(np.median(d))
     return md if max(abs(x - md) for x in d) <= PIT_SPREAD else None

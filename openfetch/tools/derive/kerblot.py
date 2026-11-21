@@ -256,6 +256,39 @@ SIDE = {}   # outline samples of the block last refused as facing no street, for
 SIDES = '--sides' in sys.argv   # --sides out.json: street-side lines (kerbside.py)
 
 
+H7_UN, H7 = [], {}
+
+
+def h7_count(P, N, D, masks, ctx):
+    """H7 count switch (option 3): blocks with some sides measured and some not; would cutting each unmeasured side leave a real
+    end (a lane centreline, an earlier kerb or a LiDAR kerb trace within 4 m of the cut) at both ends?"""
+    runs = []
+    if np.isnan(D).all():
+        H7["all unmeasured"] = H7.get("all unmeasured", 0) + 1; return None
+    H7["blocks"] = H7.get("blocks", 0) + 1
+    lanes = [g for g, fh in zip(ctx["st"], ctx["st_fh"]) if fh == LANE_FH]
+    ends = ctx["drawn"] + ctx["raw"] + lanes
+    T = STRtree(ends) if ends else None
+    n = len(P)
+    for m in masks:
+        idx = np.flatnonzero(m)
+        starts = [i for i in idx if not m[(i - 1) % n]]
+        for s in starts:
+            e = s
+            while m[(e + 1) % n] and (e + 1) % n != s:
+                e = (e + 1) % n
+            real = 0
+            for i in (s, e):
+                q = Point(P[i] + N[i] * 3.0)
+                if T is not None and any(ends[int(j)].distance(q) < 4.0 for j in T.query(q.buffer(4.0))):
+                    real += 1
+            k = ["no real end", "one real end", "both ends real"][real]
+            H7[k] = H7.get(k, 0) + 1
+            H7["m " + k] = round(H7.get("m " + k, 0) + ((e - s) % n + 1) * STEP, 1)
+            runs.append((s, e, real))
+    return runs
+
+
 def judge_block(comp, ctx):
     """Kerb ring for one block or (reason, None)."""
     P, N = front_samples(comp)
@@ -321,6 +354,7 @@ def judge_block(comp, ctx):
     oppd = W - dfar
     d_oppd = np.where(street & (dfar > C) & (dfar < W) & (oppd >= D_MIN) & (oppd <= D_MAX) & (W < RAY), oppd, np.nan)
     D = np.full(len(rays), np.nan); used = {}
+    H7_UN.clear()
     for cid in set(CID[street].tolist()):
         m = CID == cid
         n = m.sum()
@@ -349,8 +383,13 @@ def judge_block(comp, ctx):
             v, how = street_ok(tab["drawn"]), "kerbs same street"
         elif (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP)) is not None:
             v, how = kv_, "council kerb inlets"
+        elif os.environ.get("HA_ONE") and (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP, pit_min=1)) is not None \
+                and len(oth := (tab.get("lidar") or []) + (tab.get("drawn") or [])) >= 3 and abs(float(np.median(oth)) - kv_) <= kpit.PIT_SPREAD:
+            v, how = kv_, "one kerb inlet, street agrees"
         elif n * STEP < 12:
             continue
+        elif os.environ.get("H7_COUNT"):
+            H7_UN.append(m.copy()); continue
         else:
             NOMEASURE.append((nm, int(n), {k: len(v) for k, v in tab.items()}, int(np.isfinite(d_own[m]).sum()), int(np.isfinite(d_opp[m]).sum()), int(np.isfinite(d_oppd[m]).sum())))
             DETAIL[comp.representative_point().wkt] = {"street": nm, "fh": int(ctx["st_fh"][cid]), "side_m": round(float(n * STEP), 1),
@@ -362,6 +401,17 @@ def judge_block(comp, ctx):
                 "w_med": round(float(np.nanmedian(W[m])), 1), "measured": round(v + CW_MIN, 2) if how else None, "how": how}
             return "street too narrow for a footpath", None
         D[m] = v; used[str(nm) + ":" + str(int(cid))] = (round(v, 2), how)
+    cut = []
+    if os.environ.get("H7_COUNT") and H7_UN:
+        runs = h7_count(P, N, D, H7_UN, ctx); H7_UN.clear()
+        if not os.environ.get("H7_CUT") or not runs or any(r < 2 for _, _, r in runs):
+            return "no footpath measure", None
+        n_ = len(P)
+        for s, e, _ in runs:
+            ii = [(s + j) % n_ for j in range((e - s) % n_ + 1)]
+            pts = np.vstack([P[ii], P[ii] + N[ii] * (D_MAX + 1.0)])
+            cut.append(shapely.MultiPoint(pts).convex_hull.buffer(1.0))
+        H7["blocks cut"] = H7.get("blocks cut", 0) + 1
     fill = np.isnan(D)
     if fill.all():
         return "no footpath measure", None
@@ -423,6 +473,8 @@ def judge_block(comp, ctx):
     seen = near_raw < AGREE_NEAR
     if seen.sum() > 20 and (near_raw[seen] < AGREE_D).mean() < AGREE_MIN:
         return "does not agree with LiDAR", None
+    if cut:
+        used["_cut"] = [[[round(v, 2) for v in c] for c in g.exterior.coords] for g in cut]
     return None, (ring, used, float(seen.mean()), inside)
 
 
@@ -620,6 +672,7 @@ def main(a):
                    for g, n, c in FLUSH]}, open(a[a.index("--flush-lanes") + 1], "w"))
         cnt["flush lanes"] = len(FLUSH)
         print("FLUSH", json.dumps(FLUSH_WHY), flush=True)
+    if H7: print("H7", json.dumps(H7))
     print("RESULT", json.dumps({"count": cnt, "km": round(sum(k[0].exterior.length for k in keep) / 1000, 2)}))
 
 

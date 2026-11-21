@@ -11,6 +11,7 @@ rings.geojson: lon/lat closed rings, properties.id; in_dir: roads/ lots/ cad/ (t
 out.geojson: every side as a LineString (lon/lat) with properties ring, side, ring_m, why ([] = kept), road ("no grid" where none).
 """
 import collections, glob, json, sys
+import shapely
 import numpy as np
 from shapely.geometry import LineString, Polygon, shape
 from pyproj import Transformer
@@ -102,6 +103,27 @@ def judge_sides(ring_xy, cut, ctx, road, loose=False):
     return res
 
 
+def side_cuts(feats, out, funnel, to, back):
+    """kerblot H7_CUT: an unmeasured side whose cuts both land on a real end is left out of every piece of its ring."""
+    Z = {}
+    for f in feats:
+        dd = f["properties"].get("d") or {}
+        dd = json.loads(dd) if isinstance(dd, str) else dd
+        if dd.get("_cut"):
+            Z[f["properties"].get("id")] = shapely.union_all([Polygon(c) for c in dd["_cut"]])
+    res = []
+    for o in out:
+        z = Z.get(o["properties"]["ring"])
+        if z is None or o["properties"]["why"]:
+            res.append(o); continue
+        g = LineString([to(*c[:2]) for c in o["geometry"]["coordinates"]]).difference(z)
+        funnel["pieces side-cut"] += 1
+        for i, q in enumerate(q for q in getattr(g, "geoms", [g]) if q.geom_type == "LineString" and q.length >= km.MIN_SIDE):
+            p = dict(o["properties"], side=f'{o["properties"]["side"]}c{i}', ring_m=round(q.length, 1))
+            res.append({"type": "Feature", "properties": p, "geometry": {"type": "LineString", "coordinates": [list(back(*c)) for c in q.coords]}})
+    return res
+
+
 def main(a):
     to = Transformer.from_crs(4326, 7856, always_xy=True).transform
     back = Transformer.from_crs(7856, 4326, always_xy=True).transform
@@ -135,6 +157,7 @@ def main(a):
             funnel[k] += 1; funnel["m " + k] += s["ring_m"]
             out.append({"type": "Feature", "properties": {"ring": f["properties"].get("id"), "side": s["side"], "ring_m": s["ring_m"], "why": s["why"], "road": s["road"]},
                         "geometry": {"type": "LineString", "coordinates": [list(back(*p)) for p in s["xy"]]}})
+    out = side_cuts(feats, out, funnel, to, back)
     json.dump({"type": "FeatureCollection", "features": out}, open(a[2], "w"))
     if "--funnel" in a: json.dump(dict(funnel), open(a[a.index("--funnel") + 1], "w"), indent=1)
     print(json.dumps(dict(funnel)))
