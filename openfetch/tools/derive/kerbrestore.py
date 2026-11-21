@@ -46,8 +46,8 @@ BAD_SHARE, MIN_SIDE = 0.15, 15.0
 RADIUS, SAME_ST_DEG, MERGE_M = 4.0, 25.0, 6.0
 MIN_SUB, PAD_M, JOIN_M, RUN_M = 20.0, 2.0, 10.0, 6.0   # mid-side cut: smallest kept piece, margin round a bad stretch, join gap, shortest far/away stretch
 MAX_CUT_SHARE, MID_R, MOUTH_NEAR, JOIN_KERB_M = 0.4, 3.0, 3.0, 1.5
-CORNER_M, CORNER_DEG, STRAIGHT_DEG, CORNER_LOT_M, MOUTH_CLEAR, JUNCTION_M, POST_M = 12.0, 45.0, 5.0, 1.0, 6.0, 15.0, 12.0
-CORNER_MODE = os.environ.get("KERB_CORNER_MODE", "entry")
+CORNER_M, CORNER_DEG, STRAIGHT_DEG, CORNER_LOT_M, MOUTH_CLEAR, JUNCTION_M, POST_M, CORNER_R = 12.0, 45.0, 5.0, 1.0, 6.0, 15.0, 12.0, 4.0
+CORNER_MODE = os.environ.get("KERB_CORNER_MODE", "build")
 TIER_A_SHARE, TIER_A_RUN = 0.03, 8.0   # tier A: nearly nothing flagged; tier B: kept but with up to BAD_SHARE flagged (reviewed on its own)
 
 
@@ -261,6 +261,123 @@ def turns_into_street(L, s, dr, streets, st_tree):
     return False
 
 
+def extended(g, m):
+    """g with its end segments run on straight by m metres (a centreline can stop a little short of the kerb line)."""
+    c = np.array(g.coords)
+    a, b = c[0] - (c[1] - c[0]) / max(np.hypot(*(c[1] - c[0])), 1e-9) * m, c[-1] + (c[-1] - c[-2]) / max(np.hypot(*(c[-1] - c[-2])), 1e-9) * m
+    return LineString([tuple(a)] + [tuple(q) for q in c] + [tuple(b)])
+
+
+WHY_BC = {}
+OFFS = []
+
+
+def why_none(k):
+    WHY_BC[k] = WHY_BC.get(k, 0) + 1
+    return None
+
+
+def built_corner(L, s_edge, dr, streets, st_tree, lots, lt):
+    """Scenario 11 round 2 (kerb lead, packA: ends stopped up to 8 m short of the corner, 5 odd free ends; corner curls 3 odd): finish a
+    mid cut end as a real kerb corner. The kept straight runs on to the cross street's kerb and turns onto it with a CORNER_R m return.
+    The cross street's kerb offset comes from this block, not a class width: the removed arm's lot line (its distance from the cross street's
+    centreline less its own distance from the lots) less the footpath the kept arm measures (its median distance from the lots).
+    -> (s on L where the kept line stops, [points of the run-on and return]) or None (no junction ahead, no removed arm along the cross
+    street to measure, an offset outside 1.5 m .. the street's half width + 1.5 m, or new points that touch a lot)."""
+    n = L.length
+    sk = min(max(s_edge - dr * 12.0, 0.0), n)
+    t = tangent(L, sk) * dr
+    s_end = sk
+    for k in np.arange(0.0, 14.01, 0.5):
+        q = s_edge - dr * 12.0 + dr * k
+        if not 0.0 <= q <= n:
+            break
+        if np.degrees(np.arccos(np.clip(float(np.dot(tangent(L, q, 1.0) * dr, t)), -1, 1))) > 8.0:
+            break
+        s_end = q
+    P = np.array(L.interpolate(s_end).coords[0])
+    ray = LineString([tuple(P - t * 20.0), tuple(P + t * 40.0)])      # the line may already have run past the mouth
+    own_d, own_q, best = 1e9, None, None
+    for j in st_tree.query(Point(P).buffer(45.0)):
+        g, fh = streets[int(j)]
+        c = tangent(g, g.project(Point(P)))
+        ang = np.degrees(np.arccos(min(1.0, abs(float(np.dot(t, c))))))
+        if ang < SAME_ST_DEG:
+            d = g.distance(Point(P))
+            if d < own_d:
+                own_d, own_q, g_own = d, np.array(g.interpolate(g.project(Point(P))).coords[0]), g
+            continue
+        if ang < CORNER_DEG:
+            continue
+        x = ray.intersection(extended(g, 10.0))
+        for pt in getattr(x, "geoms", [x]):
+            if not pt.is_empty and pt.geom_type == "Point":
+                D = float(np.dot(np.array(pt.coords[0]) - P, t))
+                if best is None or abs(D) < abs(best[0]):
+                    best = (D, g, fh, tangent(g, g.project(pt)))
+    if best is None or own_q is None:
+        return why_none(1)
+    D, g, fh, c = best
+    if not junction_near(Point(P + t * D), streets, st_tree):
+        return why_none(6)                       # one street bending, not a junction: a return here would end mid-street
+    nrm = P - own_q
+    u = c if float(np.dot(c, nrm)) > 0 else -c
+    sin_th = abs(float(t[0] * c[1] - t[1] * c[0]))
+    arm, kept = [], []
+    for k in np.arange(3.0, 60.0, 1.0):
+        q = s_edge + dr * k
+        if not 0.0 < q < n:
+            break
+        Q = L.interpolate(q)
+        if np.degrees(np.arccos(min(1.0, abs(float(np.dot(tangent(L, q, 1.0), c)))))) < SAME_ST_DEG and g.distance(Q) < HALF_W[fh] + AWAY_M:
+            arm.append(g.distance(Q) - min(lots[int(j)].distance(Q) for j in lt.query(Q.buffer(30.0))) if len(lt.query(Q.buffer(30.0))) else None)
+    arm = [v for v in arm if v is not None]
+    from_arm = len(arm) >= 5
+    if not from_arm:                              # the removed stretch runs on past a side street: the corner lot's line on this side
+        C = Point(P + t * D)
+        Pk = P + t * (D - 10.0)                  # a point on the kept side of the side street
+        side_g = np.sign((Pk[0] - C.x) * c[1] - (Pk[1] - C.y) * c[0])
+        ll_lots = []
+        for j in lt.query(C.buffer(25.0)):
+            lo = lots[int(j)]
+            rp = np.array(lo.representative_point().coords[0])
+            if lo.distance(C) < 25.0 and float(np.dot(rp - own_q, nrm)) > 0 and np.sign((rp[0] - C.x) * c[1] - (rp[1] - C.y) * c[0]) == side_g:
+                ll_lots.append(g.distance(lo))
+        arm = [min(ll_lots)] * 5 if ll_lots else []
+    for k in np.arange(0.0, 30.0, 1.0):
+        q = s_end - dr * k
+        if 0.0 < q < n:
+            Q = L.interpolate(q)
+            near = lt.query(Q.buffer(15.0))
+            if len(near):
+                kept.append((g_own.distance(Q), min(lots[int(j)].distance(Q) for j in near)))
+    if len(arm) < 5 or len(kept) < 5:
+        return why_none(2)
+    dk, fp = float(np.median([a for a, _ in kept])), float(np.median([b for _, b in kept]))
+    ll = float(np.median(arm))
+    off = ll * dk / max(dk + fp, 1e-6)           # the kept kerb's share of its own half reserve, applied to the side street's
+    off = max(off, min(2.0, ll - 0.5))           # a lane's kerb (or edge) is never drawn closer than 2 m to its centreline (KN21 lane returns)
+    OFFS.append((round(float(np.median(arm)), 1), round(dk, 1), round(fp, 1), round(off, 1), fh))
+    if not 1.5 <= off <= HALF_W[fh] + 1.5:
+        return why_none(3)
+    e = D - off / max(sin_th, 0.5)
+    if not -30.0 <= e - CORNER_R <= 25.0:
+        return why_none(4)
+    X = P + t * e
+    T1, T2 = X - t * CORNER_R, X + u * CORNER_R
+    curve = [tuple(map(float, (1 - k) ** 2 * T1 + 2 * (1 - k) * k * X + k ** 2 * T2)) for k in np.linspace(0.0, 1.0, 9)]
+    if e - CORNER_R >= 0:
+        s_cut, pts = s_end, [tuple(map(float, P))] + curve
+    else:
+        s_cut, pts = s_end + dr * (e - CORNER_R), curve
+    if from_arm and L.distance(Point(T2)) > ll - off + 1.5:
+        return why_none(7)                       # the return does not land beside the removed arm: a wrong cross street (roundabout ring, slip lane)
+    new = LineString(pts)
+    if any(lots[int(j)].buffer(-0.2).intersects(new) for j in lt.query(new)):
+        return why_none(5)
+    return s_cut, pts
+
+
 def own_corner(L, s_edge, dr, lots=None, lt=None, streets=None, st_tree=None):
     """None when L runs on without turning past the cut end; else the distance along L where the kept piece should stop so it finishes on the
     line's own corner: the corner entry (last point turning less than STRAIGHT_DEG from the piece's own heading) in mode "entry", or the
@@ -308,6 +425,14 @@ def clear_of_lots(pts, u, lots, lt):
     end = np.array(pts[-1])
     probe = LineString([tuple(p) for p in pts[1:]] + [tuple(end + u * MOUTH_CLEAR)])
     return not any(lots[int(j)].buffer(-0.2).intersects(probe) for j in lt.query(probe))
+
+
+def kerb_join(L, s_edge, others, own):
+    """True when another kerb line lies within JOIN_KERB_M of the cut end (the end is left touching it)."""
+    if others is None:
+        return False
+    p = L.interpolate(s_edge)
+    return any(int(j) != own and others[1][int(j)].distance(p) <= JOIN_KERB_M for j in others[0].query(p.buffer(JOIN_KERB_M)))
 
 
 def mid_cut(L, s_edge, streets, st_tree, others=None, own=None):
@@ -396,6 +521,30 @@ def judge(line_xy, streets, st_tree, lots, lt, others=None, own=None):
                     if b - a < MIN_SUB:
                         continue
                     c0, c1 = cb, ca
+                    if CORNER_MODE == "build":
+                        heads = {}
+                        for end, dr in (("a", -1), ("b", +1)):
+                            se = a if end == "a" else b
+                            if se == (s0 if end == "a" else s1):
+                                continue
+                            bc = built_corner(L, se, dr, streets, st_tree, lots, lt)
+                            if bc is None:
+                                heads[end] = ("join", None, se) if kerb_join(L, se, others, own) else None
+                            else:
+                                heads[end] = ("built", bc[1], bc[0])
+                        if any(v is None for v in heads.values()):
+                            continue
+                        a2 = heads["a"][2] if "a" in heads else a
+                        b2 = heads["b"][2] if "b" in heads else b
+                        if b2 - a2 < MIN_SUB or flags(L, a2, b2, lots, lt, streets, st_tree)[2]:
+                            continue
+                        q, nr = make_piece(L, a2, b2, cb if "a" not in heads else None, ca if "b" not in heads else None)
+                        if "a" in heads and heads["a"][0] == "built":
+                            q, nr = [p for p in heads["a"][1][::-1]] + q[1:], nr + 1
+                        if "b" in heads and heads["b"][0] == "built":
+                            q, nr = q[:-1] + [p for p in heads["b"][1]], nr + 1
+                        subs.append((q, nr, a2, b2))
+                        continue
                     if a != s0:
                         k = own_corner(L, a, -1, lots, lt, streets, st_tree)
                         if k is not None:
@@ -459,24 +608,18 @@ def selftest():
     # MID-SIDE CUT (KN24): a 300 m kerb with one 60 m stretch where a lot comes right up to it was left out whole by the hug rule; the
     # stretch goes and the two good pieces stay ONLY where each cut end can finish: here two side streets start just short of the kerb at
     # the cut ends (a return into each); with no street or kerb there the whole side stays out (no hook mid-street)
-    lots2 = [box(-50, 11, 34, 40), box(42, 6.7, 98, 40), box(106, 11, 250, 40)]   # the side streets run in real gaps between lots
+    lots2 = [box(-50, 11, 30, 40), box(46, 6.7, 94, 40), box(110, 11, 250, 40)]   # side streets at x=38 and 102 in real gaps; a lot up to the kerb between
     lt2 = STRtree(lots2)
     k300 = kerb[:int(300 / 0.4)]
     mouthst = [main, (LineString([(38, 8), (38, 80)]), 6), (LineString([(102, 8), (102, 80)]), 6)]
     piece, sides = judge(k300, mouthst, STRtree([g for g, _ in mouthst]), lots2, lt2)
-    assert [s["why"] for s in sides] == ["hugs lots"] and len(sides[0]["pieces"]) == 2, sides
-    a, b = sides[0]["pieces"]
-    assert piece == [] and a["returns"] == 1 and b["returns"] == 1, (piece, sides)
-    assert 85.0 < a["s1"] < 92.0 and 148.0 < b["s0"] < 155.0, (a["s1"], b["s0"])
-    qa, qb = a["q"], b["q"]
-    assert qa[-1][1] > 6.5 + 2.0 and qb[0][1] > 6.5 + 2.0, (qa[-3:], qb[:3])       # each return turns into its side street, away from the main road
-    assert all(abs(y - 6.5) < 1e-6 for _, y in qa[:-8]) and all(abs(y - 6.5) < 1e-6 for _, y in qb[9:]), "kerb moved"
-    assert max(x for x, _ in qa) < 41.0 and min(x for x, _ in qb) > 99.0, "the hugging stretch is still in"
+    # side streets that stop short of the main road meet no junction node: no corner is built there and the stretch stays out (round 2)
+    assert [s["why"] for s in sides] == ["hugs lots"] and not sides[0].get("pieces"), sides
     st2 = [main]
     tree2 = STRtree([g for g, _ in st2])
     _, sides = judge(k300, st2, tree2, lots2, lt2)
     assert not sides[0].get("pieces"), "a cut end with no street or kerb near got a hook mid-street"
-    other = LineString([(40.5, 7.0), (40.5, 40.0)])
+    other = LineString([(44.5, 7.0), (44.5, 40.0)])
     oth = (STRtree([other, LineString(k300)]), [other, LineString(k300)])
     _, sides = judge(k300, st2, tree2, lots2, lt2, oth, 1)
     assert len(sides[0]["pieces"]) == 1 and sides[0]["pieces"][0]["returns"] == 0, sides    # a cut end touching another kerb is left as it is
@@ -498,7 +641,15 @@ def selftest():
         Lt = LineString(turn)
         assert all(Lt.distance(Point(c)) < 1e-6 for c in q), "corner piece left the published line"
         assert q[-1][1] < 6.5 + (0.3 if mode == "entry" else 4.0) and q[-1][0] > 85.0, (mode, q[-3:])
-    globals()["CORNER_MODE"] = "entry"
+    globals()["CORNER_MODE"] = "build"
+    lots5 = [box(-50, 9.5, 100, 120), box(110, 11, 200, 120)]                # 3 m footpath on the main street; arm on the lot line 5.5 m out
+    st5 = [(LineString([(-50, 0), (105.5, 0)]), 4), (LineString([(105.5, 0), (250, 0)]), 4), (LineString([(105.5, 0.0), (105.5, 120.0)]), 6)]
+    piece, sides = judge(turn, st5, STRtree([g for g, _ in st5]), lots5, STRtree(lots5))
+    pcs = [q for n in sides for q in n.get("pieces", [])]
+    assert len(pcs) == 1 and pcs[0]["returns"] == 1, sides
+    q = pcs[0]["q"]
+    o = 5.5 * 6.5 / 9.5                                                         # arm's lot line 5.5 m out x the kept kerb's share 6.5 / (6.5 + 3)
+    assert abs(q[-1][0] - (105.5 - o)) < 0.3 and abs(q[-1][1] - 10.5) < 0.3, q[-4:]    # run on to the corner, 4 m return onto that kerb
     bend = [st3[0], st3[2]]                                               # one street bending north (no junction): no stop mid-street
     _, sides = judge(turn, bend, STRtree([g for g, _ in bend]), lots3, STRtree(lots3))
     assert not any(n.get("pieces") for n in sides), ("free end at a bend", sides)

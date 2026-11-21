@@ -187,6 +187,30 @@ def main_mid(a):
     print("crops", n, "kept", sum(v["kind"] == "kept" for v in key.values()), "cut", sum(v["kind"] == "cut" for v in key.values()))
 
 
+def draw2(n, Pm, kept, removed):
+    """Round-2 crop: every removed stretch in view red dashed, every kept line magenta, the legend in the banner (kerb lead, packA:
+    the reviewer could not tell the removed stretch from the kept line)."""
+    im, have = crop(*Pm)
+    if have < 0.9:
+        return None
+    d = ImageDraw.Draw(im)
+    x0, y0, kk = Pm[0] - S / 2, Pm[1] - S / 2, PX / S
+    near = lambda Q: Q[:, 0].min() < Pm[0] + 60 and Q[:, 0].max() > Pm[0] - 60 and Q[:, 1].min() < Pm[1] + 60 and Q[:, 1].max() > Pm[1] - 60
+    for Q in removed:
+        if near(Q):
+            L = LineString(Q)
+            for t in np.arange(0.0, L.length, 2.0):
+                a, b = L.interpolate(t), L.interpolate(min(t + 1.0, L.length))
+                d.line([((a.x - x0) * kk, (y0 + S - a.y) * kk), ((b.x - x0) * kk, (y0 + S - b.y) * kk)], fill=(255, 40, 40), width=3)
+    for Q in kept:
+        if near(Q):
+            d.line([((x - x0) * kk, (y0 + S - y) * kk) for x, y in Q], fill=(255, 0, 255), width=3)
+    d.ellipse([PX / 2 - 9, PX / 2 - 9, PX / 2 + 9, PX / 2 + 9], outline=(0, 255, 255), width=2)
+    d.rectangle([0, 0, PX, 24], fill=(0, 0, 0))
+    d.text((6, 6), f"crop {n:02d}   magenta = kerb kept   red dashed = stretch removed", fill=(255, 255, 0))
+    return im
+
+
 def main_corner(a):
     """Scenario 11 pack (21 Nov): like main_mid, but each crop draws only what it is about, so a kept cut end is not hidden under the
     stretch it cut: a kept crop draws the whole output (every restored piece, all tiers); a cut crop draws the output plus the removed stretch.
@@ -237,10 +261,11 @@ def main_corner(a):
         spots.append(("cut", m, p, seg))
     prefetch([sp[1] for sp in spots])
     base = [Q for Q, _ in out_all]
+    removed = [seg for seg, _ in spans]
     key, n = {}, 0
     for o in rng.permutation(len(spots)):
         kind, m, p, seg = spots[int(o)]
-        im = draw(n + 1, kind, kind, m, base + ([seg] if seg is not None else []))
+        im = draw2(n + 1, m, base, removed)
         if im is None:
             continue
         n += 1
