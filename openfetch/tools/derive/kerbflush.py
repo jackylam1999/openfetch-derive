@@ -10,6 +10,7 @@ Tried and refused (21 Nov): calling a lane flush from "no kerb step in the LiDAR
 Hills read the same (parked cars hide their kerbs), and pits down a lane's middle are too sparse to tell.
 
     python3 kerbflush.py --selftest
+    python3 kerbflush.py --merge plain.json flush.json out.json   (kerblot without and with --flush-lanes: the add-on pass)
 """
 import sys
 import numpy as np
@@ -83,6 +84,19 @@ def unmeasured(p, streets, names, pool, street_ok, raw=(), earlier=(), pits=None
     return True
 
 
+def merge(base, flush):
+    """--flush-lanes runs as an ADD-ON pass: every ring of the plain run stays, and a ring of the --flush-lanes run is added only where
+    it overlaps none of them (joining blocks across a flush lane can make a plain ring vanish: 7 of 88 in 28 inner-Sydney squares)."""
+    from shapely.geometry import Polygon
+    from shapely.strtree import STRtree
+    poly = lambda f: Polygon(f["geometry"]["coordinates"]).buffer(0)
+    B = [poly(f) for f in base]
+    T = STRtree(B) if B else None
+    ids = {f["properties"]["id"] for f in base}
+    add = [f for f in flush if f["properties"]["id"] not in ids and not (T is not None and any(B[int(j)].intersection(poly(f)).area > 1e-10 for j in T.query(poly(f))))]
+    return list(base) + add
+
+
 def selftest():
     import kerbpcw as kpw
     from shapely.geometry import box, Point
@@ -106,6 +120,9 @@ def selftest():
     pp = [Point(30, 1.6)]
     assert unmeasured(lane, cl, ["A"], {}, ok, pits=(pp, STRtree(pp)), ground=flat, **args) is False
     assert unmeasured(lane, [LineString([(0, 30), (60, 30)])], ["A"], {}, ok, ground=flat, **args) is False   # no centreline in it
+    sq = lambda i, x0, y0, s=1e-4: {"type": "Feature", "properties": {"id": i}, "geometry": {"type": "LineString", "coordinates": [[x0, y0], [x0 + s, y0], [x0 + s, y0 + s], [x0, y0 + s], [x0, y0]]}}
+    m = merge([sq("a", 0, 0)], [sq("b", 0.00005, 0), sq("c", 0.001, 0), sq("a", 0, 0)])   # b overlaps a: plain ring wins; c is new
+    assert [f["properties"]["id"] for f in m] == ["a", "c"], m
     print("kerbflush selftest pass")
     return 0
 
@@ -113,4 +130,9 @@ def selftest():
 if __name__ == "__main__":
     if sys.argv[1:] == ["--selftest"]:
         sys.exit(selftest())
+    if sys.argv[1:2] == ["--merge"]:
+        import json
+        b_, f_, out = sys.argv[2:5]
+        F = merge(json.load(open(b_))["features"], json.load(open(f_))["features"])
+        json.dump({"type": "FeatureCollection", "features": F}, open(out, "w")); print(len(F)); sys.exit(0)
     print(__doc__)

@@ -23,6 +23,9 @@ Here the block is built from the land itself:
         [--flush-lanes lanes.geojson (narrow streets nothing finds a kerb in are handled as lanes, kerbflush.py; their centrelines are
             written here, lon/lat, for kerbmouth_run.py --lanes)]
         [--pits kerb_inlets.json (council kerb-inlet pits, lon/lat points: footpath width where nothing else measures it)]
+        [--one-inlet (with --pits: one inlet is enough where the street's own LiDAR/drawn measures agree within 1 m)]
+        Test switches (environment, off by default; S16 LAB): H7_COUNT / H7_CUT (cut an unmeasured side when both cuts land on a
+        real end), H6_SPAN, H8_TOL. Not passed by blind review on 21 Nov 2026.
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -47,6 +50,7 @@ import kerbpit as kpit   # council kerb-inlet pits: footpath width where nothing
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
 LANE_FH = 7
+ONE_INLET = False   # --one-inlet (S16): a single council kerb inlet measures a side when the street's own measures agree within 1 m
 LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0240)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
@@ -383,7 +387,7 @@ def judge_block(comp, ctx):
             v, how = street_ok(tab["drawn"]), "kerbs same street"
         elif (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP)) is not None:
             v, how = kv_, "council kerb inlets"
-        elif os.environ.get("HA_ONE") and (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP, pit_min=1)) is not None \
+        elif ONE_INLET and (kv_ := kpit.width(comp, P[m], N[m], W[m], ctx.get("pits"), D_MIN, D_MAX, STEP, pit_min=1)) is not None \
                 and len(oth := (tab.get("lidar") or []) + (tab.get("drawn") or [])) >= 3 and abs(float(np.median(oth)) - kv_) <= kpit.PIT_SPREAD:
             v, how = kv_, "one kerb inlet, street agrees"
         elif n * STEP < 12:
@@ -546,8 +550,9 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
-    global LANE_CUT
+    global LANE_CUT, ONE_INLET
     LANE_CUT = "--lane-cut" in a
+    ONE_INLET = "--one-inlet" in a
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
     PITS = kpit.load(a[a.index("--pits") + 1], to) if "--pits" in a else None
     keep, why, cnt, done, sidel, ids = [], [], {}, set(), [], set()
