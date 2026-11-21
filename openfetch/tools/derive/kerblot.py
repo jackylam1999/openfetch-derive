@@ -20,6 +20,8 @@ Here the block is built from the land itself:
         [--calib calib.json (sides with a LiDAR kerb trace: trace width, ground step, every profile's kerb; tunes kerbpcw.py)]
         [--lane-cut (a ring across lane mouths is kept for kerbmouth_run.py to cut at each mouth, KN21; without it the ring is refused whole)]
         [--road igrid_dir (kerbroad.py intensity grids: footpath width to the asphalt edge, and every ring side must sit on it)]
+        [--wide (with --ground and --road: a side with no width up to D_MAX is measured 7-12 m out when the asphalt edge and a ground
+         kerb step agree, kerbwide.py; wide grass verges, Kensington and Randwick, scenario 13)]
 buildings_dir holds bldall.py files <x>_<y>.json (lon/lat). Writes closed rings (lon/lat) with id, cell, d (footpath widths).
 """
 import glob, gzip, json, os, sys
@@ -38,10 +40,12 @@ import kerbcad as kc
 import kerblane
 import kerbside
 import kerbroad as krd
+import kerbwide as kw
 
 CLOSE = 0.4          # m: lot gaps under 0.8 m are drafting slivers, not reserves
 LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkway (rear lanes 3-6.1 m, streets 9 m and up)
 LANE_FH = 7
+WIDE_VERGE = "--wide" in sys.argv   # kerbwide.py: wide verges, kerb 7-12 m out (21 Nov 2026)
 LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0240)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
@@ -334,6 +338,9 @@ def judge_block(comp, ctx):
             v, how = rv, "lidar road edge"   # where the asphalt starts in the LiDAR ground intensity (kerbroad.py, KN11)
         elif ctx["ground"] is not None and (pv := kpw.side_width(ctx["ground"], P[m], N[m], float(np.nanmedian(W[m])) / 2)) is not None:
             v, how = pv, kpw.LAST
+        elif WIDE_VERGE and (wv := kw.side_width(ctx["ground"], ctx.get("road"), P[m], N[m], float(np.nanmedian(W[m])) / 2,
+                                           c=float(np.nanmedian(W[m])) / 2)) is not None:
+            v, how = wv, kw.LAST   # asphalt edge and kerb step agree 7-12 m out (kerbwide.py, scenario 13)
         elif np.isfinite(d_ownd[m]).sum() >= need:
             v, how = float(np.nanmedian(d_ownd[m])), "earlier kerb this side"
         elif street_ok(tab.get("lidar")):
