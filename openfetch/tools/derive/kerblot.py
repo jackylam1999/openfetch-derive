@@ -55,6 +55,8 @@ LANE_W = 7.5         # m: a reserve strip narrower than this is a lane or walkwa
 LANE_FH = 7
 WIDE_VERGE = "--wide" in sys.argv   # kerbwide.py: wide verges, kerb 7-12 m out (21 Nov 2026)
 ONE_INLET = False   # --one-inlet (S16): a single council kerb inlet measures a side when the street's own measures agree within 1 m
+D_WIDE_REACH = 12.0   # m: the widest side kerblot draws (kerbwide W_MAX); corner_cap looks this far along the outline
+CORNER_CAP = False  # --corner-cap (scenario 13 v13): no sample's width passes a neighbour's width plus their spacing (corner_cap)
 LANE_CUT = False    # --lane-cut: do not refuse a ring across lane mouths, kerbmouth_run.py cuts it (KN21, P-0240)
 NARROW_ST = 6        # functionhierarchy given to a lane-class centreline whose name is a street, road, avenue ...
 LANE_TYPES = (None, "LANE")
@@ -427,6 +429,8 @@ def judge_block(comp, ctx):
     if fill.all():
         return "no footpath measure", None
     D[fill] = np.interp(np.flatnonzero(fill), np.flatnonzero(~fill), D[~fill], period=len(D))
+    if CORNER_CAP:
+        D = corner_cap(P, D)
     segs = [shapely.convex_hull(Point(P[i]).buffer(D[i], quad_segs=8).union(Point(P[(i + 1) % len(P)]).buffer(D[(i + 1) % len(P)], quad_segs=8)))
             for i in range(len(P))]   # tapered, not the larger width: a corner where two widths meet steps out and back (a wobble)
     poly = smooth(unary_union(segs + [comp]))
@@ -487,6 +491,19 @@ def judge_block(comp, ctx):
     if cut:
         used["_cut"] = [[[round(v, 2) for v in c] for c in g.exterior.coords] for g in cut]
     return None, (ring, used, float(seen.mean()), inside)
+
+
+def corner_cap(P, D, reach=None):
+    """Widths with D[i] <= D[j] + |P[i] - P[j]| for every sample j within reach along the outline (21 Nov 2026, scenario 13 v13: a 9.4 m
+    wide-verge side ran to the lot corner and its 9.4 m circle put the corner 6 m into the cross street, whose kerb is 3.5 m out).
+    A wider side now tapers into a narrower one at a corner instead of bulging past it."""
+    n = len(P)
+    k = int(np.ceil((reach or 2 * D_WIDE_REACH) / max(STEP, 0.1)))
+    out = D.copy()
+    for s in range(1, min(k, n // 2) + 1):
+        for j in (np.arange(n) + s) % n, (np.arange(n) - s) % n:
+            out = np.minimum(out, D[j] + np.hypot(*(P - P[j]).T))
+    return out
 
 
 def block_id(x, y, comp, ids):
@@ -557,8 +574,9 @@ def main(a):
     RW = [LineString(t) for t in ka.read_kerbs(a[2]) if len(t) > 1]
     DR = lines_ll(a[3], to)
     MS = lines_ll(a[a.index("--measure") + 1], to) if "--measure" in a else DR
-    global LANE_CUT, ONE_INLET
+    global LANE_CUT, ONE_INLET, CORNER_CAP
     LANE_CUT = "--lane-cut" in a
+    CORNER_CAP = "--corner-cap" in a
     ONE_INLET = "--one-inlet" in a
     ROAD = krd.Road(a[a.index("--road") + 1], [g for g, fh, _ in ground if fh != LANE_FH]) if "--road" in a else None
     PITS = kpit.load(a[a.index("--pits") + 1], to) if "--pits" in a else None
