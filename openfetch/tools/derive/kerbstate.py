@@ -36,10 +36,13 @@ VERGE_DIFF, SMOOTH, RAMP, CORNER_TURN = 2.0, 6.0, 14.0, 45.0
 # within SMOOTH m of a pinned council end the smoothing window shrinks to nothing, so a side shorter than 4*SMOOTH has no smoothed
 # middle and copies the outline's corner notches (pack1 s12-15: an 11 m piece hooking from a slip-lane island kerb to the main kerb)
 MIN_LEN = 4 * SMOOTH
-# LiDAR kerb step (--ground, kerbpcw 0.5 m ground grids): coming from the road, the first GSTEP rise over 1 m with flat ground on the
-# road side; a side whose windows mostly find it more than GOFF m from the line is the footpath's back edge, not the kerb (pack1
-# 04 25 27 31: the verge measured at the corners is 3.5-9 m short mid-block; 1.4 km test: real lines 45-100 % within 3 m, moved 5 m 0-22 %)
-GSTEP, GOFF, GSHARE, GWIN = (0.06, 0.30), 3.0, 0.35, 10.0
+# LiDAR kerb rise (--ground, kerbpcw 0.5 m ground grids; kerb card S12 H9, after the canopy card's H5): walking out from the street
+# centreline, the first rise of GSTEP m over about 1.5 m is the kerb (a rise that falls back within 1.5-2.5 m is an island or median and is
+# skipped). Where fewer than GSHARE of the judged samples in a GWIN m window lie within GOFF m of the line, that stretch is cut (not the
+# side). Intensity is NOT used: red bus lanes and concrete slabs read as "not road" (pack1 03 17 40). Labels: pack-2 moved-4.5 m controls
+# 5/5 cut, OK lines 0/32; pack-1 OK 1/33. GSTEP from 10 cm: 6-9 cm rises inside the carriageway (resurfacing
+# joints, vehicle edges) stopped the walk on pack-1 OK 03 and 11. Uncovered or unjudged stretches are kept as drawn.
+GSTEP, GOFF, GSHARE, GWIN, GMERGE = (0.10, 0.35), 3.0, 0.5, 40.0, 10.0
 HIDE_MIN, HIDE_FROM, HIDE_TO = 60.0, 0.3, 0.7
 
 
@@ -78,6 +81,8 @@ class World:
         self.road_out = -1.0 if pavement else 1.0
         st = [(p, g) for p, g in roads if int(p.get("roadontype", 1)) == 1]
         self.RL = [g for p, g in st]; self.RT = STRtree(self.RL)
+        # the kerb-rise walk starts from a street (functionhierarchy 1-7), never a track, path or cycleway (8-11 sit on footpaths)
+        self.WL = [p2 for p, g in st if int(p.get("functionhierarchy", 9)) <= 7 for p2 in parts(g)]; self.WT = STRtree(self.WL) if self.WL else None
         lo = 1 if all_streets else 2
         hi = 6 if all_streets else 4
         self.main = [g for p, g in st if lo <= int(p.get("functionhierarchy", 9)) <= hi]; self.MT = STRtree(self.main) if self.main else None
@@ -188,37 +193,57 @@ class World:
                 return "crosses a council kerb"
         if not G.is_simple:
             return "loops"
-        if self.ground is not None and self.kerb_step_far(G):
-            return "LiDAR kerb step over 3 m from the line"
         return line
 
-    def kerb_step_far(self, G):
-        """True when the LiDAR ground finds the kerb step in most GWIN m windows, and mostly more than GOFF m from the line"""
-        O = np.arange(-8, 10.01, 0.5); prof = []
-        for sd in np.arange(2, G.length - 2, 2.0):
-            p = G.interpolate(sd); a = G.interpolate(sd - 1); b = G.interpolate(sd + 1)
-            tv = np.array([b.x - a.x, b.y - a.y]); tv /= max(np.hypot(*tv), 1e-9); n = np.array([-tv[1], tv[0]])
-            near = [self.main[i] for i in self.MT.query(p.buffer(MAIN_D * 2))]
-            if not near:
-                continue
-            q = shapely.ops.nearest_points(min(near, key=lambda g: g.distance(p)), p)[0]
-            if n @ [q.x - p.x, q.y - p.y] < 0:
-                n = -n
-            prof.append(self.ground.height(p.x + n[0] * O, p.y + n[1] * O))
-        k = int(GWIN / 2); offs = []
-        for w in range(0, len(prof) - k + 1, k):
-            Z = np.stack(prof[w:w + k])
-            if np.isnan(Z).all(0).mean() > 0.3:
-                continue
-            Z = np.nanmedian(Z, axis=0); f = np.nan
-            for i in range(len(O) - 4, 1, -1):
-                if not np.isnan(Z[i - 2:i + 3]).any() and GSTEP[0] <= Z[i - 2] - Z[i] <= GSTEP[1] and abs(Z[i + 2] - Z[i]) < 0.05:
-                    f = O[i - 1]; break
-            offs.append(f)
-        o = np.array(offs); fin = o[~np.isnan(o)]
-        if len(o) < 2 or len(fin) < 0.5 * len(o):
-            return False
-        return (np.abs(fin) <= GOFF).mean() < GSHARE
+    def rise_offsets(self, G, step=2.0):
+        """(along, how far the line lies behind the first kerb rise walking out from the nearest street centreline) every step m; nan
+        where the walk is not square to the line (another street), the ground is not covered, or no rise is found"""
+        DT = 0.25; out = []
+        for s in np.arange(1.0, G.length - 0.99, step):
+            Q = np.asarray(G.interpolate(s).coords[0][:2]); near = self.WT.query(Point(Q).buffer(25)) if self.WT is not None else []
+            if not len(near):
+                out.append((s, np.nan)); continue
+            k = min(near, key=lambda i: self.WL[i].distance(Point(Q))); C = np.asarray(self.WL[k].interpolate(self.WL[k].project(Point(Q))).coords[0][:2])
+            v = Q - C; dq = np.hypot(*v); a = np.asarray(G.interpolate(max(s - 1, 0)).coords[0][:2]); b = np.asarray(G.interpolate(min(s + 1, G.length)).coords[0][:2])
+            tv = (b - a) / max(np.hypot(*(b - a)), 1e-9)
+            if dq < 1.5 or abs((v / dq) @ tv) > 0.5:
+                out.append((s, np.nan)); continue
+            u = v / dq; tt = np.arange(0, dq + 6, DT); H = self.ground.height(C[0] + u[0] * tt, C[1] + u[1] * tt); e = np.nan
+            if np.isfinite(H).mean() < 0.3:
+                out.append((s, np.nan)); continue
+            for i in range(int(2.0 / DT), len(H) - 10):
+                lo, hi = H[i - 4:i], H[i + 2:i + 6]
+                if np.isfinite(lo).sum() >= 2 and np.isfinite(hi).sum() >= 2 and GSTEP[0] <= np.nanmedian(hi) - np.nanmedian(lo) <= GSTEP[1]:
+                    back = H[i + 6:i + 10]
+                    if np.isfinite(back).sum() >= 2 and np.nanmedian(back) - np.nanmedian(hi) <= -0.06:
+                        continue
+                    e = tt[i] + 0.25; break
+            out.append((s, dq - e))
+        return np.array(out).reshape(-1, 2)
+
+    def cut(self, line):
+        """the line's pieces after cutting every stretch the LiDAR kerb rise puts more than GOFF m off (pieces under MIN_LEN dropped)"""
+        G = LineString(line); o = self.rise_offsets(G)
+        if not len(o):
+            return [line], 0.0
+        s, v = o[:, 0], o[:, 1]; bad = np.zeros(len(s), bool)
+        for a in np.arange(0, max(G.length - GWIN, 0) + 0.1, 2.0):
+            m = (s >= a) & (s < a + GWIN); x = v[m][np.isfinite(v[m])]
+            if len(x) >= max(5, m.sum() / 2) and (np.abs(x) <= GOFF).mean() < GSHARE:
+                bad |= m & np.isfinite(v) & (np.abs(np.nan_to_num(v)) > GOFF)
+        if not bad.any():
+            return [line], 0.0
+        idx = np.where(bad)[0]; runs = [[s[idx[0]], s[idx[0]]]]
+        for i in idx[1:]:
+            if s[i] - runs[-1][1] <= GMERGE:
+                runs[-1][1] = s[i]
+            else:
+                runs.append([s[i], s[i]])
+        keep, at = [], 0.0
+        for a, b in runs:
+            keep.append((at, max(a - 1.0, at))); at = min(b + 1.0, G.length)
+        keep.append((at, G.length)); cut_len = G.length - sum(y - x for x, y in keep)
+        return [[tuple(c[:2]) for c in shapely.ops.substring(G, x, y).coords] for x, y in keep if y - x >= MIN_LEN], cut_len
 
     def sides(self):
         why = collections.Counter(); out = []
@@ -231,7 +256,12 @@ class World:
                 if isinstance(r, str):
                     why[r] += 1
                 else:
-                    why["drawn"] += 1; out.append((r, A[k][1], A[(k + 1) % len(A)][1]))
+                    why["drawn"] += 1; pieces = [r]
+                    if self.ground is not None:
+                        pieces, cl = self.cut(r)
+                        if cl > 0:
+                            why["sides cut where the LiDAR kerb rise is over 3 m off"] += 1; why["m cut"] += round(cl)
+                    out += [(p, A[k][1], A[(k + 1) % len(A)][1]) for p in pieces]
         return out, why
 
 
@@ -322,9 +352,14 @@ def selftest():
         g = kerbpcw.Ground("/nonexistent"); n = int(1000 / kerbpcw.RES); yy = (np.arange(n) + 0.5) * kerbpcw.RES
         z = np.where(yy >= ky, 0.15, 0.0).astype(np.float32)[:, None].repeat(n, 1)
         g.mem.update({(-1, 0): z, (0, 0): z, (-1, -1): np.zeros((n, n), np.float32), (0, -1): np.zeros((n, n), np.float32)}); return g
-    assert len(World([k1, k2], foot, roads, ground=grid(10)).sides()[0]) == 1, "LiDAR step at the line"
-    assert not World([k1, k2], foot, roads, ground=grid(4)).sides()[0], "LiDAR step 6 m into the road"
-    assert len(World([k1, k2], foot, roads, ground=kerbpcw.Ground("/nonexistent")).sides()[0]) == 1, "no LiDAR cover"
+    g10 = World([k1, k2], foot, roads, ground=grid(10)).sides()[0]
+    assert len(g10) == 1 and LineString(g10[0][0]).length > 70, "LiDAR kerb rise at the line: kept whole"
+    assert not World([k1, k2], foot, roads, ground=grid(4)).sides()[0], "LiDAR kerb rise 6 m into the road: cut away"
+    assert len(World([k1, k2], foot, roads, ground=kerbpcw.Ground("/nonexistent")).sides()[0]) == 1, "no LiDAR cover: kept"
+    half = grid(10); n = int(1000 / kerbpcw.RES); yy = (np.arange(n) + 0.5) * kerbpcw.RES
+    zw = np.where(yy >= 4, 0.15, 0.0).astype(np.float32)[:, None].repeat(n, 1); zw[:, int(50 / kerbpcw.RES):] = half.mem[(0, 0)][:, int(50 / kerbpcw.RES):]
+    half.mem[(0, 0)] = zw; gh = World([k1, k2], foot, roads, ground=half).sides()[0]
+    assert len(gh) == 1 and min(x for x, y in gh[0][0]) > 40, ("west half 6 m off: cut, east half kept", gh)
     print("kerbstate selftest pass")
     return 0
 
