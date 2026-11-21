@@ -5,7 +5,11 @@ beside. Two checks, each cutting only the flagged stretch (cut, don't drop; piec
                 junction (the tip stretch of a centreline can itself run into bush). A stretch of PAVE_RUN m or more where under
                 PAVE_MATCH of the band matches, with canopy (green or dark) under PAVE_CAN, is not beside paving: cut. Under canopy
                 nothing is cut (the photo cannot see the road there).
-  offset  (H4)  LiDAR ground intensity (KN11 igrids, 0.5 m, 255 = no ground): walk from the stem out through each sample; road =
+  rise   (H12a', CDS_OFF=rise; failed round 13) walking out from the stem, the first LiDAR kerb rise (RISE, islands skipped, holes neither road
+                nor edge, as kerbstate S12 H9); a stretch of OFF_RUN m or more lying over OFF_MAX m from it is cut. No rise, no cut.
+  ends   (H12b, CDS_ENDS=1; failed gate 3 round 13) a flagged stretch is cut only where it reaches an open end of the line, never mid-line or across a closure (KN24:
+                a cut with no real end reads as a hook; pack 4 r04/r10).
+  offset  (H4, default CDS_OFF=intensity) LiDAR ground intensity (KN11 igrids, 0.5 m, 255 = no ground): walk from the stem out through each sample; road =
                 intensity within ROAD_MAD MADs of the stem's own intensity; the edge is the first 1 m that is not road. A stretch of
                 OFF_RUN m or more lying more than OFF_MAX m from that edge is cut. Only where igrids exist.
 
@@ -23,6 +27,9 @@ STEP = 2.0               # m between checked samples
 PAVE_K, PAVE_MAD = 3.0, 10.0
 PAVE_MATCH, PAVE_CAN, PAVE_RUN = 0.3, 0.3, 12.0
 ROAD_MAD, OFF_MAX, OFF_RUN = 2.5, 3.0, 6.0
+OFF_MODE = os.environ.get("CDS_OFF", "intensity")      # rise: LiDAR kerb rise walk (H12a'); intensity: the round-11 walk (holes = road)
+RISE = tuple(float(v) for v in os.environ.get("CDS_RISE", "0.10,0.35").split(","))      # m: the kerb rise walking out (kerbstate S12 H9: 6-9 cm joints inside the carriageway stopped the walk)
+ENDS_ONLY = os.environ.get("CDS_ENDS", "0") == "1"  # H12b: trim inward from a line's open ends only, never mid-line or a closure
 
 
 class Photo:
@@ -151,14 +158,36 @@ def cell_cal(roads, inten, fh_max=7):
     return at
 
 
+def rise_flags(L, stem, tip, ground):
+    """True at samples of L lying more than OFF_MAX m from the first LiDAR kerb rise (RISE within about 1.5 m, from 2 m out; a rise
+    that falls back 6 cm within 1.5-2.5 m is an island and skipped) walking out from the stem (H12a': holes are neither road nor
+    edge; no rise within the walk, no flag)."""
+    out = []
+    for t, q, n in samples(L):
+        n, dq, c = toward(stem, q, n)
+        if dq < 1.5:
+            out.append(False); continue
+        u = (q - c) / dq; tt = np.arange(0, dq + 6, 0.25); H = ground.height(c[0] + u[0] * tt, c[1] + u[1] * tt); e = None
+        for i in range(8, len(H) - 10):
+            lo, hi = H[i - 4:i], H[i + 2:i + 6]
+            if np.isfinite(lo).sum() >= 2 and np.isfinite(hi).sum() >= 2 and RISE[0] <= np.nanmedian(hi) - np.nanmedian(lo) <= RISE[1]:
+                back = H[i + 6:i + 10]
+                if np.isfinite(back).sum() >= 2 and np.nanmedian(back) - np.nanmedian(hi) <= -0.06:
+                    continue
+                e = tt[i] + 0.25; break
+        out.append(bool(e is not None and abs(dq - e) > OFF_MAX))
+    return np.array(out)
+
+
 def cut(L, flags, run, min_len):
-    """L without its flagged stretches of `run` m or more; pieces under min_len m dropped."""
+    """L without its flagged stretches of `run` m or more (ENDS_ONLY: only those reaching an end of L); pieces under min_len m
+    dropped."""
     if flags is None or not flags.any():
         return [L]
     S = samples(L); bad = np.zeros(len(S), bool); k = 0
     for v, g in itertools.groupby(flags):
         g = len(list(g))
-        if v and g * STEP >= run:
+        if v and g * STEP >= run and (not ENDS_ONLY or k == 0 or k + g == len(flags)):
             bad[k:k + g] = True
         k += g
     if not bad.any():
@@ -175,13 +204,14 @@ def cut(L, flags, run, min_len):
     return out
 
 
-def apply(pieces, stem, tip, photo, inten, min_len, cal=None):
+def apply(pieces, stem, tip, photo, inten, min_len, cal=None, ground=None):
     """Both cuts in turn on every piece (as coordinate lists, kerbcds.one's output); returns pieces and cut metres per check."""
     got, cm = [], {"paving": 0.0, "offset": 0.0}
     for q in pieces:
         Ls = [LineString(q)]
         for name, fn, run in (("paving", lambda L: paving_flags(L, stem, tip, photo) if photo else None, PAVE_RUN),
-                              ("offset", lambda L: offset_flags(L, stem, tip, inten, cal) if inten else None, OFF_RUN)):
+                              ("offset", lambda L: (rise_flags(L, stem, tip, ground) if ground is not None else None) if OFF_MODE == "rise"
+                               else (offset_flags(L, stem, tip, inten, cal) if inten else None), OFF_RUN)):
             nxt = []
             for L in Ls:
                 ps = cut(L, fn(L), run, min_len); cm[name] += L.length - sum(p.length for p in ps); nxt += ps
@@ -229,6 +259,18 @@ def selftest():
     assert not offset_flags(near, stem, tip, inten).any()
     got, cm = apply([list(L.coords)], stem, tip, None, None, 20.0)
     assert got == [list(L.coords)] and cm == {"paving": 0.0, "offset": 0.0}
+    class Gr:                                                               # 12 cm kerb rise 3 m either side of the stem
+        def height(self, X, Y):
+            return np.where(np.abs(np.asarray(X)) >= 3.0, 0.12, 0.0) + 0 * np.asarray(Y)
+    assert rise_flags(L, stem, tip, Gr()).all() and not rise_flags(near, stem, tip, Gr()).any()
+    class Flat:                                                             # no rise anywhere (holes, flat ground): never flagged
+        def height(self, X, Y):
+            return np.full(np.shape(X), np.nan)
+    assert not rise_flags(L, stem, tip, Flat()).any()
+    mid = np.zeros(35, bool); mid[10:20] = True                             # a flagged stretch mid-line stays (H12b)
+    assert cut(L, mid, 6.0, 20.0) == [L] if ENDS_ONLY else True
+    end = np.zeros(35, bool); end[25:] = True
+    assert abs(cut(L, end, 6.0, 20.0)[0].length - 50) < 2.5
     print("kerbcdscut selftest pass")
     return 0
 

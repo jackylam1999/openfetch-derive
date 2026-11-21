@@ -14,7 +14,7 @@ inlet gate and won 2 blocks, because the other gates still refused them. Here th
      CL_CLEAR m from every centreline except the stem's last TIP m (a centreline drawn to the bulb's middle or edge).
 
     python3 kerbcds.py roads_dir lots_dir grids_dir kerbs.geojson[.gz][,council.json@4283,...] out.geojson [--why why.json] [--cells cells.txt]
-        [--photo photo_cache_dir] [--igrids intensity_dir]   (kerbcdscut.py: cut stretches not beside paving / off the road edge)
+        [--photo photo_cache_dir] [--igrids intensity_dir] [--rise]   (kerbcdscut.py: cut stretches not beside paving / off the kerb rise)
     python3 kerbcds.py --selftest
 roads_dir / lots_dir: <x>_<y>.json in MGA56 (EPSG 7856) from the multiCRS layers (P-0244: the plain layers answer GDA94 numbers);
 kerbs: every published and council kerb in lon/lat (council files from GDA94 portals with @4283); out in lon/lat.
@@ -536,8 +536,8 @@ def main(a):
         if cells is not None and (int(x // 1000), int(y // 1000)) not in cells:
             continue
         pieces, w, det = one(st, ctx)
-        if pieces and (photo or inten):
-            pieces, det["cut_m"] = kcut.apply(pieces, st["stem"], st["tip"], photo, inten, MIN_LEN, cal)
+        if pieces and (photo or inten or "--rise" in a):
+            pieces, det["cut_m"] = kcut.apply(pieces, st["stem"], st["tip"], photo, inten, MIN_LEN, cal, ctx["ground"])
             w = w if pieces else "cut: not beside paving or off the road edge"
         why[w or "drawn"] += 1
         whys.append({"tip": [round(x, 1), round(y, 1)], "name": st["name"], "why": w or "drawn", **det})
