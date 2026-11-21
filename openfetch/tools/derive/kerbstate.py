@@ -15,6 +15,7 @@ from the two cut ends with the same rules, and compared with the hidden piece (P
     python3 kerbstate.py kerbs.geojson surface.geojson roads.geojson out.geojson [--pavement] [--all-streets] [--why why.json]
         [--tram railways.geojson (NSW Railway layer; classsubtype 2 light rail: a side with light rail alongside is left blank, the
         street was rebuilt after the council surveyed it, e.g. Church St Parramatta for the 2024 light rail)]
+        [--ground dir (kerbpcw 0.5 m LiDAR ground grids <x km>_<y km>.npz: a side whose kerb step lies mostly over 3 m from it is refused)]
     python3 kerbstate.py --known kerbs.geojson surface.geojson roads.geojson report.json [--pavement]
     python3 kerbstate.py --selftest
 Inputs in EPSG:7856 metres (GDA2020 MGA 56); a council served in GDA94 is moved to GDA2020 before this (kerbstate_fetch.py).
@@ -28,10 +29,17 @@ from shapely.geometry import LineString, Point, Polygon, shape
 from shapely.strtree import STRtree
 
 ANCHOR_R, END_TOUCH, V_MAX, CLOSE = 30.0, 0.5, 4.0, 4.0
-MIN_LEN, MAX_LEN, END_ZONE, TURN_MAX, STEP_TURN, KINK = 8.0, 400.0, 12.0, 45.0, 35.0, 100.0
+MAX_LEN, END_ZONE, TURN_MAX, STEP_TURN, KINK = 400.0, 12.0, 45.0, 35.0, 100.0
 TURN_ABS, FACE_SHARE, TRAM_D, WANDER, WANDER_RUN = 60.0, 0.8, 15.0, 2.0, 10.0
 MAIN_D, MAIN_SHARE, DUP_D, DUP_RUN, CROSS_ZONE = 25.0, 0.7, 1.0, 3.0, 3.0
 VERGE_DIFF, SMOOTH, RAMP, CORNER_TURN = 2.0, 6.0, 14.0, 45.0
+# within SMOOTH m of a pinned council end the smoothing window shrinks to nothing, so a side shorter than 4*SMOOTH has no smoothed
+# middle and copies the outline's corner notches (pack1 s12-15: an 11 m piece hooking from a slip-lane island kerb to the main kerb)
+MIN_LEN = 4 * SMOOTH
+# LiDAR kerb step (--ground, kerbpcw 0.5 m ground grids): coming from the road, the first GSTEP rise over 1 m with flat ground on the
+# road side; a side whose windows mostly find it more than GOFF m from the line is the footpath's back edge, not the kerb (pack1
+# 04 25 27 31: the verge measured at the corners is 3.5-9 m short mid-block; 1.4 km test: real lines 45-100 % within 3 m, moved 5 m 0-22 %)
+GSTEP, GOFF, GSHARE, GWIN = (0.06, 0.30), 3.0, 0.35, 10.0
 HIDE_MIN, HIDE_FROM, HIDE_TO = 60.0, 0.3, 0.7
 
 
@@ -59,7 +67,8 @@ def turning(pts):
 
 
 class World:
-    def __init__(self, kerbs, surface, roads, pavement=False, all_streets=False, tram=()):
+    def __init__(self, kerbs, surface, roads, pavement=False, all_streets=False, tram=(), ground=None):
+        self.ground = ground
         self.tram = list(tram); self.TT = STRtree(self.tram) if self.tram else None
         self.KL = [p for g in kerbs for p in parts(g) if p.length > 0.5]; self.KT = STRtree(self.KL)
         U = shapely.unary_union([g.buffer(0) for g in surface])
@@ -179,7 +188,37 @@ class World:
                 return "crosses a council kerb"
         if not G.is_simple:
             return "loops"
+        if self.ground is not None and self.kerb_step_far(G):
+            return "LiDAR kerb step over 3 m from the line"
         return line
+
+    def kerb_step_far(self, G):
+        """True when the LiDAR ground finds the kerb step in most GWIN m windows, and mostly more than GOFF m from the line"""
+        O = np.arange(-8, 10.01, 0.5); prof = []
+        for sd in np.arange(2, G.length - 2, 2.0):
+            p = G.interpolate(sd); a = G.interpolate(sd - 1); b = G.interpolate(sd + 1)
+            tv = np.array([b.x - a.x, b.y - a.y]); tv /= max(np.hypot(*tv), 1e-9); n = np.array([-tv[1], tv[0]])
+            near = [self.main[i] for i in self.MT.query(p.buffer(MAIN_D * 2))]
+            if not near:
+                continue
+            q = shapely.ops.nearest_points(min(near, key=lambda g: g.distance(p)), p)[0]
+            if n @ [q.x - p.x, q.y - p.y] < 0:
+                n = -n
+            prof.append(self.ground.height(p.x + n[0] * O, p.y + n[1] * O))
+        k = int(GWIN / 2); offs = []
+        for w in range(0, len(prof) - k + 1, k):
+            Z = np.stack(prof[w:w + k])
+            if np.isnan(Z).all(0).mean() > 0.3:
+                continue
+            Z = np.nanmedian(Z, axis=0); f = np.nan
+            for i in range(len(O) - 4, 1, -1):
+                if not np.isnan(Z[i - 2:i + 3]).any() and GSTEP[0] <= Z[i - 2] - Z[i] <= GSTEP[1] and abs(Z[i + 2] - Z[i]) < 0.05:
+                    f = O[i - 1]; break
+            offs.append(f)
+        o = np.array(offs); fin = o[~np.isnan(o)]
+        if len(o) < 2 or len(fin) < 0.5 * len(o):
+            return False
+        return (np.abs(fin) <= GOFF).mean() < GSHARE
 
     def sides(self):
         why = collections.Counter(); out = []
@@ -256,7 +295,7 @@ def selftest():
     got2, why2 = World([k1, k2], foot, roads + [lane]).sides()
     assert not got2 and why2["crosses a street"] >= 1, why2
     # a council kerb already along the middle of the side: only the two gaps either side of it are drawn, never over it
-    mk = LineString([(30, 10), (70, 10)]); got3, why3 = World([k1, k2, mk], foot, roads).sides()
+    mk = LineString([(42, 10), (58, 10)]); got3, why3 = World([k1, k2, mk], foot, roads).sides()
     assert len(got3) == 2 and all(mk.buffer(0.5).intersection(LineString(g[0])).length < 0.6 for g in got3), why3
     # local street only (no main road): nothing unless --all-streets
     loc = [({"functionhierarchy": 6, "roadontype": 1}, roads[0][1])] + roads[1:]
@@ -274,6 +313,18 @@ def selftest():
     assert not World([k1, k2], foot6, roads).sides()[0], "wander"
     tram = LineString([(0, 6), (100, 6)])
     assert not World([k1, k2], foot, roads, tram=[tram]).sides()[0], "light rail alongside"
+    # a corner gap shorter than MIN_LEN: refused, never a hook
+    k3 = LineString([(5, 60), (5, 15), (6.5, 11.5), (10, 10), (30, 10)]); k4 = LineString([(42, 10), (60, 10), (88, 10)])
+    assert not [g for g in World([k3, k4], foot, roads).sides()[0] if LineString(g[0]).length < MIN_LEN], "short side"
+    # LiDAR ground: kerb step at the line keeps the side, a kerb step 6 m into the road refuses it, no ground cover changes nothing
+    import kerbpcw
+    def grid(ky):
+        g = kerbpcw.Ground("/nonexistent"); n = int(1000 / kerbpcw.RES); yy = (np.arange(n) + 0.5) * kerbpcw.RES
+        z = np.where(yy >= ky, 0.15, 0.0).astype(np.float32)[:, None].repeat(n, 1)
+        g.mem.update({(-1, 0): z, (0, 0): z, (-1, -1): np.zeros((n, n), np.float32), (0, -1): np.zeros((n, n), np.float32)}); return g
+    assert len(World([k1, k2], foot, roads, ground=grid(10)).sides()[0]) == 1, "LiDAR step at the line"
+    assert not World([k1, k2], foot, roads, ground=grid(4)).sides()[0], "LiDAR step 6 m into the road"
+    assert len(World([k1, k2], foot, roads, ground=kerbpcw.Ground("/nonexistent")).sides()[0]) == 1, "no LiDAR cover"
     print("kerbstate selftest pass")
     return 0
 
@@ -282,13 +333,17 @@ def main(a):
     if a == ["--selftest"]:
         return selftest()
     pav = "--pavement" in a; alls = "--all-streets" in a
-    pos = [x for i, x in enumerate(a) if not x.startswith("--") and not (i and a[i - 1] in ("--why", "--tram"))]
+    pos = [x for i, x in enumerate(a) if not x.startswith("--") and not (i and a[i - 1] in ("--why", "--tram", "--ground"))]
     rd = lambda fn: [shape(f["geometry"]) for f in read(fn)]
     roads = [(f["properties"], shape(f["geometry"])) for f in read(pos[2])]
     if a[0] == "--known":
         rep = known(rd(pos[0]), rd(pos[1]), roads, pav); json.dump(rep, open(pos[3], "w"), indent=1); print(json.dumps(rep)); return 0
     tram = [shape(f["geometry"]) for f in read(a[a.index("--tram") + 1]) if int(f["properties"].get("classsubtype", 0)) == 2] if "--tram" in a else []
-    w = World(rd(pos[0]), rd(pos[1]), roads, pav, alls, tram); got, why = w.sides()
+    gr = None
+    if "--ground" in a:
+        import kerbpcw
+        gr = kerbpcw.Ground(a[a.index("--ground") + 1])
+    w = World(rd(pos[0]), rd(pos[1]), roads, pav, alls, tram, gr); got, why = w.sides()
     F = to_feats(got); json.dump({"type": "FeatureCollection", "features": F}, open(pos[3], "w"))
     if "--why" in a:
         json.dump(dict(why), open(a[a.index("--why") + 1], "w"), indent=1)
