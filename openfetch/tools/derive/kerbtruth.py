@@ -1,7 +1,7 @@
 """Council kerb lines for the derive kerb tools (truth for scoring, or a source), read only through the council's registry datum entry
 (data/sources/nsw/<council>.json "datum"). Several council layers answer outSR 7856 with GDA94 numbers: Parramatta (Data.NSW hosted,
 Web Mercator stored) and Canterbury-Bankstown (AGOL, outSR 4326 gives the stored GDA94 coordinates) read that way sat 0.48 E / 1.42 N
-(1.5 m SW) off the LiDAR and made good kerbs look odd (canopy round 8, 21 Nov 2026, P-0250; same trap as the NSW state themes, P-0244).
+(1.5 m SW) off the LiDAR and made good kerbs look odd (canopy round 8, 21 Nov 2026, P-0254; same trap as the NSW state themes, P-0244).
 
 Rule: ask the server for the "served" code; read the numbers as "stored" when shift is "client" (the app moves them on the page),
 as "served" when shift is "none"; convert to GDA2020 MGA56 (7856) with pyproj. "unknown" or a missing entry is refused.
